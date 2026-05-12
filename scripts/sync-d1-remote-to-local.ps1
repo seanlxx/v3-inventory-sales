@@ -1,5 +1,5 @@
 ﻿param(
-  [string]$DatabaseName = "vending-inventory-sales-db",
+  [string]$DatabaseName = "v3-vending-inventory-sales-db",
   [string]$ExportFile = "",
   [switch]$KeepExport
 )
@@ -23,6 +23,14 @@ if ([string]::IsNullOrWhiteSpace($ExportFile)) {
 $resetFile = Join-Path $syncDir "reset-local-data.sql"
 $resetSql = @(
   "PRAGMA foreign_keys = OFF;",
+  "DELETE FROM sales_items;",
+  "DELETE FROM sales_orders;",
+  "DELETE FROM purchase_items;",
+  "DELETE FROM purchase_orders;",
+  "DELETE FROM stock_movements;",
+  "DELETE FROM inventory_balances;",
+  "DELETE FROM image_assets;",
+  "DELETE FROM products;",
   "DELETE FROM vending_record_image_chunks;",
   "DELETE FROM vending_record_images;",
   "DELETE FROM vending_records;",

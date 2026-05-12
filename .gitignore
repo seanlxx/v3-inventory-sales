@@ -1,6 +1,7 @@
 # Build output
 dist/
 output/
+_worker.bundle
 
 # Local dependency and environment files
 node_modules/

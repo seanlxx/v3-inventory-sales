@@ -32,4 +32,4 @@ jobs:
         run: ./scripts/test.ps1
 
       - name: Validate local D1 migrations
-        run: npx --yes wrangler@latest d1 migrations apply vending-inventory-sales-db --local
+        run: npx --yes wrangler@latest d1 migrations apply v3-vending-inventory-sales-db --local

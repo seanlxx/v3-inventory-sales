@@ -21,7 +21,7 @@ powershell -ExecutionPolicy Bypass -File (Join-Path $root "scripts\build.ps1")
 if ($SyncRemote) {
   powershell -ExecutionPolicy Bypass -File (Join-Path $root "scripts\sync-d1-remote-to-local.ps1")
 } else {
-  npx wrangler d1 migrations apply vending-inventory-sales-db --local
+  npx wrangler d1 migrations apply v3-vending-inventory-sales-db --local
 }
 
 $opencodeConfigPath = Join-Path $env:USERPROFILE ".config\opencode\opencode.json"

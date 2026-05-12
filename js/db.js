@@ -4,7 +4,7 @@
  */
 
 const DATA_EXPORT_VERSION = 1;
-const CLOUD_API_BASE = '/api/records';
+const CLOUD_API_BASE = '/api';
 const AUTH_SESSION_STORAGE_KEY = 'vendingAuthSession';
 
 const STORES = {
@@ -104,65 +104,26 @@ async function deleteProduct(id) {
  * 如果 productId 为空但提供了 productName，自动创建商品
  */
 async function addPurchase(purchase) {
-  let product;
-
-  if (purchase.productId) {
-    product = await dbGet(STORES.PRODUCTS, purchase.productId);
-    if (!product) throw new Error('商品不存在');
-  } else if (purchase.productName) {
-    // 自动创建新商品
-    product = await addProduct({
-      name: purchase.productName,
-      machineId: purchase.machineId || '1号机',
-      category: purchase.category || '其他',
-      sellPrice: parseFloat(purchase.sellPrice) || 0,
-      currentStock: 0
-    });
-  } else {
-    throw new Error('请选择商品或输入新商品名称');
-  }
-
-  const quantity = parseInt(purchase.quantity);
-  const totalPrice = parseFloat(purchase.totalPrice);
-  const unitPrice = quantity > 0 ? Math.round((totalPrice / quantity) * 100) / 100 : 0;
-
-  // 计算加权均价
-  const oldTotalCost = product.totalPurchaseCost || 0;
-  const oldTotalQty = product.totalPurchaseQty || 0;
-  const newTotalCost = oldTotalCost + totalPrice;
-  const newTotalQty = oldTotalQty + quantity;
-  const newAvgCost = newTotalQty > 0 ? newTotalCost / newTotalQty : 0;
-
-  // 更新商品（成本精确到分）
-  product.avgCost = Math.round(newAvgCost * 100) / 100;
-  product.totalPurchaseCost = Math.round(newTotalCost * 100) / 100;
-  product.totalPurchaseQty = newTotalQty;
-  product.currentStock = (product.currentStock || 0) + quantity;
-  await updateProduct(product);
-
-  // 保存进货记录
-  const data = {
-    id: generateId(),
-    productId: product.id,
-    productName: product.name,
-    machineId: product.machineId,
-    quantity: quantity,
-    unitPrice: unitPrice,
-    totalPrice: Math.round(totalPrice * 100) / 100,
-    source: purchase.source || '拼多多',
-    date: purchase.date || new Date().toISOString().split('T')[0],
-    note: purchase.note || '',
-    imageBase64: purchase.imageBase64 || null,
-    createdAt: new Date().toISOString()
-  };
-  return await dbAdd(STORES.PURCHASES, data);
+  const result = await cloudRequest({
+    method: 'POST',
+    path: storeEndpoint(STORES.PURCHASES),
+    body: purchase
+  });
+  invalidateRecordCache(STORES.PRODUCTS);
+  invalidateRecordCache(STORES.PURCHASES);
+  touchDataCachesForStore(STORES.PURCHASES);
+  return result;
 }
 
 async function addPurchasesBatch(purchases, options = {}) {
-  const result = await cloudRpc('vm_batch_add_purchases', {
+  const result = await cloudRequest({
+    method: 'POST',
+    path: storeEndpoint(STORES.PURCHASES),
+    body: {
     purchases,
     imageBase64: options.imageBase64 || null,
     mimeType: options.mimeType || 'image/jpeg'
+    }
   });
 
   invalidateRecordCache(STORES.PRODUCTS);
@@ -180,7 +141,16 @@ async function getAllPurchases(options = {}) {
 }
 
 async function getPurchaseSummary(options = {}) {
-  return await cloudRpc('vm_purchase_summary', options);
+  const summary = await cloudRequest({
+    method: 'POST',
+    path: '/reports/monthly',
+    body: options
+  });
+  const normalize = item => item ? { ...item, total: item.purchaseCost || 0 } : null;
+  return {
+    monthly: (summary.monthly || []).map(normalize),
+    current: normalize(summary.current)
+  };
 }
 
 /**
@@ -194,21 +164,7 @@ async function getPurchasesByProduct(productId, options = {}) {
  * 删除进货记录，并自动扣减相应的库存和调整均价
  */
 async function deletePurchase(id) {
-  const purchase = await dbGet(STORES.PURCHASES, id);
   await dbDelete(STORES.PURCHASES, id);
-  if (purchase && purchase.productId) {
-    const product = await dbGet(STORES.PRODUCTS, purchase.productId);
-    if (product) {
-      const remaining = await getPurchasesByProduct(purchase.productId);
-      const newTotalCost = remaining.reduce((s, p) => s + (p.totalPrice || 0), 0);
-      const newTotalQty = remaining.reduce((s, p) => s + (p.quantity || 0), 0);
-      product.totalPurchaseCost = Math.round(newTotalCost * 100) / 100;
-      product.totalPurchaseQty = newTotalQty;
-      product.avgCost = newTotalQty > 0 ? Math.round((newTotalCost / newTotalQty) * 100) / 100 : 0;
-      product.currentStock = Math.max(0, (product.currentStock || 0) - (purchase.quantity || 0));
-      await updateProduct(product);
-    }
-  }
 }
 
 /**
@@ -216,42 +172,16 @@ async function deletePurchase(id) {
  * 注意：不支持修改关联的商品，如果需要修改商品请删除后重新录入
  */
 async function updatePurchase(id, newPurchaseData) {
-  const oldPurchase = await dbGet(STORES.PURCHASES, id);
-  if (!oldPurchase) throw new Error('进货记录不存在');
-
-  const quantity = parseInt(newPurchaseData.quantity) || 0;
-  const totalPrice = parseFloat(newPurchaseData.totalPrice) || 0;
-  const unitPrice = quantity > 0
-    ? Math.round((totalPrice / quantity) * 100) / 100
-    : 0;
-
-  const updatedPurchase = {
-    ...oldPurchase,
-    quantity,
-    totalPrice: Math.round(totalPrice * 100) / 100,
-    unitPrice,
-    source: newPurchaseData.source !== undefined ? newPurchaseData.source : oldPurchase.source,
-    date: newPurchaseData.date || oldPurchase.date,
-    note: newPurchaseData.note !== undefined ? newPurchaseData.note : oldPurchase.note,
-  };
-
-  await dbPut(STORES.PURCHASES, updatedPurchase);
-
-  if (updatedPurchase.productId) {
-    const product = await dbGet(STORES.PRODUCTS, updatedPurchase.productId);
-    if (product) {
-      const allPurchases = await getPurchasesByProduct(updatedPurchase.productId);
-      const totalCost = allPurchases.reduce((s, p) => s + (p.totalPrice || 0), 0);
-      const totalQty = allPurchases.reduce((s, p) => s + (p.quantity || 0), 0);
-      product.totalPurchaseCost = Math.round(totalCost * 100) / 100;
-      product.totalPurchaseQty = totalQty;
-      product.avgCost = totalQty > 0 ? Math.round((totalCost / totalQty) * 100) / 100 : 0;
-      product.currentStock = Math.max(0, (product.currentStock || 0) - (oldPurchase.quantity || 0) + quantity);
-      await updateProduct(product);
-    }
-  }
-
-  return updatedPurchase;
+  const result = await cloudRequest({
+    method: 'PUT',
+    path: storeEndpoint(STORES.PURCHASES),
+    params: { id },
+    body: newPurchaseData
+  });
+  invalidateRecordCache(STORES.PRODUCTS);
+  invalidateRecordCache(STORES.PURCHASES);
+  touchDataCachesForStore(STORES.PURCHASES);
+  return result;
 }
 // ==================== 销售操作 ====================
 
@@ -261,75 +191,19 @@ async function updatePurchase(id, newPurchaseData) {
  * 同时计算 COGS（销售成本 = 单品数量 × 均价）并扣减库存
  */
 async function addSale(sale) {
-  const date = sale.date || new Date().toISOString().split('T')[0];
-  const yearMonth = date.substring(0, 7);
-
-  let totalAmount = 0;
-  let totalCogs = 0;
-  const enrichedItems = [];
-  const saleItems = sale.items || [];
-  const productIds = [...new Set(saleItems.map(item => item.productId).filter(Boolean))];
-  const products = await Promise.all(productIds.map(id => dbGet(STORES.PRODUCTS, id)));
-  const productMap = new Map(products.filter(Boolean).map(product => [product.id, product]));
-
-  // 0. 预检库存是否充足，防止中途报错导致数据不一致
-  for (const item of saleItems) {
-    const product = productMap.get(item.productId);
-    if (!product) continue;
-    const qty = parseInt(item.quantity) || 0;
-    if (qty > (product.currentStock || 0)) {
-      throw new Error(`商品 [${product.name}] 销售数量(${qty}) 大于当前库存(${(product.currentStock || 0)})，请修改后再提交`);
-    }
-  }
-
-  // 遍历单品明细，计算销售额和成本
-  for (const item of saleItems) {
-    const product = productMap.get(item.productId);
-    if (!product) continue;
-
-    const qty = parseInt(item.quantity) || 0;
-
-    const itemRevenue = item.itemRevenue !== undefined ? parseFloat(item.itemRevenue) : Math.round(qty * (product.sellPrice || 0) * 100) / 100;
-    const itemCogs = item.itemCogs !== undefined ? parseFloat(item.itemCogs) : Math.round(qty * (product.avgCost || 0) * 100) / 100;
-
-    if (qty === 0 && itemRevenue === 0 && itemCogs === 0) continue;
-
-    totalAmount += itemRevenue;
-    totalCogs += itemCogs;
-
-    // 扣减库存（记录实际扣减数，用于后续回退）
-    const stockBefore = product.currentStock || 0;
-    product.currentStock = Math.max(0, stockBefore - qty);
-    const actualDeducted = stockBefore - product.currentStock;
-    await updateProduct(product);
-
-    enrichedItems.push({
-      productId: product.id,
-      productName: product.name,
-      quantity: qty,
-      actualDeducted: actualDeducted,
-      sellPrice: product.sellPrice,
-      avgCost: product.avgCost,
-      itemRevenue: itemRevenue,
-      itemCogs: itemCogs
-    });
-  }
-
-  const data = {
-    id: generateId(),
-    machineId: sale.machineId || '1号机',
-    date: date,
-    yearMonth: yearMonth,
-    totalAmount: Math.round(totalAmount * 100) / 100,
-    totalCogs: Math.round(totalCogs * 100) / 100,
-    items: enrichedItems,
-    type: sale.type || 'daily',
-    note: sale.note || '',
-    imageBase64: sale.imageBase64 || null,
-    createdAt: new Date().toISOString()
-  };
-
-  return await dbAdd(STORES.SALES, data);
+  const type = sale.type === 'refund' ? 'refund' : (sale.type === 'loss' ? 'loss' : 'sale');
+  const path = type === 'refund'
+    ? '/inventory/refunds'
+    : (type === 'loss' ? '/inventory/losses' : storeEndpoint(STORES.SALES));
+  const result = await cloudRequest({
+    method: 'POST',
+    path,
+    body: sale
+  });
+  invalidateRecordCache(STORES.PRODUCTS);
+  invalidateRecordCache(STORES.SALES);
+  touchDataCachesForStore(STORES.SALES);
+  return result;
 }
 
 /**
@@ -340,7 +214,11 @@ async function getAllSales(options = {}) {
 }
 
 async function getSalesSummary(options = {}) {
-  return await cloudRpc('vm_sales_summary', options);
+  return await cloudRequest({
+    method: 'POST',
+    path: '/reports/monthly',
+    body: options
+  });
 }
 
 /**
@@ -354,18 +232,6 @@ async function getSalesByMonth(yearMonth, options = {}) {
  * 删除销售记录，并自动回退已扣减的库存
  */
 async function deleteSale(id) {
-  const sale = await dbGet(STORES.SALES, id);
-  if (sale && sale.items) {
-    for (const item of sale.items) {
-      const product = await dbGet(STORES.PRODUCTS, item.productId);
-      if (product) {
-        // 使用实际扣减数回退，兼容旧数据用 quantity
-        const rollbackQty = item.actualDeducted !== undefined ? item.actualDeducted : item.quantity;
-        product.currentStock = (product.currentStock || 0) + rollbackQty;
-        await updateProduct(product);
-      }
-    }
-  }
   return await dbDelete(STORES.SALES, id);
 }
 
@@ -405,107 +271,16 @@ function canKeepExistingSaleCalculations(oldItems = [], newItems = []) {
  * 修改销售记录 (回退旧库存 -> 应用新库存 -> 更新记录)
  */
 async function updateSale(id, newSaleData) {
-  const oldSale = await dbGet(STORES.SALES, id);
-  if (!oldSale) throw new Error('销售记录不存在');
-  const oldItems = oldSale.items || [];
-  const newItems = newSaleData.items || [];
-  const date = newSaleData.date || oldSale.date;
-  const yearMonth = date.substring(0, 7);
-
-  if (!Object.prototype.hasOwnProperty.call(newSaleData, 'items') || canKeepExistingSaleCalculations(oldItems, newItems)) {
-    return await dbPut(STORES.SALES, {
-      ...oldSale,
-      machineId: newSaleData.machineId || oldSale.machineId,
-      date: date,
-      yearMonth: yearMonth,
-      note: newSaleData.note !== undefined ? newSaleData.note : oldSale.note,
-      imageBase64: newSaleData.imageBase64 !== undefined ? newSaleData.imageBase64 : oldSale.imageBase64
-    });
-  }
-
-  const productIds = [...new Set([
-    ...oldItems.map(item => item.productId),
-    ...newItems.map(item => item.productId)
-  ].filter(Boolean))];
-  const products = await Promise.all(productIds.map(productId => dbGet(STORES.PRODUCTS, productId)));
-  const productMap = new Map(products.filter(Boolean).map(product => [product.id, product]));
-
-  // 0. 预检新销售数据库存是否充足
-  for (const item of newItems) {
-    const product = productMap.get(item.productId);
-    if (!product) continue;
-    const qty = parseInt(item.quantity) || 0;
-    
-    // 计算退回旧销量后的可用库存
-    const oldItem = (oldSale.items || []).find(oi => oi.productId === item.productId);
-    const rollbackQty = oldItem ? (oldItem.actualDeducted !== undefined ? oldItem.actualDeducted : oldItem.quantity) : 0;
-    const availableStock = (product.currentStock || 0) + rollbackQty;
-    
-    if (qty > availableStock) {
-      throw new Error(`商品 [${product.name}] 销售数量(${qty}) 大于当前可用库存(${availableStock})，请修改后再提交`);
-    }
-  }
-
-  // 1. 回退旧库存（使用实际扣减数）
-  for (const item of oldItems) {
-    const product = productMap.get(item.productId);
-    if (product) {
-      const rollbackQty = item.actualDeducted !== undefined ? item.actualDeducted : item.quantity;
-      product.currentStock = (product.currentStock || 0) + rollbackQty;
-      await updateProduct(product);
-    }
-  }
-
-  // 2. 应用新库存和计算新成本/售价
-  let totalAmount = 0;
-  let totalCogs = 0;
-  const enrichedItems = [];
-
-  for (const item of newItems) {
-    const product = productMap.get(item.productId);
-    if (!product) continue;
-
-    const qty = parseInt(item.quantity) || 0;
-
-    const itemRevenue = item.itemRevenue !== undefined ? parseFloat(item.itemRevenue) : Math.round(qty * (product.sellPrice || 0) * 100) / 100;
-    const itemCogs = item.itemCogs !== undefined ? parseFloat(item.itemCogs) : Math.round(qty * (product.avgCost || 0) * 100) / 100;
-
-    if (qty === 0 && itemRevenue === 0 && itemCogs === 0) continue;
-
-    totalAmount += itemRevenue;
-    totalCogs += itemCogs;
-
-    // 扣减新库存（记录实际扣减数）
-    const stockBefore = product.currentStock || 0;
-    product.currentStock = Math.max(0, stockBefore - qty);
-    const actualDeducted = stockBefore - product.currentStock;
-    await updateProduct(product);
-
-    enrichedItems.push({
-      productId: product.id,
-      productName: product.name,
-      quantity: qty,
-      actualDeducted: actualDeducted,
-      sellPrice: product.sellPrice,
-      avgCost: product.avgCost,
-      itemRevenue: itemRevenue,
-      itemCogs: itemCogs
-    });
-  }
-
-  const updatedSale = {
-    ...oldSale,
-    machineId: newSaleData.machineId || oldSale.machineId,
-    date: date,
-    yearMonth: yearMonth,
-    totalAmount: Math.round(totalAmount * 100) / 100,
-    totalCogs: Math.round(totalCogs * 100) / 100,
-    items: enrichedItems,
-    note: newSaleData.note !== undefined ? newSaleData.note : oldSale.note,
-    imageBase64: newSaleData.imageBase64 !== undefined ? newSaleData.imageBase64 : oldSale.imageBase64
-  };
-
-  return await dbPut(STORES.SALES, updatedSale);
+  const result = await cloudRequest({
+    method: 'PUT',
+    path: storeEndpoint(STORES.SALES),
+    params: { id },
+    body: newSaleData
+  });
+  invalidateRecordCache(STORES.PRODUCTS);
+  invalidateRecordCache(STORES.SALES);
+  touchDataCachesForStore(STORES.SALES);
+  return result;
 }
 
 // ==================== 设置操作 ====================
@@ -637,6 +412,21 @@ async function openDB() {
   return dbInstance;
 }
 
+function storeEndpoint(storeName) {
+  switch (storeName) {
+    case STORES.PRODUCTS:
+      return '/products';
+    case STORES.PURCHASES:
+      return '/inventory/purchases';
+    case STORES.SALES:
+      return '/inventory/sales';
+    case STORES.SETTINGS:
+      return '/settings';
+    default:
+      throw new Error('Unsupported store');
+  }
+}
+
 function getRecordId(storeName, data) {
   if (storeName === STORES.SETTINGS) return data && data.key;
   return data && data.id;
@@ -715,12 +505,30 @@ async function cloudRequest(options = {}) {
 }
 
 async function cloudRpc(functionName, payload = {}, options = {}) {
-  return await cloudRequest({
-    method: 'POST',
-    path: `?rpc=${encodeURIComponent(functionName)}`,
-    body: payload || {},
+  const rpcPaths = {
+    vm_login: '/auth/login',
+    vm_get_auth_profile: '/auth/profile',
+    vm_update_auth: '/auth/update',
+    vm_batch_add_purchases: '/inventory/purchases',
+    vm_sales_summary: '/reports/monthly',
+    vm_purchase_summary: '/reports/monthly'
+  };
+  const path = rpcPaths[functionName];
+  if (!path) throw new Error(`Unknown RPC: ${functionName}`);
+  const result = await cloudRequest({
+    method: functionName === 'vm_get_auth_profile' ? 'GET' : 'POST',
+    path,
+    body: functionName === 'vm_get_auth_profile' ? undefined : (payload || {}),
     skipSession: options.skipSession
   });
+  if (functionName === 'vm_purchase_summary') {
+    const normalize = item => item ? { ...item, total: item.purchaseCost || 0 } : null;
+    return {
+      monthly: (result.monthly || []).map(normalize),
+      current: normalize(result.current)
+    };
+  }
+  return result;
 }
 
 async function dbAdd(storeName, data) {
@@ -730,20 +538,22 @@ async function dbAdd(storeName, data) {
 async function dbPut(storeName, data) {
   const recordId = getRecordId(storeName, data);
   if (!recordId) throw new Error('Missing record id');
+  if (storeName === STORES.PURCHASES && data && data.isDeletedProduct) {
+    return data;
+  }
   const imagePayload = stripRecordImagePayload(storeName, data);
 
+  const body = imagePayload.hadImagePayload
+    ? {
+        ...imagePayload.record,
+        imageBase64: imagePayload.imageBase64 || '',
+        mimeType: 'image/jpeg'
+      }
+    : imagePayload.record;
   await cloudRequest({
     method: 'POST',
-    body: {
-      store: storeName,
-      data: imagePayload.hadImagePayload
-        ? {
-            ...imagePayload.record,
-            imageBase64: imagePayload.imageBase64 || '',
-            mimeType: 'image/jpeg'
-          }
-        : imagePayload.record
-    }
+    path: storeEndpoint(storeName),
+    body
   });
 
   invalidateRecordCache(storeName);
@@ -753,19 +563,19 @@ async function dbPut(storeName, data) {
 
 async function dbGet(storeName, id) {
   return await cloudRequest({
+    path: storeEndpoint(storeName),
     params: {
-      store: storeName,
-      recordId: String(id)
+      id: String(id)
     }
   });
 }
 
 async function getRecordImageBase64(storeName, id) {
   const result = await cloudRequest({
+    path: '/images',
     params: {
       store: storeName,
-      recordId: String(id),
-      image: '1'
+      id: String(id)
     }
   });
   return result ? result.imageBase64 : null;
@@ -802,7 +612,6 @@ async function dbQueryRecords(storeName, filters = {}, options = {}) {
   const records = [];
   const relation = getReadRelation(storeName, options);
   const baseParams = {
-    store: storeName,
     relation,
     order: options.order || 'updated_at.asc',
     ...filters
@@ -818,6 +627,7 @@ async function dbQueryRecords(storeName, filters = {}, options = {}) {
 
   while (true) {
     const page = await cloudRequest({
+      path: storeEndpoint(storeName),
       params: {
         ...baseParams,
         limit: String(pageSize),
@@ -851,10 +661,18 @@ async function dbGetAll(storeName, options = {}) {
 }
 
 async function dbGetByIndex(storeName, indexName, value, options = {}) {
-  return await dbQueryRecords(storeName, {
-    index: indexName,
-    value: String(value)
-  }, options);
+  const filters = {};
+  if (storeName === STORES.PURCHASES && indexName === 'productId') {
+    filters.productId = String(value);
+  } else if (storeName === STORES.SALES && indexName === 'yearMonth') {
+    filters.yearMonth = String(value);
+  } else if (indexName === 'machineId') {
+    filters.machineId = String(value);
+  } else {
+    filters.index = indexName;
+    filters.value = String(value);
+  }
+  return await dbQueryRecords(storeName, filters, options);
 }
 
 async function dbGetByDatePrefix(storeName, yearMonth, options = {}) {
@@ -872,9 +690,9 @@ async function dbGetSinceDate(storeName, date, options = {}) {
 async function dbDelete(storeName, id) {
   await cloudRequest({
     method: 'DELETE',
+    path: storeEndpoint(storeName),
     params: {
-      store: storeName,
-      recordId: String(id)
+      id: String(id)
     }
   });
   invalidateRecordCache(storeName);
@@ -884,6 +702,7 @@ async function dbDelete(storeName, id) {
 async function dbClear(storeName) {
   await cloudRequest({
     method: 'DELETE',
+    path: storeEndpoint(storeName),
     params: { store: storeName }
   });
   invalidateRecordCache(storeName);
