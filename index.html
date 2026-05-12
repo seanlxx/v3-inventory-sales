@@ -1,0 +1,95 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>售货机管理系统</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%2320bfd0'/%3E%3Cpath d='M8 10h16v14H8z' fill='white' opacity='.86'/%3E%3Cpath d='M11 7h10v5H11z' fill='%238b5cf6'/%3E%3C/svg%3E">
+  <meta name="description" content="无人售货机库存销售管理系统 - 进货成本追踪、利润计算、AI补货建议">
+  <link rel="stylesheet" href="css/tabler.min.css?v=1.4.0">
+  <link rel="stylesheet" href="css/tabler-icons.min.css?v=3.44.0">
+  <link rel="stylesheet" href="css/style.css?v=20260512-dashboard-compact">
+  <link rel="stylesheet" href="css/style.fixes.css?v=20260512-dashboard-compact">
+</head>
+<body>
+
+  <div class="app-layout page" id="appLayout" hidden>
+    <!-- 侧边栏 -->
+    <aside class="sidebar navbar navbar-vertical navbar-expand-lg" id="sidebar">
+      <div class="sidebar-header navbar-brand">
+        <div class="sidebar-brand-icon" aria-hidden="true">
+          <i class="ti ti-device-desktop-analytics"></i>
+        </div>
+        <div class="sidebar-brand-copy">
+          <h1>售货机管理</h1>
+          <p class="subtitle">库存 · 销售 · 利润</p>
+        </div>
+      </div>
+      <nav class="nav-list navbar-nav">
+        <div class="nav-item nav-link active" data-page="dashboard">
+          <span class="nav-link-icon nav-icon" aria-hidden="true"><i class="ti ti-layout-dashboard"></i></span>
+          <span class="nav-link-title">仪表盘</span>
+        </div>
+        <div class="nav-item nav-link" data-page="products">
+          <span class="nav-link-icon nav-icon" aria-hidden="true"><i class="ti ti-package"></i></span>
+          <span class="nav-link-title">商品管理</span>
+        </div>
+        <div class="nav-item nav-link" data-page="purchases">
+          <span class="nav-link-icon nav-icon" aria-hidden="true"><i class="ti ti-shopping-cart-plus"></i></span>
+          <span class="nav-link-title">进货管理</span>
+        </div>
+        <div class="nav-item nav-link" data-page="sales">
+          <span class="nav-link-icon nav-icon" aria-hidden="true"><i class="ti ti-currency-yuan"></i></span>
+          <span class="nav-link-title">销售管理</span>
+        </div>
+        <div class="nav-item nav-link" data-page="ai">
+          <span class="nav-link-icon nav-icon" aria-hidden="true"><i class="ti ti-brain"></i></span>
+          <span class="nav-link-title">AI补货</span>
+        </div>
+        <div class="nav-item nav-link" data-page="settings">
+          <span class="nav-link-icon nav-icon" aria-hidden="true"><i class="ti ti-settings"></i></span>
+          <span class="nav-link-title">设置</span>
+        </div>
+      </nav>
+      <!-- Theme Toggle -->
+      <div class="theme-toggle-wrap">
+        <span>外观模式</span>
+        <button id="themeToggleBtn" class="btn btn-icon btn-ghost" title="切换深色/浅色模式" aria-label="切换深色/浅色模式">
+          <i class="ti ti-moon"></i>
+        </button>
+      </div>
+    </aside>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- 主内容区 -->
+    <div class="main-area page-wrapper">
+      <!-- 移动端顶栏 -->
+      <header class="top-bar navbar navbar-expand-md d-print-none">
+        <button id="menuToggle" class="btn btn-icon" aria-label="打开导航菜单">
+          <i class="ti ti-menu-2"></i>
+        </button>
+        <span class="navbar-brand navbar-brand-autodark">售货机管理系统</span>
+      </header>
+
+      <!-- 内容区 -->
+      <main class="main-content page-body" id="mainContent">
+        <div class="empty-state card">
+          <div class="empty-icon"><i class="ti ti-loader-2"></i></div>
+          <p>加载中...</p>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/utils.js?v=20260512-dashboard-compact"></script>
+  <script src="js/db.js?v=20260512-dashboard-compact"></script>
+  <script src="js/dashboard.js?v=20260512-dashboard-compact"></script>
+  <script src="js/products.js?v=20260512-dashboard-compact"></script>
+  <script src="js/purchases.js?v=20260512-dashboard-compact"></script>
+  <script src="js/sales.js?v=20260512-dashboard-compact"></script>
+  <script src="js/ai.js?v=20260512-dashboard-compact"></script>
+  <script src="js/app.js?v=20260512-dashboard-compact"></script>
+</body>
+</html>
+

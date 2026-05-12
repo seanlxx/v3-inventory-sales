@@ -1,0 +1,24 @@
+# Build output
+dist/
+output/
+
+# Local dependency and environment files
+node_modules/
+.env
+.env.*
+!.env.example
+
+# Tool caches
+.wrangler/
+.sisyphus/
+
+# Local backup/export artifacts
+.migration/
+Untitled-*.txt
+售货机数据备份_*.json
+d1-seed.sql
+d1-image-rows.json
+github-recovery-codes.txt
+
+# OpenACP local workspace (contains secrets)
+.openacp

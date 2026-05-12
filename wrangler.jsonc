@@ -1,0 +1,21 @@
+{
+  "name": "v3-inventory-sales",
+  "pages_build_output_dir": "./dist",
+  "compatibility_date": "2026-05-05",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "v3-vending-inventory-sales-db",
+      "database_id": "2994755e-9625-4adc-a6f6-2e18c7b18bfe",
+      "preview_database_id": "DB",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "IMAGES",
+      "bucket_name": "v3-vending-inventory-sales-images",
+      "preview_bucket_name": "v3-vending-inventory-sales-images"
+    }
+  ]
+}
