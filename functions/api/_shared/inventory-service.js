@@ -100,6 +100,7 @@ function saleOrderToLegacy(order, items = []) {
     type: legacySalesType(order.type),
     note: order.note || '',
     hasImage: !!order.image_asset_id,
+    status: order.voided_at ? 'voided' : 'active',
     voidedAt: order.voided_at || null,
     createdAt: order.created_at
   };
@@ -836,11 +837,32 @@ export async function createSalesOrder(env, payload, forcedType = null) {
 }
 
 export async function listSales(env, filters = {}) {
-  const conditions = ['o.voided_at IS NULL'];
+  const conditions = [];
   const params = [];
+  if (filters.status === 'voided') {
+    conditions.push('o.voided_at IS NOT NULL');
+  } else if (filters.status !== 'all') {
+    conditions.push('o.voided_at IS NULL');
+  }
   if (filters.id) {
     conditions.push('o.id = ?');
     params.push(filters.id);
+  }
+  if (filters.type && filters.type !== 'all') {
+    conditions.push('o.type = ?');
+    params.push(normalizeSalesType(filters.type));
+  }
+  if (filters.machineId && filters.machineId !== 'all') {
+    conditions.push('o.machine_id = ?');
+    params.push(filters.machineId);
+  }
+  if (filters.productId && filters.productId !== 'all') {
+    conditions.push(`EXISTS (
+      SELECT 1
+      FROM sales_items si
+      WHERE si.sales_order_id = o.id AND si.product_id = ?
+    )`);
+    params.push(filters.productId);
   }
   if (filters.yearMonth) {
     conditions.push('o.year_month = ?');
@@ -862,7 +884,7 @@ export async function listSales(env, filters = {}) {
   const orders = await all(env.DB, `
     SELECT *
     FROM sales_orders o
-    WHERE ${conditions.join(' AND ')}
+    ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
     ORDER BY o.record_date DESC, o.created_at DESC
     LIMIT ? OFFSET ?
   `, params);

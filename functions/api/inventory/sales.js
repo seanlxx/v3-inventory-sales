@@ -6,6 +6,10 @@ export async function onRequestGet(context) {
   const id = url.searchParams.get('id');
   if (id) return json(200, await getSale(context.env, id));
   return json(200, await listSales(context.env, {
+    type: url.searchParams.get('type'),
+    machineId: url.searchParams.get('machineId'),
+    productId: url.searchParams.get('productId'),
+    status: url.searchParams.get('status'),
     yearMonth: url.searchParams.get('yearMonth'),
     datePrefix: url.searchParams.get('datePrefix'),
     sinceDate: url.searchParams.get('sinceDate'),

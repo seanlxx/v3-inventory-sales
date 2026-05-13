@@ -1,19 +1,218 @@
 <script setup lang="ts">
+import type { SalesOrder, SalesOrderPayload, SalesOrderType } from '~/types/sale'
+
 definePageMeta({
   title: '销售'
 })
 
-const sections = [
-  '销售单列表占位',
-  '退款与损耗分段占位',
-  '库存不足校验展示占位'
-] as const
+const {
+  filteredOrders,
+  productOptions,
+  filters,
+  summary,
+  selectedOrder,
+  aiCandidates,
+  salesImage,
+  machineOptions,
+  loading,
+  saving,
+  voiding,
+  recognizing,
+  error,
+  aiError,
+  updateFilters,
+  loadProducts,
+  loadOrders,
+  saveSalesImage,
+  createOrder,
+  voidOrder,
+  recognizeSalesScreenshot,
+  setAiCandidates
+} = useSales()
+
+const activeType = shallowRef<SalesOrderType>('sale')
+const formOpen = shallowRef(false)
+const aiReviewOpen = shallowRef(false)
+const detailOpen = shallowRef(false)
+const voidOpen = shallowRef(false)
+const voidingOrder = shallowRef<SalesOrder | null>(null)
+const formInventoryError = shallowRef<string | null>(null)
+
+function openCreateDialog() {
+  formInventoryError.value = null
+  formOpen.value = true
+}
+
+function openAiDialog() {
+  activeType.value = 'sale'
+  formInventoryError.value = null
+  aiReviewOpen.value = true
+}
+
+function openDetail(order: SalesOrder) {
+  selectedOrder.value = order
+  detailOpen.value = true
+}
+
+function openVoidDialog(order: SalesOrder) {
+  voidingOrder.value = order
+  voidOpen.value = true
+}
+
+async function submitOrder(type: SalesOrderType, payload: SalesOrderPayload) {
+  formInventoryError.value = null
+  try {
+    await createOrder(type, payload)
+    formOpen.value = false
+    aiReviewOpen.value = false
+  } catch (caught) {
+    formInventoryError.value = caught && typeof caught === 'object' && 'message' in caught
+      ? String(caught.message)
+      : '提交失败'
+  }
+}
+
+async function submitAiOrder(payload: SalesOrderPayload) {
+  await submitOrder('sale', payload)
+}
+
+async function confirmVoid(order: SalesOrder) {
+  await voidOrder(order)
+  voidOpen.value = false
+  detailOpen.value = false
+}
+
+watch(() => [filters.month, filters.type, filters.status, filters.machineId] as const, () => {
+  loadOrders()
+})
+
+onMounted(async () => {
+  await Promise.all([loadProducts(), loadOrders()])
+})
 </script>
 
 <template>
-  <PagePlaceholder
-    title="销售"
-    description="销售、退款、损耗会保持独立业务动作，不用负数混在同一类单据里。"
-    :sections="sections"
-  />
+  <div class="sales-page">
+    <header class="sales-page__header">
+      <div>
+        <h1 class="sales-page__title">销售</h1>
+        <p class="sales-page__description">
+          销售、退款、损耗使用独立单据入口；前端只读取库存快照并做提交前提示，最终库存变更以后端流水为准。
+        </p>
+      </div>
+      <StatusBadge label="不使用负数销售" tone="info" />
+    </header>
+
+    <SalesModeTabs v-model="activeType" />
+
+    <SalesSummaryStrip
+      :sales-amount="summary.salesAmount"
+      :refund-amount="summary.refundAmount"
+      :loss-quantity="summary.lossQuantity"
+      :count="summary.count"
+    />
+
+    <SalesFilters
+      :filters="filters"
+      :machines="machineOptions"
+      :result-count="filteredOrders.length"
+      :loading="loading"
+      @update-filters="updateFilters"
+      @refresh="loadOrders"
+      @create="openCreateDialog"
+      @ai-review="openAiDialog"
+    />
+
+    <SalesOrderTable
+      :orders="filteredOrders"
+      :loading="loading"
+      :error="error"
+      @view="openDetail"
+      @void="openVoidDialog"
+      @retry="loadOrders"
+    />
+
+    <SalesOrderDialog
+      v-model:open="formOpen"
+      :type="activeType"
+      :products="productOptions"
+      :machines="machineOptions"
+      :submitting="saving"
+      :image-file-name="salesImage?.fileName"
+      :inventory-error="formInventoryError"
+      @image-selected="saveSalesImage"
+      @submit="submitOrder"
+    />
+
+    <SalesAiReviewDialog
+      v-model:open="aiReviewOpen"
+      :candidates="aiCandidates"
+      :products="productOptions"
+      :machines="machineOptions"
+      :recognizing="recognizing"
+      :submitting="saving"
+      :image-file-name="salesImage?.fileName"
+      :error-message="aiError?.message"
+      :inventory-error="formInventoryError"
+      @image-selected="saveSalesImage"
+      @recognize="recognizeSalesScreenshot"
+      @update-candidates="setAiCandidates"
+      @confirm="submitAiOrder"
+    />
+
+    <SalesOrderDrawer
+      v-model:open="detailOpen"
+      :order="selectedOrder"
+      @void="openVoidDialog"
+    />
+
+    <SalesVoidDialog
+      v-model:open="voidOpen"
+      :order="voidingOrder"
+      :submitting="voiding"
+      @confirm="confirmVoid"
+    />
+  </div>
 </template>
+
+<style scoped>
+.sales-page {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-4);
+}
+
+.sales-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.sales-page__title {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.25;
+}
+
+.sales-page__description {
+  max-width: 880px;
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-muted);
+  line-height: 1.7;
+}
+
+@media (max-width: 760px) {
+  .sales-page {
+    gap: var(--space-3);
+  }
+
+  .sales-page__header {
+    display: grid;
+  }
+
+  .sales-page__title {
+    font-size: 20px;
+  }
+}
+</style>
