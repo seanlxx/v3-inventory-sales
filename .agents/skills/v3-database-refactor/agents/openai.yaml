@@ -1,6 +1,0 @@
-interface:
-  display_name: "V3 Database Refactor"
-  short_description: "Guide v3 D1 inventory ledger refactors"
-  default_prompt: "Use $v3-database-refactor to plan or implement the v3 inventory database refactor."
-policy:
-  allow_implicit_invocation: true
