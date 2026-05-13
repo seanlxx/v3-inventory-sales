@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Product } from '~/types/product'
 import type { SalesAiCandidate, SalesItem, SalesOrderPayload } from '~/types/sale'
+import { useClipboardImagePaste } from '~/composables/useClipboardImagePaste'
 import { formatMoney, formatQuantity } from '~/utils/format'
 
 const open = defineModel<boolean>('open', { default: false })
@@ -75,6 +76,12 @@ function handleFileChange(event: Event) {
   if (file) emit('imageSelected', file)
 }
 
+useClipboardImagePaste({
+  enabled: open,
+  fileNamePrefix: 'sales-screenshot',
+  onImage: (file: File) => emit('imageSelected', file)
+})
+
 function confirmOrder() {
   const invalid = props.candidates.find(candidate =>
     !candidate.productId || Number(candidate.quantity) <= 0 || Number(candidate.itemRevenue) < 0
@@ -109,9 +116,9 @@ function confirmOrder() {
     <div class="sales-ai">
       <div class="sales-ai__top">
         <label class="sales-ai__upload">
-          <span>上传销售截图</span>
+          <span>上传销售截图 / 直接粘贴</span>
           <input type="file" accept="image/*" @change="handleFileChange">
-          <strong>{{ props.imageFileName || '选择销售截图后再识别' }}</strong>
+          <strong>{{ props.imageFileName || '选择销售截图，或复制图片后按 Ctrl+V' }}</strong>
         </label>
         <AppButton variant="secondary" :loading="props.recognizing" @click="emit('recognize')">
           开始识别

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Product } from '~/types/product'
 import type { PurchaseAiCandidate, PurchaseItem, PurchaseOrderPayload } from '~/types/purchase'
+import { useClipboardImagePaste } from '~/composables/useClipboardImagePaste'
 import { formatMoney } from '~/utils/format'
 
 const open = defineModel<boolean>('open', { default: false })
@@ -69,6 +70,12 @@ function handleFileChange(event: Event) {
   if (file) emit('imageSelected', file)
 }
 
+useClipboardImagePaste({
+  enabled: open,
+  fileNamePrefix: 'purchase-screenshot',
+  onImage: (file: File) => emit('imageSelected', file)
+})
+
 function confirmOrder() {
   const invalid = props.candidates.find(candidate =>
     !candidate.productId || Number(candidate.quantity) <= 0 || Number(candidate.totalPrice) <= 0
@@ -103,9 +110,9 @@ function confirmOrder() {
     <div class="ai-review">
       <div class="ai-review__top">
         <label class="ai-review__upload">
-          <span>上传截图</span>
+          <span>上传截图 / 直接粘贴</span>
           <input type="file" accept="image/*" @change="handleFileChange">
-          <strong>{{ props.imageFileName || '选择进货截图后再识别' }}</strong>
+          <strong>{{ props.imageFileName || '选择进货截图，或复制图片后按 Ctrl+V' }}</strong>
         </label>
         <AppButton variant="secondary" :loading="props.recognizing" @click="emit('recognize')">
           开始识别
