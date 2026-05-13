@@ -146,31 +146,31 @@
 ### 本地开发与测试（同步线上数据）
 
 > **⚠️ 需要看到真实页面效果时，必须先同步线上数据。**
-> `dev.bat` 会调用 `scripts/dev.ps1 -SyncRemote`，先同步远程 D1 到本地，再启动开发服务。
+> `dev.bat` 会调用 `scripts/dev.ps1 -SyncRemote -DatabaseName v3-vending-inventory-sales-db`，先同步远程 D1 到本地，再启动开发服务。
 
 ```powershell
 # ── 推荐：同步线上数据后启动本地开发服务（agent 测试必须使用）──
-powershell -ExecutionPolicy Bypass -File ./scripts/dev.ps1 -SyncRemote
+powershell -ExecutionPolicy Bypass -File ./scripts/dev.ps1 -SyncRemote -DatabaseName v3-vending-inventory-sales-db
 # 内部流程：构建 dist/ → 应用本地迁移 → 导出远程 D1 → 清空并导入本地 D1 → 启动 wrangler pages dev :8788
 
 # ── Windows 双击/快速入口（会同步线上数据）──
-# 路径：C:\Users\Admin\Desktop\v2-inventory-sales\dev.bat
+# 路径：C:\Users\Admin\Desktop\v3\dev.bat
 # 内部流程：构建 dist/ → 应用本地迁移 → 导出远程 D1 → 清空并导入本地 D1 → 启动 wrangler pages dev :8788
 
 # ── 仅构建 dist/（不启动服务）──
 powershell -ExecutionPolicy Bypass -File ./scripts/build.ps1
 
 # ── 仅应用 D1 迁移（本地）──
-npx wrangler d1 migrations apply vending-inventory-sales-db --local
+npx wrangler d1 migrations apply v3-vending-inventory-sales-db --local
 
 # ── 仅应用 D1 迁移（远程生产）──
-npx wrangler d1 migrations apply vending-inventory-sales-db --remote
+npx wrangler d1 migrations apply v3-vending-inventory-sales-db --remote
 ```
 
 **本地启动流程摘要：**
 
 ```
-dev.ps1 -SyncRemote（真实数据测试）
+dev.ps1 -SyncRemote -DatabaseName v3-vending-inventory-sales-db（真实数据测试）
   │
   ├─ 1. scripts/build.ps1       → 构建 dist/
   ├─ 2. 应用本地迁移             → 数据库 schema 最新

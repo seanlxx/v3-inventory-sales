@@ -1,5 +1,6 @@
 ﻿param(
-  [switch]$SyncRemote
+  [switch]$SyncRemote,
+  [string]$DatabaseName = "v3-vending-inventory-sales-db"
 )
 
 $ErrorActionPreference = "Stop"
@@ -19,9 +20,9 @@ $oldDevProcesses | ForEach-Object {
 powershell -ExecutionPolicy Bypass -File (Join-Path $root "scripts\build.ps1")
 
 if ($SyncRemote) {
-  powershell -ExecutionPolicy Bypass -File (Join-Path $root "scripts\sync-d1-remote-to-local.ps1")
+  powershell -ExecutionPolicy Bypass -File (Join-Path $root "scripts\sync-d1-remote-to-local.ps1") -DatabaseName $DatabaseName
 } else {
-  npx wrangler d1 migrations apply v3-vending-inventory-sales-db --local
+  npx wrangler d1 migrations apply $DatabaseName --local
 }
 
 $opencodeConfigPath = Join-Path $env:USERPROFILE ".config\opencode\opencode.json"
