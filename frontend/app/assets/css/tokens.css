@@ -1,0 +1,18 @@
+:root {
+  --color-bg: #f6f8fb;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f1f4f8;
+  --color-border: #d9e0ea;
+  --color-text: #172033;
+  --color-text-muted: #6b7280;
+  --color-primary: #2563eb;
+  --color-primary-soft: #e8f0ff;
+  --color-primary-strong: #1d4ed8;
+  --color-inbound: #168a4a;
+  --color-outbound: #b42318;
+  --color-warning: #c77700;
+  --color-info: #0f766e;
+  --color-danger: #c2410c;
+  --font-sans: "HarmonyOS Sans SC", "Noto Sans SC", "Microsoft YaHei UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+}
