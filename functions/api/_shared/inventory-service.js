@@ -60,6 +60,34 @@ function purchaseToLegacy(row) {
   };
 }
 
+function purchaseOrderToLegacy(order, items = []) {
+  const totalCostCents = items.reduce((sum, item) => sum + (Number(item.total_cost_cents) || 0), 0);
+  const quantity = items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+  return {
+    id: order.id,
+    machineId: order.machine_id,
+    date: order.record_date,
+    source: order.source || '拼多多',
+    note: order.note || '',
+    imageAssetId: order.image_asset_id || null,
+    hasImage: !!order.image_asset_id,
+    status: order.voided_at ? 'voided' : 'active',
+    voidedAt: order.voided_at || null,
+    items: items.map(row => ({
+      id: row.id,
+      productId: row.product_id,
+      productName: row.product_name,
+      quantity: Number(row.quantity) || 0,
+      unitPrice: centsToMoney(row.unit_cost_cents),
+      totalPrice: centsToMoney(row.total_cost_cents)
+    })),
+    quantity,
+    totalCost: centsToMoney(totalCostCents),
+    createdAt: order.created_at,
+    updatedAt: order.updated_at
+  };
+}
+
 function saleOrderToLegacy(order, items = []) {
   return {
     id: order.id,
@@ -337,6 +365,10 @@ async function ensurePurchaseProduct(env, purchase, statements) {
 }
 
 export async function createPurchases(env, payload) {
+  if (Array.isArray(payload?.items)) {
+    return await createPurchaseOrder(env, payload);
+  }
+
   const items = Array.isArray(payload?.purchases) ? payload.purchases : [payload];
   if (!items.length) throw new Error('Missing purchases');
 
@@ -420,6 +452,119 @@ export async function createPurchases(env, payload) {
   return { purchases: saved };
 }
 
+export async function createPurchaseOrder(env, payload) {
+  const rawItems = Array.isArray(payload?.items) ? payload.items : [];
+  if (!rawItems.length) throw new Error('Missing purchases');
+
+  const timestamp = nowIso();
+  const statements = [];
+  const balanceCache = new Map();
+  const orderId = stringOrNull(payload.id) || newId();
+  const imageBase64 = stringOrNull(payload.imageBase64);
+  const sharedImage = imageBase64
+    ? await putImageAsset(env, 'purchases', orderId, imageBase64, payload.mimeType || 'image/jpeg')
+    : null;
+  if (sharedImage) statements.push(upsertImageAssetStatement(env.DB, sharedImage));
+
+  let orderMachineId = stringOrNull(payload.machineId);
+  const products = [];
+  for (const rawItem of rawItems) {
+    const product = await ensurePurchaseProduct(env, {
+      ...rawItem,
+      machineId: rawItem.machineId || payload.machineId
+    }, statements);
+    products.push({ rawItem, product });
+    if (!orderMachineId) orderMachineId = product.machine_id;
+  }
+  orderMachineId = orderMachineId || '1号机';
+
+  const date = recordDate(payload.date);
+  const imageAssetId = stringOrNull(payload.imageAssetId) || sharedImage?.id || null;
+  statements.push(env.DB.prepare(`
+    INSERT INTO purchase_orders (
+      id, machine_id, record_date, source, note, image_asset_id, voided_at, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)
+  `).bind(
+    orderId,
+    orderMachineId,
+    date,
+    stringOrNull(payload.source) || '拼多多',
+    stringOrNull(payload.note),
+    imageAssetId,
+    timestamp,
+    timestamp
+  ));
+
+  const savedItems = [];
+  for (let index = 0; index < products.length; index += 1) {
+    const { rawItem, product } = products[index];
+    const qty = positiveQuantity(rawItem.quantity);
+    const totalCostCents = moneyToCents(rawItem.totalPrice);
+    const unitCostCents = moneyToCents(rawItem.unitPrice) || (qty > 0 ? Math.round(totalCostCents / qty) : 0);
+    if (qty <= 0) throw new Error('Invalid purchase quantity');
+    if (totalCostCents <= 0) throw new Error('Invalid purchase total price');
+
+    const itemId = `${orderId}:${index}`;
+    statements.push(env.DB.prepare(`
+      INSERT INTO purchase_items (
+        id, purchase_id, product_id, quantity, unit_cost_cents, total_cost_cents, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).bind(itemId, orderId, product.id, qty, unitCostCents, totalCostCents, timestamp));
+
+    await applyMovement(env, balanceCache, {
+      id: `purchase_order:${orderId}:${product.id}:${index}`,
+      product_id: product.id,
+      machine_id: orderMachineId,
+      movement_type: 'purchase',
+      qty_delta: qty,
+      unit_cost_cents: unitCostCents,
+      ref_type: 'purchase_order',
+      ref_id: orderId,
+      ref_item_id: itemId,
+      voids_movement_id: null,
+      created_at: timestamp
+    }, totalCostCents, statements, qty, totalCostCents);
+
+    savedItems.push({
+      id: itemId,
+      product_id: product.id,
+      product_name: product.name,
+      quantity: qty,
+      unit_cost_cents: unitCostCents,
+      total_cost_cents: totalCostCents
+    });
+  }
+
+  await env.DB.batch(statements);
+  return {
+    purchase: purchaseOrderToLegacy({
+      id: orderId,
+      machine_id: orderMachineId,
+      record_date: date,
+      source: stringOrNull(payload.source) || '拼多多',
+      note: stringOrNull(payload.note) || '',
+      image_asset_id: imageAssetId,
+      voided_at: null,
+      created_at: timestamp,
+      updated_at: timestamp
+    }, savedItems),
+    purchases: savedItems.map(item => ({
+      id: orderId,
+      productId: item.product_id,
+      productName: item.product_name,
+      machineId: orderMachineId,
+      quantity: item.quantity,
+      unitPrice: centsToMoney(item.unit_cost_cents),
+      totalPrice: centsToMoney(item.total_cost_cents),
+      source: stringOrNull(payload.source) || '拼多多',
+      date,
+      note: stringOrNull(payload.note) || '',
+      hasImage: !!imageAssetId,
+      createdAt: timestamp
+    }))
+  };
+}
+
 export async function listPurchases(env, filters = {}) {
   const conditions = ['o.voided_at IS NULL'];
   const params = [];
@@ -455,6 +600,67 @@ export async function listPurchases(env, filters = {}) {
     LIMIT ? OFFSET ?
   `, params);
   return rows.map(purchaseToLegacy);
+}
+
+export async function listPurchaseOrders(env, filters = {}) {
+  const conditions = [];
+  const params = [];
+  const status = filters.status || 'active';
+
+  if (status === 'voided') {
+    conditions.push('o.voided_at IS NOT NULL');
+  } else if (status !== 'all') {
+    conditions.push('o.voided_at IS NULL');
+  }
+  if (filters.id) {
+    conditions.push('o.id = ?');
+    params.push(filters.id);
+  }
+  if (filters.productId) {
+    conditions.push('EXISTS (SELECT 1 FROM purchase_items pi WHERE pi.purchase_id = o.id AND pi.product_id = ?)');
+    params.push(filters.productId);
+  }
+  if (filters.datePrefix) {
+    conditions.push('o.record_date >= ? AND o.record_date < ?');
+    params.push(filters.datePrefix, `${filters.datePrefix}\uffff`);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const limit = Math.min(Math.max(Number(filters.limit) || 200, 1), 1000);
+  const offset = Math.max(Number(filters.offset) || 0, 0);
+  const orders = await all(env.DB, `
+    SELECT *
+    FROM purchase_orders o
+    ${where}
+    ORDER BY o.record_date DESC, o.created_at DESC
+    LIMIT ? OFFSET ?
+  `, [...params, limit, offset]);
+
+  if (!orders.length) return [];
+
+  const ids = orders.map(order => order.id);
+  const itemRows = await all(env.DB, `
+    SELECT
+      i.*,
+      p.name AS product_name
+    FROM purchase_items i
+    JOIN products p ON p.id = i.product_id
+    WHERE i.purchase_id IN (${ids.map(() => '?').join(', ')})
+    ORDER BY i.purchase_id, i.id
+  `, ids);
+
+  const itemsByOrder = new Map();
+  for (const item of itemRows) {
+    if (!itemsByOrder.has(item.purchase_id)) itemsByOrder.set(item.purchase_id, []);
+    itemsByOrder.get(item.purchase_id).push(item);
+  }
+
+  return orders.map(order => purchaseOrderToLegacy(order, itemsByOrder.get(order.id) || []));
+}
+
+export async function getPurchaseOrder(env, id) {
+  const [purchase] = await listPurchaseOrders(env, { id, status: 'all', limit: 1 });
+  return purchase || null;
 }
 
 export async function getPurchase(env, id) {

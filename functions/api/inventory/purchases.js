@@ -1,13 +1,25 @@
-import { createPurchases, getPurchase, listPurchases, updatePurchase, voidDocument } from '../_shared/inventory-service.js';
+import { createPurchases, getPurchase, getPurchaseOrder, listPurchaseOrders, listPurchases, updatePurchase, voidDocument } from '../_shared/inventory-service.js';
 import { json, methodNotAllowed, parseJsonBody } from '../_shared/http.js';
 
 export async function onRequestGet(context) {
   const url = new URL(context.request.url);
   const id = url.searchParams.get('id');
+  const grouped = url.searchParams.get('grouped') === '1' || url.searchParams.get('format') === 'orders';
+  const datePrefix = url.searchParams.get('month') || url.searchParams.get('datePrefix');
+  if (grouped) {
+    if (id) return json(200, await getPurchaseOrder(context.env, id));
+    return json(200, await listPurchaseOrders(context.env, {
+      productId: url.searchParams.get('productId'),
+      datePrefix,
+      status: url.searchParams.get('status') || 'active',
+      limit: url.searchParams.get('limit'),
+      offset: url.searchParams.get('offset')
+    }));
+  }
   if (id) return json(200, await getPurchase(context.env, id));
   return json(200, await listPurchases(context.env, {
     productId: url.searchParams.get('productId'),
-    datePrefix: url.searchParams.get('datePrefix'),
+    datePrefix,
     limit: url.searchParams.get('limit'),
     offset: url.searchParams.get('offset')
   }));
@@ -16,6 +28,7 @@ export async function onRequestGet(context) {
 export async function onRequestPost(context) {
   const body = await parseJsonBody(context.request);
   const result = await createPurchases(context.env, body || {});
+  if (Array.isArray(body?.items)) return json(200, result.purchase);
   return json(200, Array.isArray(body?.purchases) ? result : result.purchases[0]);
 }
 
