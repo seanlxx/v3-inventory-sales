@@ -12,6 +12,7 @@ const props = withDefaults(defineProps<Props>(), {
 const dialogOpen = shallowRef(false)
 const drawerOpen = shallowRef(false)
 const sampleInput = shallowRef('')
+const { status, errorMessage, isAuthenticated, username, fetchProfile, logout } = useAuth()
 
 const tableColumns = [
   { key: 'name', label: '组件' },
@@ -24,6 +25,10 @@ const tableRows = [
   { name: 'DataTable', status: '占位中', updatedAt: '本阶段' },
   { name: 'StatusBadge', status: '可复用', updatedAt: '本阶段' }
 ] as const
+
+async function checkAuthProfile() {
+  await fetchProfile().catch(() => null)
+}
 </script>
 
 <template>
@@ -73,10 +78,24 @@ const tableRows = [
 
       <section class="page-placeholder__panel">
         <div class="page-placeholder__panel-header">
-          <h3 class="page-placeholder__panel-title">页面边界</h3>
-          <StatusBadge label="无业务实现" tone="neutral" />
+          <h3 class="page-placeholder__panel-title">登录态联调</h3>
+          <StatusBadge
+            :label="isAuthenticated ? username || '已登录' : '未登录'"
+            :tone="isAuthenticated ? 'success' : 'neutral'"
+          />
         </div>
         <div class="page-placeholder__section-list">
+          <div class="page-placeholder__auth-actions">
+            <AppButton variant="secondary" :loading="status === 'pending'" @click="checkAuthProfile">
+              检查登录态
+            </AppButton>
+            <AppButton variant="ghost" @click="logout">
+              清除会话
+            </AppButton>
+          </div>
+          <p v-if="errorMessage" class="page-placeholder__error">
+            {{ errorMessage }}
+          </p>
           <div
             v-for="section in props.sections"
             :key="section"
@@ -160,7 +179,8 @@ const tableRows = [
 
 .page-placeholder__actions,
 .page-placeholder__button-row,
-.page-placeholder__badge-row {
+.page-placeholder__badge-row,
+.page-placeholder__auth-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -222,6 +242,16 @@ const tableRows = [
   flex: 0 0 auto;
   border-radius: 999px;
   background: var(--color-info);
+}
+
+.page-placeholder__error {
+  margin: 0;
+  border: 1px solid rgb(194 65 12 / 28%);
+  border-radius: var(--radius-2);
+  padding: var(--space-3);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+  line-height: 1.6;
 }
 
 .page-placeholder__overlay-copy {

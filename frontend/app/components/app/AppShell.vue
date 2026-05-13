@@ -25,12 +25,16 @@ const fallbackNavigationItem: NavigationItem = {
 }
 
 const route = useRoute()
+const { username, isAuthenticated } = useAuth()
+const { loading } = useApi()
+const toastStore = useToastStore()
 
 const currentNavigationItem = computed(() =>
   navigationItems.find(item => item.to === route.path) ?? fallbackNavigationItem
 )
 
 const mobileNavigationItems = computed(() => navigationItems.filter(item => item.mobile))
+const authLabel = computed(() => isAuthenticated.value ? username.value || '已登录' : '未登录')
 </script>
 
 <template>
@@ -73,12 +77,17 @@ const mobileNavigationItems = computed(() => navigationItems.filter(item => item
             placeholder="搜索占位"
             readonly
           />
-          <StatusBadge label="框架中" tone="info" />
+          <StatusBadge v-if="loading" label="请求中" tone="warning" />
+          <StatusBadge v-else :label="authLabel" :tone="isAuthenticated ? 'success' : 'neutral'" />
           <NuxtLink class="app-shell__settings-link" to="/settings" aria-label="打开设置">
             设置
           </NuxtLink>
         </div>
       </header>
+
+      <div v-if="toastStore.latest" class="app-shell__toast" role="status">
+        {{ toastStore.latest.message }}
+      </div>
 
       <main class="app-shell__content">
         <slot />
@@ -274,6 +283,16 @@ const mobileNavigationItems = computed(() => navigationItems.filter(item => item
   padding: var(--space-6);
 }
 
+.app-shell__toast {
+  margin: var(--space-4) var(--space-6) 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+  font-weight: 700;
+}
+
 .app-shell__bottom-nav {
   display: none;
 }
@@ -320,6 +339,10 @@ const mobileNavigationItems = computed(() => navigationItems.filter(item => item
 
   .app-shell__content {
     padding: var(--space-4);
+  }
+
+  .app-shell__toast {
+    margin: var(--space-3) var(--space-4) 0;
   }
 
   .app-shell__bottom-nav {

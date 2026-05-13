@@ -1,6 +1,7 @@
 export default defineNuxtConfig({
   compatibilityDate: '2026-05-05',
   devtools: { enabled: true },
+  modules: ['@pinia/nuxt'],
   components: [
     {
       path: '~/components',
@@ -28,5 +29,10 @@ export default defineNuxtConfig({
   typescript: {
     strict: true,
     typeCheck: true
+  },
+  runtimeConfig: {
+    public: {
+      apiBase: '/api'
+    }
   }
 })
