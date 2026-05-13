@@ -1,10 +1,17 @@
 export default defineNuxtConfig({
   compatibilityDate: '2026-05-05',
   devtools: { enabled: true },
+  components: [
+    {
+      path: '~/components',
+      pathPrefix: false
+    }
+  ],
   css: [
     '~/assets/css/tokens.css',
     '~/assets/css/base.css',
-    '~/assets/css/layout.css'
+    '~/assets/css/layout.css',
+    '~/assets/css/components.css'
   ],
   app: {
     head: {

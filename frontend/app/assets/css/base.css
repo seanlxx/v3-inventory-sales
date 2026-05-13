@@ -4,16 +4,21 @@
 
 html {
   min-width: 0;
+  min-height: 100%;
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-sans);
   font-size: 14px;
   letter-spacing: 0;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }
 
 body {
   min-width: 0;
+  min-height: 100%;
   margin: 0;
+  overflow-x: hidden;
 }
 
 button,
@@ -26,4 +31,18 @@ textarea {
 button,
 a {
   -webkit-tap-highlight-color: transparent;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--color-primary-soft);
+  color: var(--color-text);
 }

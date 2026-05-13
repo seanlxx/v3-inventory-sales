@@ -5,3 +5,15 @@
 .numeric {
   font-variant-numeric: tabular-nums;
 }
+
+.surface-panel {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-3);
+  background: var(--color-surface);
+}
+
+.table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
