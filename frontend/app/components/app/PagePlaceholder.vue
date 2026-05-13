@@ -13,6 +13,8 @@ const dialogOpen = shallowRef(false)
 const drawerOpen = shallowRef(false)
 const sampleInput = shallowRef('')
 const { status, errorMessage, isAuthenticated, username, fetchProfile, logout } = useAuth()
+const mounted = shallowRef(false)
+const authReady = computed(() => mounted.value && isAuthenticated.value)
 
 const tableColumns = [
   { key: 'name', label: '组件' },
@@ -29,13 +31,17 @@ const tableRows = [
 async function checkAuthProfile() {
   await fetchProfile().catch(() => null)
 }
+
+onMounted(() => {
+  mounted.value = true
+})
 </script>
 
 <template>
   <section class="page-placeholder">
     <header class="page-placeholder__header">
       <div class="page-placeholder__heading">
-        <p class="page-placeholder__stage">基础框架</p>
+        <p class="page-placeholder__stage">经营控制台</p>
         <h2 class="page-placeholder__title">{{ props.title }}</h2>
         <p class="page-placeholder__description">{{ props.description }}</p>
       </div>
@@ -80,8 +86,8 @@ async function checkAuthProfile() {
         <div class="page-placeholder__panel-header">
           <h3 class="page-placeholder__panel-title">登录态联调</h3>
           <StatusBadge
-            :label="isAuthenticated ? username || '已登录' : '未登录'"
-            :tone="isAuthenticated ? 'success' : 'neutral'"
+            :label="authReady ? username || '已登录' : '未登录'"
+            :tone="authReady ? 'success' : 'neutral'"
           />
         </div>
         <div class="page-placeholder__section-list">

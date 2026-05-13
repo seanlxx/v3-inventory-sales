@@ -10,13 +10,13 @@
 
 无人售货机库存、进货、销售、利润与 AI 辅助管理系统。
 
-**技术栈：** 纯静态前端（HTML + CSS + 原生 JS） + Cloudflare Pages Functions（边缘 API） + D1（SQLite） + R2（图片存储）。
+**技术栈：** Nuxt 4 + Vue 3 + TypeScript 前端 + Cloudflare Pages Functions（边缘 API） + D1（SQLite） + R2（图片存储）。
 
 ### 1.1 架构总览
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  浏览器（index.html + js/*.js + css/*.css）               │
+│  浏览器（Nuxt 生成的 dist/ 静态资源）                      │
 │  页面：仪表盘 / 商品管理 / 进货管理 / 销售管理 / AI补货 / 设置  │
 └────────────────────────┬─────────────────────────────────┘
                          │ fetch /api/*
@@ -33,19 +33,10 @@
 
 ```
 .
-├── index.html              # 前端入口（单页应用）
-├── css/
-│   ├── style.css           # 主样式（~206 KB）
-│   └── style.fixes.css     # 补丁样式
-├── js/
-│   ├── utils.js            # 通用工具函数
-│   ├── db.js               # D1 API 封装（fetch /api/records）
-│   ├── app.js              # 应用入口：路由、登录、侧边栏
-│   ├── dashboard.js        # 仪表盘页面
-│   ├── products.js         # 商品管理页面
-│   ├── purchases.js        # 进货管理页面
-│   ├── sales.js            # 销售管理页面
-│   └── ai.js               # AI 补货建议页面
+├── frontend/               # Nuxt 4 前端源码
+│   ├── app/                # 页面、组件、composables、stores、样式
+│   ├── nuxt.config.ts
+│   └── package.json
 ├── functions/api/
 │   ├── records.js          # 核心 CRUD API（含认证、分页、图片上传）
 │   └── ai-proxy.js         # AI 多模型代理路由
@@ -55,13 +46,12 @@
 │   ├── 0003_cap_password_pbkdf2_iterations.sql
 │   └── 0004_r2_image_keys.sql
 ├── scripts/
-│   ├── build.ps1           # 构建 dist/（CSS 压缩 + 复制）
+│   ├── build.ps1           # 构建 dist/（Nuxt generate + 复制 _headers）
 │   ├── dev.ps1             # 本地开发（构建 → 迁移 → wrangler pages dev）
 │   ├── sync-d1-remote-to-local.ps1
-│   ├── build.mjs           # Node 构建辅助
 │   ├── test-ai-proxy-routing.mjs
 │   ├── test-ai-purchase-recognition.mjs
-│   └── test-products-filtering.mjs
+│   └── test-inventory-service.mjs
 ├── public_headers          # Pages 安全响应头 → 构建时复制为 dist/_headers
 ├── wrangler.jsonc           # Cloudflare 部署配置
 ├── AGENTS.md               # ← 你正在读的文件
@@ -229,7 +219,7 @@ git -C "C:\Users\Admin\Desktop\v2-inventory-sales" push origin master
 
 | 任务类型 | 通常只碰 | 必要时附带 |
 | --- | --- | --- |
-| UI / 前端逻辑 | `index.html`, `css/`, `js/` | 跑构建让 `dist/` 重生成 |
+| UI / 前端逻辑 | `frontend/` | 跑构建让 `dist/` 重生成 |
 | Cloudflare API | `functions/api/` | 同步检查相关前端调用 |
 | 数据库结构 | `migrations/`（新建迁移文件） | 直接相关的数据访问代码 |
 | 脚本 | `scripts/` 中目标脚本 | 本文件相关章节 |
@@ -241,7 +231,7 @@ git -C "C:\Users\Admin\Desktop\v2-inventory-sales" push origin master
 
 | 改了什么 | 怎么验证 |
 | --- | --- |
-| 前端源文件（CSS / JS / HTML） | ① 跑 `scripts/build.ps1` 确认构建通过；② 需要真实数据时用 `dev.ps1 -SyncRemote` 或 `dev.bat` 启动本地服务，浏览器打开 `localhost:8788` 检查页面 |
+| 前端源文件（Nuxt / Vue / CSS） | ① 跑 `scripts/build.ps1` 确认构建通过；② 需要真实数据时用 `dev.ps1 -SyncRemote` 或 `dev.bat` 启动本地服务，浏览器打开 `localhost:8788` 检查页面 |
 | D1 schema | 跑 `npx wrangler d1 migrations apply ... --local` |
 | Pages Functions | 需要真实数据时用 `dev.ps1 -SyncRemote` 或 `dev.bat` 启动本地服务，验证 API 路由与绑定 |
 | 仅文档 / 配置说明 | **不跑构建，不启动服务** |
@@ -312,15 +302,15 @@ git -C "C:\Users\Admin\Desktop\v2-inventory-sales" push origin master
 | 4 | 表单输入框、按钮、筛选栏在手机上要**自动换行或堆叠** |
 | 5 | 按钮点击区域不能太小（最小 44×44px） |
 | 6 | 页面底部内容不能被 **iPhone 安全区**遮住（`env(safe-area-inset-bottom)`） |
-| 7 | 不手工修改 `dist/`，只改 `index.html`、`css/`、`js/`，然后运行构建 |
+| 7 | 不手工修改 `dist/`，只改 `frontend/`，然后运行构建 |
 
 ### 4.2 修复时优先检查的文件
 
 ```
-css/style.css           ← 主样式，媒体查询在这里
-css/style.fixes.css     ← 补丁样式，新修复优先加在这里
-index.html              ← 结构与布局容器
-js/<对应页面>.js         ← 动态渲染的 DOM 结构
+frontend/app/assets/css/       ← 设计 token、基础样式和组件样式
+frontend/app/components/       ← AppShell、表格、弹窗、业务组件
+frontend/app/pages/            ← 6 个核心页面入口
+frontend/app/composables/      ← API 封装和页面数据流
 ```
 
 ### 4.3 验证方式
@@ -329,13 +319,13 @@ js/<对应页面>.js         ← 动态渲染的 DOM 结构
 2. 用浏览器 DevTools 模拟以下宽度逐一截图检查：**375px · 390px · 430px**。
 3. **必须检查全部 6 个页面：**
 
-| 页面 | 对应 JS |
+| 页面 | 对应入口 |
 | --- | --- |
-| 仪表盘 | `js/dashboard.js` |
-| 商品管理 | `js/products.js` |
-| 进货管理 | `js/purchases.js` |
-| 销售管理 | `js/sales.js` |
-| AI 补货 | `js/ai.js` |
-| 设置 | `js/app.js`（设置页面逻辑在 app.js 中） |
+| 仪表盘 | `frontend/app/pages/dashboard.vue` |
+| 商品管理 | `frontend/app/pages/products.vue` |
+| 库存管理 | `frontend/app/pages/inventory.vue` |
+| 进货管理 | `frontend/app/pages/purchases.vue` |
+| 销售管理 | `frontend/app/pages/sales.vue` |
+| 设置 | `frontend/app/pages/settings.vue` |
 
 4. 确认每个页面在 3 个宽度下均无横向溢出、无遮挡、表格可横滑、按钮可点击。

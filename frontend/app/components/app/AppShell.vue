@@ -28,13 +28,19 @@ const route = useRoute()
 const { username, isAuthenticated } = useAuth()
 const { loading } = useApi()
 const toastStore = useToastStore()
+const mounted = shallowRef(false)
 
 const currentNavigationItem = computed(() =>
-  navigationItems.find(item => item.to === route.path) ?? fallbackNavigationItem
+  navigationItems.find(item => item.to === route.path.replace(/\/$/, '')) ?? fallbackNavigationItem
 )
 
 const mobileNavigationItems = computed(() => navigationItems.filter(item => item.mobile))
-const authLabel = computed(() => isAuthenticated.value ? username.value || '已登录' : '未登录')
+const authReady = computed(() => mounted.value && isAuthenticated.value)
+const authLabel = computed(() => authReady.value ? username.value || '已登录' : '未登录')
+
+onMounted(() => {
+  mounted.value = true
+})
 </script>
 
 <template>
@@ -65,7 +71,7 @@ const authLabel = computed(() => isAuthenticated.value ? username.value || '已�
     <div class="app-shell__workspace">
       <header class="app-shell__topbar">
         <div class="app-shell__topbar-main">
-          <p class="app-shell__eyebrow">Nuxt 4 并行开发</p>
+          <p class="app-shell__eyebrow">经营控制台</p>
           <h1 class="app-shell__title">{{ currentNavigationItem.label }}</h1>
         </div>
 
@@ -78,7 +84,7 @@ const authLabel = computed(() => isAuthenticated.value ? username.value || '已�
             readonly
           />
           <StatusBadge v-if="loading" label="请求中" tone="warning" />
-          <StatusBadge v-else :label="authLabel" :tone="isAuthenticated ? 'success' : 'neutral'" />
+          <StatusBadge v-else :label="authLabel" :tone="authReady ? 'success' : 'neutral'" />
           <NuxtLink class="app-shell__settings-link" to="/settings" aria-label="打开设置">
             设置
           </NuxtLink>

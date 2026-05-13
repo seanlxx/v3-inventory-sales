@@ -1,0 +1,345 @@
+import { all, first } from '../_shared/d1.js';
+import { json, methodNotAllowed } from '../_shared/http.js';
+import { centsToMoney } from '../_shared/validators.js';
+
+function currentMonth() {
+  return new Date().toISOString().slice(0, 7);
+}
+
+function todayDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function formatDate(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function normalizeMonth(value) {
+  const text = String(value || '').trim();
+  return /^\d{4}-\d{2}$/.test(text) ? text : currentMonth();
+}
+
+function normalizeDays(value) {
+  const days = Math.round(Number(value) || 7);
+  return Math.min(Math.max(days, 1), 30);
+}
+
+function normalizeThreshold(value) {
+  const number = Math.round(Number(value));
+  return Number.isFinite(number) && number >= 0 ? number : 3;
+}
+
+function normalizeFeeRate(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0) return 0.006;
+  return number > 1 ? number / 100 : number;
+}
+
+function safeJsonParse(value, fallback = null) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
+async function getSettingValue(env, key) {
+  const row = await first(env.DB, `
+    SELECT data
+    FROM vending_records
+    WHERE store = 'settings' AND record_id = ?
+    LIMIT 1
+  `, [key]);
+  const parsed = safeJsonParse(row?.data || '{}', {});
+  return parsed?.value;
+}
+
+async function getBusinessSettings(env) {
+  const businessSettings = getSettingObject(await getSettingValue(env, 'businessSettings'));
+  return {
+    feeRate: normalizeFeeRate(
+      businessSettings.feeRate ?? await getSettingValue(env, 'feeRate')
+    ),
+    lowStockThreshold: normalizeThreshold(
+      businessSettings.lowStockThreshold ?? await getSettingValue(env, 'lowStockThreshold')
+    )
+  };
+}
+
+function getSettingObject(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+  if (typeof value === 'string') return safeJsonParse(value, {}) || {};
+  return {};
+}
+
+function dateSeries(days) {
+  const end = new Date(`${todayDate()}T00:00:00.000Z`);
+  const start = addDays(end, -(days - 1));
+  return Array.from({ length: days }, (_, index) => formatDate(addDays(start, index)));
+}
+
+function dateWindowStart(days) {
+  const end = new Date(`${todayDate()}T00:00:00.000Z`);
+  return formatDate(addDays(end, -(days - 1)));
+}
+
+async function getMonthlySales(env, month, machineId) {
+  const params = [month];
+  const machineFilter = machineId ? 'AND machine_id = ?' : '';
+  if (machineId) params.push(machineId);
+
+  return await first(env.DB, `
+    SELECT
+      COALESCE(SUM(total_amount_cents), 0) AS revenue_cents,
+      COALESCE(SUM(total_cogs_cents), 0) AS cogs_cents,
+      COALESCE(SUM(CASE WHEN type = 'refund' THEN total_amount_cents ELSE 0 END), 0) AS refunds_cents
+    FROM sales_orders
+    WHERE voided_at IS NULL
+      AND year_month = ?
+      ${machineFilter}
+  `, params);
+}
+
+async function getTodaySales(env, machineId) {
+  const params = [todayDate()];
+  const machineFilter = machineId ? 'AND machine_id = ?' : '';
+  if (machineId) params.push(machineId);
+
+  return await first(env.DB, `
+    SELECT COALESCE(SUM(total_amount_cents), 0) AS revenue_cents
+    FROM sales_orders
+    WHERE voided_at IS NULL
+      AND record_date = ?
+      ${machineFilter}
+  `, params);
+}
+
+async function getPurchaseCost(env, month, machineId) {
+  const params = [month];
+  const machineFilter = machineId ? 'AND o.machine_id = ?' : '';
+  if (machineId) params.push(machineId);
+
+  return await first(env.DB, `
+    SELECT COALESCE(SUM(i.total_cost_cents), 0) AS purchase_cents
+    FROM purchase_orders o
+    JOIN purchase_items i ON i.purchase_id = o.id
+    WHERE o.voided_at IS NULL
+      AND substr(o.record_date, 1, 7) = ?
+      ${machineFilter}
+  `, params);
+}
+
+async function getSalesTrend(env, days, machineId) {
+  const params = [dateWindowStart(days)];
+  const machineFilter = machineId ? 'AND machine_id = ?' : '';
+  if (machineId) params.push(machineId);
+
+  const rows = await all(env.DB, `
+    SELECT
+      record_date AS date,
+      COALESCE(SUM(total_amount_cents), 0) AS revenue_cents,
+      COALESCE(SUM(i.quantity), 0) AS quantity
+    FROM sales_orders o
+    LEFT JOIN sales_items i ON i.sales_order_id = o.id
+    WHERE o.voided_at IS NULL
+      AND o.type = 'sale'
+      AND o.record_date >= ?
+      ${machineFilter}
+    GROUP BY record_date
+    ORDER BY record_date
+  `, params);
+  const rowMap = new Map(rows.map(row => [row.date, row]));
+
+  return dateSeries(days).map(date => {
+    const row = rowMap.get(date) || {};
+    return {
+      date,
+      revenue: centsToMoney(row.revenue_cents),
+      quantity: Number(row.quantity) || 0
+    };
+  });
+}
+
+async function getMachineRanking(env, month) {
+  const rows = await all(env.DB, `
+    SELECT
+      machine_id,
+      COALESCE(SUM(total_amount_cents), 0) AS revenue_cents,
+      COALESCE(SUM(total_cogs_cents), 0) AS cogs_cents,
+      COALESCE(SUM(i.quantity), 0) AS quantity
+    FROM sales_orders o
+    LEFT JOIN sales_items i ON i.sales_order_id = o.id
+    WHERE o.voided_at IS NULL
+      AND o.type = 'sale'
+      AND o.year_month = ?
+    GROUP BY machine_id
+    ORDER BY revenue_cents DESC
+    LIMIT 8
+  `, [month]);
+
+  return rows.map(row => ({
+    machineId: row.machine_id,
+    revenue: centsToMoney(row.revenue_cents),
+    profit: centsToMoney((Number(row.revenue_cents) || 0) - (Number(row.cogs_cents) || 0)),
+    quantity: Number(row.quantity) || 0
+  }));
+}
+
+async function getLowStock(env, threshold, machineId) {
+  const params = [threshold];
+  const machineFilter = machineId ? 'AND COALESCE(b.machine_id, p.machine_id) = ?' : '';
+  if (machineId) params.push(machineId);
+
+  const rows = await all(env.DB, `
+    SELECT
+      p.id AS product_id,
+      p.name AS product_name,
+      p.category,
+      COALESCE(b.machine_id, p.machine_id) AS machine_id,
+      COALESCE(b.quantity_on_hand, 0) AS quantity_on_hand,
+      COALESCE(b.avg_cost_cents, 0) AS avg_cost_cents,
+      COALESCE(b.inventory_value_cents, 0) AS inventory_value_cents,
+      b.updated_at
+    FROM products p
+    LEFT JOIN inventory_balances b
+      ON b.product_id = p.id
+     AND b.machine_id = p.machine_id
+    WHERE p.status = 'active'
+      AND COALESCE(b.quantity_on_hand, 0) <= ?
+      ${machineFilter}
+    ORDER BY COALESCE(b.quantity_on_hand, 0), p.machine_id, p.name
+    LIMIT 20
+  `, params);
+
+  return rows.map(row => ({
+    productId: row.product_id,
+    productName: row.product_name,
+    machineId: row.machine_id,
+    category: row.category || '其他',
+    quantityOnHand: Number(row.quantity_on_hand) || 0,
+    avgCost: centsToMoney(row.avg_cost_cents),
+    inventoryValue: centsToMoney(row.inventory_value_cents),
+    lowStockThreshold: threshold,
+    isLowStock: true,
+    updatedAt: row.updated_at || null
+  }));
+}
+
+async function getRecentExceptions(env, threshold, machineId) {
+  const params = [threshold];
+  const machineFilter = machineId ? 'AND COALESCE(b.machine_id, p.machine_id) = ?' : '';
+  if (machineId) params.push(machineId);
+
+  const lowStockRows = await all(env.DB, `
+    SELECT
+      p.id,
+      p.name,
+      COALESCE(b.machine_id, p.machine_id) AS machine_id,
+      COALESCE(b.quantity_on_hand, 0) AS quantity_on_hand,
+      COALESCE(b.updated_at, p.updated_at) AS occurred_at
+    FROM products p
+    LEFT JOIN inventory_balances b
+      ON b.product_id = p.id
+     AND b.machine_id = p.machine_id
+    WHERE p.status = 'active'
+      AND COALESCE(b.quantity_on_hand, 0) <= ?
+      ${machineFilter}
+    ORDER BY COALESCE(b.updated_at, p.updated_at) DESC
+    LIMIT 6
+  `, params);
+
+  const orderParams = [];
+  const orderMachineFilter = machineId ? 'AND machine_id = ?' : '';
+  if (machineId) orderParams.push(machineId);
+  const orderRows = await all(env.DB, `
+    SELECT id, type, record_date, machine_id, voided_at, created_at
+    FROM sales_orders
+    WHERE (type IN ('refund', 'loss') OR voided_at IS NOT NULL)
+      ${orderMachineFilter}
+    ORDER BY COALESCE(voided_at, created_at) DESC
+    LIMIT 8
+  `, orderParams);
+
+  return [
+    ...orderRows.map(row => {
+      const type = row.voided_at ? 'void' : row.type;
+      const label = type === 'refund' ? '退款单' : type === 'loss' ? '损耗单' : '作废单据';
+      return {
+        id: row.id,
+        type,
+        title: `${label} · ${row.machine_id}`,
+        occurredAt: row.voided_at || row.created_at || row.record_date,
+        refType: 'sales_order',
+        refId: row.id
+      };
+    }),
+    ...lowStockRows.map(row => ({
+      id: `low-stock:${row.id}:${row.machine_id}`,
+      type: 'low_stock',
+      title: `${row.name} 库存 ${Number(row.quantity_on_hand) || 0} 件`,
+      occurredAt: row.occurred_at,
+      refType: 'product',
+      refId: row.id
+    }))
+  ]
+    .sort((left, right) => String(right.occurredAt || '').localeCompare(String(left.occurredAt || '')))
+    .slice(0, 10);
+}
+
+export async function onRequestGet(context) {
+  const url = new URL(context.request.url);
+  const month = normalizeMonth(url.searchParams.get('month'));
+  const days = normalizeDays(url.searchParams.get('days'));
+  const machineId = String(url.searchParams.get('machineId') || '').trim();
+  const effectiveMachineId = machineId && machineId !== 'all' ? machineId : '';
+  const settings = await getBusinessSettings(context.env);
+
+  const [
+    monthlySales,
+    todaySales,
+    purchaseCost,
+    salesTrend,
+    machineRanking,
+    lowStock
+  ] = await Promise.all([
+    getMonthlySales(context.env, month, effectiveMachineId),
+    getTodaySales(context.env, effectiveMachineId),
+    getPurchaseCost(context.env, month, effectiveMachineId),
+    getSalesTrend(context.env, days, effectiveMachineId),
+    getMachineRanking(context.env, month),
+    getLowStock(context.env, settings.lowStockThreshold, effectiveMachineId)
+  ]);
+
+  const monthRevenue = centsToMoney(monthlySales?.revenue_cents);
+  const monthCogs = centsToMoney(monthlySales?.cogs_cents);
+  const fee = Math.round(monthRevenue * settings.feeRate * 100) / 100;
+  const monthGrossProfit = Math.round((monthRevenue - monthCogs - fee) * 100) / 100;
+
+  return json(200, {
+    month,
+    kpis: {
+      todayRevenue: centsToMoney(todaySales?.revenue_cents),
+      monthRevenue,
+      monthCogs,
+      monthGrossProfit,
+      profitRate: monthRevenue > 0 ? (monthGrossProfit / monthRevenue) * 100 : 0,
+      purchaseCost: centsToMoney(purchaseCost?.purchase_cents),
+      refunds: centsToMoney(monthlySales?.refunds_cents),
+      lowStockCount: lowStock.length
+    },
+    salesTrend,
+    machineRanking,
+    lowStock,
+    recentExceptions: await getRecentExceptions(context.env, settings.lowStockThreshold, effectiveMachineId)
+  });
+}
+
+export function onRequest() {
+  return methodNotAllowed();
+}

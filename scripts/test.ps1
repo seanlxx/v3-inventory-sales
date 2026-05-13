@@ -8,8 +8,6 @@ if (-not ($env:NODE_OPTIONS -match '(^|\s)--experimental-sqlite(\s|$)')) {
 }
 
 $tests = @(
-  "scripts/test-products-filtering.mjs",
-  "scripts/test-sales-update-metadata.mjs",
   "scripts/test-inventory-service.mjs",
   "scripts/test-ai-purchase-recognition.mjs",
   "scripts/test-ai-proxy-routing.mjs"
