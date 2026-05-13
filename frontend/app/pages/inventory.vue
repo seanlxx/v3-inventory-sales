@@ -1,19 +1,185 @@
 <script setup lang="ts">
+import type { InventoryAdjustmentPayload, InventoryBalance } from '~/types/inventory'
+
 definePageMeta({
   title: '库存'
 })
 
-const sections = [
-  '库存余额表占位',
-  '库存流水时间线占位',
-  '盘点调整入口占位'
-] as const
+const {
+  filteredBalances,
+  filters,
+  machineOptions,
+  categoryOptions,
+  selectedBalance,
+  movements,
+  loading,
+  movementsLoading,
+  adjusting,
+  error,
+  movementsError,
+  updateFilters,
+  loadBalances,
+  loadMovements,
+  createAdjustment
+} = useInventory()
+
+const adjustmentOpen = shallowRef(false)
+const mobileTimelineOpen = shallowRef(false)
+const adjustingBalance = shallowRef<InventoryBalance | null>(null)
+
+async function openMovements(balance: InventoryBalance) {
+  mobileTimelineOpen.value = true
+  await loadMovements(balance)
+}
+
+function openAdjustment(balance: InventoryBalance) {
+  adjustingBalance.value = balance
+  adjustmentOpen.value = true
+}
+
+async function submitAdjustment(payload: InventoryAdjustmentPayload) {
+  await createAdjustment(payload)
+  adjustmentOpen.value = false
+}
+
+async function retryMovements() {
+  await loadMovements(selectedBalance.value)
+}
+
+onMounted(async () => {
+  await loadBalances()
+  if (filteredBalances.value[0]) {
+    await loadMovements(filteredBalances.value[0])
+  }
+})
 </script>
 
 <template>
-  <PagePlaceholder
-    title="库存"
-    description="库存页展示库存真相，余额来自服务端缓存，可信来源始终是 stock_movements。"
-    :sections="sections"
-  />
+  <div class="inventory-page">
+    <header class="inventory-page__header">
+      <div>
+        <h1 class="inventory-page__title">库存</h1>
+        <p class="inventory-page__description">
+          余额从服务端读取，库存真相以 stock_movements 为准；浏览器只能通过盘点调整接口发起变化。
+        </p>
+      </div>
+      <StatusBadge label="库存不可直改" tone="info" />
+    </header>
+
+    <InventoryFilters
+      :filters="filters"
+      :machines="machineOptions"
+      :categories="categoryOptions"
+      :result-count="filteredBalances.length"
+      :loading="loading"
+      @update-filters="updateFilters"
+      @refresh="loadBalances"
+    />
+
+    <div class="inventory-page__body">
+      <InventoryBalanceTable
+        :balances="filteredBalances"
+        :loading="loading"
+        :error="error"
+        @movements="openMovements"
+        @adjust="openAdjustment"
+        @retry="loadBalances"
+      />
+
+      <StockMovementTimeline
+        class="inventory-page__timeline"
+        :balance="selectedBalance"
+        :movements="movements"
+        :loading="movementsLoading"
+        :error="movementsError"
+        @retry="retryMovements"
+      />
+    </div>
+
+    <AppDrawer
+      v-model:open="mobileTimelineOpen"
+      title="库存流水"
+      :description="selectedBalance ? `${selectedBalance.productName} · ${selectedBalance.machineId}` : '库存流水'"
+    >
+      <StockMovementTimeline
+        :balance="selectedBalance"
+        :movements="movements"
+        :loading="movementsLoading"
+        :error="movementsError"
+        @retry="retryMovements"
+      />
+    </AppDrawer>
+
+    <StockAdjustmentDialog
+      v-model:open="adjustmentOpen"
+      :balance="adjustingBalance"
+      :submitting="adjusting"
+      @submit="submitAdjustment"
+    />
+  </div>
 </template>
+
+<style scoped>
+.inventory-page {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-4);
+}
+
+.inventory-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.inventory-page__title {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.25;
+}
+
+.inventory-page__description {
+  max-width: 820px;
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-muted);
+  line-height: 1.7;
+}
+
+.inventory-page__body {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.inventory-page__timeline {
+  position: sticky;
+  top: var(--space-4);
+}
+
+@media (max-width: 1180px) {
+  .inventory-page__body {
+    grid-template-columns: 1fr;
+  }
+
+  .inventory-page__timeline {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .inventory-page {
+    gap: var(--space-3);
+  }
+
+  .inventory-page__header {
+    display: grid;
+  }
+
+  .inventory-page__title {
+    font-size: 20px;
+  }
+}
+</style>
