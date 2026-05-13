@@ -8,6 +8,8 @@ const props = withDefaults(defineProps<{
   placeholder?: string
   hint?: string
   error?: string
+  autocomplete?: string
+  step?: string | number
   disabled?: boolean
   readonly?: boolean
 }>(), {
@@ -15,6 +17,8 @@ const props = withDefaults(defineProps<{
   placeholder: '',
   hint: '',
   error: '',
+  autocomplete: '',
+  step: undefined,
   disabled: false,
   readonly: false
 })
@@ -31,6 +35,8 @@ const inputId = computed(() => props.id || `input-${props.label.replace(/\s+/g, 
       class="app-input__control"
       :type="props.type"
       :placeholder="props.placeholder"
+      :autocomplete="props.autocomplete || undefined"
+      :step="props.step"
       :disabled="props.disabled"
       :readonly="props.readonly"
       :aria-invalid="props.error ? 'true' : 'false'"

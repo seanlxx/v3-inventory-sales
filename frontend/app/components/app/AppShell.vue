@@ -25,10 +25,23 @@ const fallbackNavigationItem: NavigationItem = {
 }
 
 const route = useRoute()
-const { username, isAuthenticated } = useAuth()
+const {
+  username,
+  isAuthenticated,
+  login,
+  logout,
+  status: authStatus,
+  errorMessage: authErrorMessage
+} = useAuth()
 const { loading } = useApi()
 const toastStore = useToastStore()
 const mounted = shallowRef(false)
+const loginOpen = shallowRef(false)
+const loginError = shallowRef('')
+const loginDraft = reactive({
+  username: 'admin',
+  password: ''
+})
 
 const currentNavigationItem = computed(() =>
   navigationItems.find(item => item.to === route.path.replace(/\/$/, '')) ?? fallbackNavigationItem
@@ -37,6 +50,31 @@ const currentNavigationItem = computed(() =>
 const mobileNavigationItems = computed(() => navigationItems.filter(item => item.mobile))
 const authReady = computed(() => mounted.value && isAuthenticated.value)
 const authLabel = computed(() => authReady.value ? username.value || '已登录' : '未登录')
+const loginPending = computed(() => authStatus.value === 'pending')
+
+function openLoginDialog() {
+  loginError.value = ''
+  loginOpen.value = true
+}
+
+async function submitLogin() {
+  loginError.value = ''
+  if (!loginDraft.username.trim() || !loginDraft.password) {
+    loginError.value = '请输入账号和密码'
+    return
+  }
+
+  try {
+    await login({
+      username: loginDraft.username.trim(),
+      password: loginDraft.password
+    })
+    loginDraft.password = ''
+    loginOpen.value = false
+  } catch {
+    loginError.value = authErrorMessage.value || '登录失败'
+  }
+}
 
 onMounted(() => {
   mounted.value = true
@@ -85,6 +123,22 @@ onMounted(() => {
           />
           <StatusBadge v-if="loading" label="请求中" tone="warning" />
           <StatusBadge v-else :label="authLabel" :tone="authReady ? 'success' : 'neutral'" />
+          <AppButton
+            v-if="!authReady"
+            variant="primary"
+            size="sm"
+            @click="openLoginDialog"
+          >
+            登录
+          </AppButton>
+          <AppButton
+            v-else
+            variant="ghost"
+            size="sm"
+            @click="logout"
+          >
+            退出
+          </AppButton>
           <NuxtLink class="app-shell__settings-link" to="/settings" aria-label="打开设置">
             设置
           </NuxtLink>
@@ -96,7 +150,34 @@ onMounted(() => {
       </div>
 
       <main class="app-shell__content">
-        <slot />
+        <slot v-if="authReady" />
+        <section v-else class="app-shell__login-gate surface-panel" aria-label="登录">
+          <div>
+            <h2 class="app-shell__login-title">登录后加载业务数据</h2>
+            <p class="app-shell__login-description">
+              登录后会读取商品、库存、进货、销售和报表数据。
+            </p>
+          </div>
+          <form class="app-shell__login-form" @submit.prevent="submitLogin">
+            <AppInput
+              v-model="loginDraft.username"
+              label="账号"
+              autocomplete="username"
+            />
+            <AppInput
+              v-model="loginDraft.password"
+              label="密码"
+              type="password"
+              autocomplete="current-password"
+            />
+            <p v-if="loginError || authErrorMessage" class="app-shell__login-error">
+              {{ loginError || authErrorMessage }}
+            </p>
+            <AppButton type="submit" :loading="loginPending">
+              登录
+            </AppButton>
+          </form>
+        </section>
       </main>
     </div>
 
@@ -112,6 +193,32 @@ onMounted(() => {
         <span>{{ item.shortLabel }}</span>
       </NuxtLink>
     </nav>
+
+    <AppDialog
+      v-model:open="loginOpen"
+      title="登录"
+      description="登录后加载业务数据"
+    >
+      <form class="app-shell__dialog-form" @submit.prevent="submitLogin">
+        <AppInput
+          v-model="loginDraft.username"
+          label="账号"
+          autocomplete="username"
+        />
+        <AppInput
+          v-model="loginDraft.password"
+          label="密码"
+          type="password"
+          autocomplete="current-password"
+        />
+        <p v-if="loginError || authErrorMessage" class="app-shell__login-error">
+          {{ loginError || authErrorMessage }}
+        </p>
+        <AppButton type="submit" :loading="loginPending">
+          登录
+        </AppButton>
+      </form>
+    </AppDialog>
   </div>
 </template>
 
@@ -281,6 +388,37 @@ onMounted(() => {
   color: var(--color-text);
   text-decoration: none;
   font-size: 14px;
+}
+
+.app-shell__login-gate {
+  width: min(560px, 100%);
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-5);
+}
+
+.app-shell__login-title {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.3;
+}
+
+.app-shell__login-description {
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-muted);
+  line-height: 1.7;
+}
+
+.app-shell__login-form,
+.app-shell__dialog-form {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.app-shell__login-error {
+  margin: 0;
+  color: var(--color-danger);
+  font-weight: 700;
 }
 
 .app-shell__content {
