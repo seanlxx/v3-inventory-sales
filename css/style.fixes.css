@@ -3793,3 +3793,40 @@ body.auth-ready .sidebar.navbar {
     gap: 8px !important;
   }
 }
+
+/* AI restock advice cards: keep desktop report content left-aligned. */
+#aiResultContainer .analysis-section .restock-list {
+  align-items: stretch;
+}
+
+#aiResultContainer .analysis-section .restock-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  justify-items: stretch;
+  justify-content: stretch;
+  width: 100%;
+  text-align: left;
+}
+
+#aiResultContainer .analysis-section .restock-info {
+  width: 100%;
+  min-width: 0;
+  justify-self: stretch;
+  text-align: left;
+}
+
+#aiResultContainer .analysis-section .restock-action {
+  justify-self: end;
+}
+
+@media (max-width: 768px) {
+  #aiResultContainer .analysis-section .restock-item {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  #aiResultContainer .analysis-section .restock-action {
+    justify-self: start;
+  }
+}
