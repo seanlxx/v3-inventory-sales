@@ -30,6 +30,16 @@ export default defineNuxtConfig({
     strict: true,
     typeCheck: true
   },
+  vite: {
+    server: {
+      proxy: {
+        '/api': {
+          target: 'http://127.0.0.1:8788',
+          changeOrigin: true
+        }
+      }
+    }
+  },
   runtimeConfig: {
     public: {
       apiBase: '/api'
