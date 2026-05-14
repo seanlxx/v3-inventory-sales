@@ -369,6 +369,15 @@ tbody tr:last-child td {
   .ai-review__top,
   .ai-review__actions {
     display: grid;
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    justify-content: stretch;
+  }
+
+  .ai-review__upload,
+  .ai-review__top :deep(.app-button),
+  .ai-review__actions :deep(.app-button) {
+    width: 100%;
   }
 
   .ai-review__grid {

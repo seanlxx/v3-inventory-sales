@@ -90,7 +90,7 @@ function orderQuantity(order: SalesOrder) {
                 :tone="order.status === 'voided' ? 'warning' : 'success'"
               />
             </td>
-            <td>
+            <td class="sales-table__actions-cell">
               <div class="sales-table__actions">
                 <AppButton size="sm" variant="secondary" @click="emit('view', order)">
                   查看
@@ -108,6 +108,69 @@ function orderQuantity(order: SalesOrder) {
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <div class="sales-table__cards" aria-label="销售退款损耗单移动列表">
+      <div v-if="props.loading" class="sales-table__card-state">
+        正在加载单据
+      </div>
+      <div v-else-if="props.error" class="sales-table__card-state sales-table__card-state--error">
+        <strong>{{ props.error.message }}</strong>
+        <AppButton variant="secondary" size="sm" @click="emit('retry')">
+          重试
+        </AppButton>
+      </div>
+      <div v-else-if="props.orders.length === 0" class="sales-table__card-state">
+        没有符合筛选条件的单据
+      </div>
+      <article v-for="order in props.orders" v-else :key="order.id" class="sales-table__card">
+        <header class="sales-table__card-header">
+          <div>
+            <span class="sales-table__card-label">单据日期</span>
+            <strong>{{ order.date }}</strong>
+          </div>
+          <div class="sales-table__card-badges">
+            <StatusBadge :label="typeLabel(order.type)" :tone="typeTone(order.type)" />
+            <StatusBadge
+              :label="order.status === 'voided' ? '已作废' : '正常'"
+              :tone="order.status === 'voided' ? 'warning' : 'success'"
+            />
+          </div>
+        </header>
+
+        <dl class="sales-table__card-grid">
+          <div>
+            <dt>售货机</dt>
+            <dd>{{ order.machineId || '-' }}</dd>
+          </div>
+          <div>
+            <dt>明细</dt>
+            <dd>{{ order.items.length }} 项</dd>
+          </div>
+          <div>
+            <dt>数量</dt>
+            <dd>{{ formatQuantity(orderQuantity(order)) }}</dd>
+          </div>
+          <div class="sales-table__card-total">
+            <dt>金额</dt>
+            <dd>{{ formatMoney(order.totalAmount) }}</dd>
+          </div>
+        </dl>
+
+        <div class="sales-table__card-actions">
+          <AppButton size="sm" variant="secondary" @click="emit('view', order)">
+            查看
+          </AppButton>
+          <AppButton
+            size="sm"
+            variant="danger"
+            :disabled="order.status === 'voided'"
+            @click="emit('void', order)"
+          >
+            作废
+          </AppButton>
+        </div>
+      </article>
     </div>
   </section>
 </template>
@@ -151,13 +214,15 @@ function orderQuantity(order: SalesOrder) {
   font-weight: 800;
 }
 
-.sales-table__number {
+.sales-table__table .sales-table__number {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-.sales-table__actions-heading {
+.sales-table__table .sales-table__actions-heading,
+.sales-table__table .sales-table__actions-cell {
   text-align: right;
+  width: 148px;
 }
 
 .sales-table__actions {
@@ -182,19 +247,131 @@ function orderQuantity(order: SalesOrder) {
   gap: var(--space-3);
 }
 
+.sales-table__cards {
+  display: none;
+}
+
 tbody tr:last-child td {
   border-bottom: 0;
 }
 
 @media (max-width: 760px) {
-  .sales-table__table {
-    min-width: 720px;
+  .sales-table {
+    border: 0;
+    background: transparent;
   }
 
-  .sales-table__table th,
-  .sales-table__table td {
-    height: 52px;
-    padding: 0 var(--space-3);
+  .sales-table__scroll {
+    display: none;
+  }
+
+  .sales-table__cards {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .sales-table__card,
+  .sales-table__card-state {
+    min-width: 0;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-3);
+    background: var(--color-surface);
+  }
+
+  .sales-table__card {
+    display: grid;
+    gap: var(--space-3);
+    padding: var(--space-3);
+  }
+
+  .sales-table__card-state {
+    min-height: 112px;
+    display: grid;
+    place-items: center;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    color: var(--color-text-muted);
+    text-align: center;
+  }
+
+  .sales-table__card-state--error {
+    color: var(--color-danger);
+  }
+
+  .sales-table__card-header,
+  .sales-table__card-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  .sales-table__card-header > div {
+    min-width: 0;
+  }
+
+  .sales-table__card-header strong {
+    display: block;
+    margin-top: 4px;
+    font-size: 16px;
+    line-height: 1.25;
+  }
+
+  .sales-table__card-badges {
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--space-1);
+  }
+
+  .sales-table__card-label,
+  .sales-table__card-grid dt {
+    color: var(--color-text-muted);
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .sales-table__card-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+    margin: 0;
+  }
+
+  .sales-table__card-grid div {
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+    padding: var(--space-2);
+    border-radius: var(--radius-2);
+    background: var(--color-surface-subtle);
+  }
+
+  .sales-table__card-grid dd {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+    color: var(--color-text);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .sales-table__card-total {
+    grid-column: 1 / -1;
+  }
+
+  .sales-table__card-total dd {
+    color: var(--color-primary);
+    font-size: 18px;
+  }
+
+  .sales-table__card-actions {
+    justify-content: stretch;
+  }
+
+  .sales-table__card-actions :deep(.app-button) {
+    flex: 1 1 0;
   }
 }
 </style>

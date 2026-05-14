@@ -57,23 +57,26 @@ onMounted(() => {
     <DashboardKpiStrip :kpis="report?.kpis" :loading="loading" />
 
     <div class="dashboard-page__grid">
-      <SalesTrendPanel
-        class="dashboard-page__trend"
-        :points="report?.salesTrend ?? []"
-        :loading="loading"
-      />
-      <MachineRankingPanel
-        :items="report?.machineRanking ?? []"
-        :loading="loading"
-      />
-      <LowStockPanel
-        :items="report?.lowStock ?? []"
-        :loading="loading"
-      />
-      <ExceptionsPanel
-        :items="report?.recentExceptions ?? []"
-        :loading="loading"
-      />
+      <div class="dashboard-page__column">
+        <SalesTrendPanel
+          :points="report?.salesTrend ?? []"
+          :loading="loading"
+        />
+        <ExceptionsPanel
+          :items="report?.recentExceptions ?? []"
+          :loading="loading"
+        />
+      </div>
+      <div class="dashboard-page__column">
+        <MachineRankingPanel
+          :items="report?.machineRanking ?? []"
+          :loading="loading"
+        />
+        <LowStockPanel
+          :items="report?.lowStock ?? []"
+          :loading="loading"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -135,17 +138,16 @@ onMounted(() => {
   align-items: start;
 }
 
-.dashboard-page__trend {
-  grid-row: span 2;
+.dashboard-page__column {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-4);
+  align-content: start;
 }
 
 @media (max-width: 1080px) {
   .dashboard-page__grid {
     grid-template-columns: 1fr;
-  }
-
-  .dashboard-page__trend {
-    grid-row: auto;
   }
 }
 

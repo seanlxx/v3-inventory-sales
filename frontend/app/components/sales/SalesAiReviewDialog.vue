@@ -394,6 +394,15 @@ tbody tr:last-child td {
   .sales-ai__top,
   .sales-ai__actions {
     display: grid;
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    justify-content: stretch;
+  }
+
+  .sales-ai__upload,
+  .sales-ai__top :deep(.app-button),
+  .sales-ai__actions :deep(.app-button) {
+    width: 100%;
   }
 
   .sales-ai__grid {
