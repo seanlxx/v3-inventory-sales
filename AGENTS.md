@@ -390,6 +390,11 @@ git push origin master
 | 10 | 前端改动后反复重启 dev 服务，实际上 Nuxt HMR 会自动热更新 |
 | 11 | 每改一行就跑一次 `build.ps1`，应该改完一批再跑一次 |
 | 12 | 不确定用户意图时猜着做了一堆，结果方向错了全部返工 |
+| 13 | 跑 `npx --package playwright -- node -e "..."` 想加载模块（§9.3 已记录无效），失败后才换临时目录方案 → 直接照抄 §9.3 的临时目录代码块 |
+| 14 | 临时 npm install 装到 `$env:TEMP` 或其他随机位置 → 必须装到 `output/` 下（已被 `.gitignore` 排除），方便事后回看验证产物 |
+| 15 | 用 PowerShell `Set-Content -Encoding UTF8` 写脚本 / 配置文件，留下 BOM（§9.2）→ 必须用 `[System.IO.File]::WriteAllText($p, $content, (New-Object System.Text.UTF8Encoding $false))` |
+| 16 | 纯 UI / CSS 改动验证时自建静态服务 + mock API + Playwright 自动化，绕开项目标准的 `dev.bat` / `dev.ps1` → 走 §3.4 / §4.3 标准流程：`build.ps1` + `dev.bat` + DevTools 三宽度目视 |
+| 17 | 为一次性 UI 布局验证写 100 行 Playwright 脚本（注入 session、route 拦截、6 视口截图），结果在调脚本本身的路由 404 / 模块解析 / 选择器 → 验证投入应与改动复杂度匹配，CSS / 布局类改动用 DevTools 目视即可 |
 
 ### 3.7 结束前记录
 
@@ -792,4 +797,41 @@ powershell -ExecutionPolicy Bypass -File ./scripts/inject-local-session.ps1 -Use
 | 终端显示乱码 | `chcp 65001` 切到 UTF-8 代码页，或用 PowerShell 7（`pwsh`） |
 | **写含中文的 `.ps1` 文件** | **必须用 UTF-8 with BOM 保存**。PS 5.1 默认按系统 ANSI（GBK）解析无 BOM 文件，中文会变乱码并报语法错。AI 工具写出来的 `.ps1` 默认是无 BOM UTF-8，需要重新编码：`[System.IO.File]::WriteAllText($p, [System.IO.File]::ReadAllText($p,[Text.Encoding]::UTF8), (New-Object System.Text.UTF8Encoding $true))` |
 
+---
+
+## 10. 历次复盘
+
+> 每次任务结束后，如果出现明显违反本文件规则的操作，把复盘追加到这里。
+> 目标：让下一次 agent 上手前能扫一眼"前人踩过哪些坑"，避免重复犯错。
+> 格式：日期 + 任务一句话 + 做对的 / 违规的 / 一句话评价。
+
+### 10.1  2026-05-14 · AI 识别确认弹窗移动端布局优化
+
+**任务：** 进货 / 销售页 AI 识别确认弹窗在 375 / 390 / 430px 下信息被横向截断，要求改为不依赖横向滑动也能看全字段。
+
+**改动文件：** `AppDialog.vue`（新增 `size="wide"`） · `PurchaseAiReviewDialog.vue` · `SalesAiReviewDialog.vue`。
+
+**结果：** 构建通过，3 个视口下无横向溢出，已 commit `85366c5` 并 push 到 master，Cloudflare Pages 自动部署。
+
+#### 做得对的地方
+
+- 开工前读了 AGENTS.md 和 mobile-ui-fix skill。
+- 用 §5 速查表精准定位到 3 个目标文件，没做全仓库扫描。
+- 改动范围克制（仅弹窗尺寸 + 两个 AI 确认弹窗），没顺手重构无关代码。
+- 构建验证、临时资源清理、中文 commit、push 到 master 都齐了。
+- 最后给了"触碰文件 / 验证结果 / commit / 多余操作"四项收尾报告，符合 §3.7。
+
+#### 违反 AGENTS.md 的地方
+
+| # | 违规点 | 文档原文位置 | 下次怎么做 |
+| --- | --- | --- | --- |
+| 1 | 先试 `npx --package playwright -- node -e "..."`，失败后才换临时目录方案 | §9.3 已明文记录该方法无效，并给了临时目录代码块 | 看到要用 Playwright，直接照抄 §9.3 的代码块（已落地为 §3.6 反模式 #13） |
+| 2 | 临时 npm install 装到 `$env:TEMP` 系统临时目录 | §9.3："临时安装只能放 `output/` 或其他 `.gitignore` 排除的目录" | 装到 `output/` 下，方便事后回看验证产物（已落地为 §3.6 反模式 #14） |
+| 3 | 用 `Set-Content -Encoding UTF8` 写验证脚本 | §9.2：PS 5.1 默认带 BOM | 用 `[System.IO.File]::WriteAllText($p, $content, (New-Object System.Text.UTF8Encoding $false))`（已落地为 §3.6 反模式 #15） |
+| 4 | 自建静态服务 + mock API + Playwright 自动化验证纯 CSS 改动 | §3.4 / §4.3 要求用 `dev.bat` / `dev.ps1` + DevTools 三宽度目视 | UI / CSS 改动直接 `build.ps1` + `dev.bat` + DevTools 三宽度看一眼即可（已落地为 §3.6 反模式 #16） |
+| 5 | 为一次性布局验证写 100+ 行 Playwright 脚本，结果在调脚本本身的路由 404 / 模块解析 / 选择器 | §8.4：不做"好心"的额外工作 | 验证投入与改动复杂度匹配，CSS / 布局类用 DevTools 目视，Playwright 留给后端 / 数据流（已落地为 §3.6 反模式 #17） |
+
+#### 一句话评价
+
+**改动质量没问题，验证策略偏离项目约定较远，且重蹈了 §9 明文记录的两个已知坑。** 下次接到 UI 改动直接走"`build.ps1` → `dev.bat` → DevTools 三宽度目视"就行。
 
