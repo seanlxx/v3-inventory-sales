@@ -1,6 +1,7 @@
 import type { ApiError } from '~/types/api'
 import type { PurchaseAiCandidate, PurchaseListFilters, PurchaseOrder, PurchaseOrderPayload } from '~/types/purchase'
 import type { Product } from '~/types/product'
+import { buildProductCatalogPrompt, matchProductByName } from '~/utils/product-match'
 
 const defaultFilters: PurchaseListFilters = {
   month: new Date().toISOString().slice(0, 7),
@@ -44,12 +45,22 @@ function extractJsonObject(text: string) {
 function normalizeAiCandidates(rawItems: Array<Record<string, unknown>>, products: readonly Product[]): PurchaseAiCandidate[] {
   return rawItems.map((item, index) => {
     const rawName = String(item.rawName || item.name || item.productName || '').trim()
-    const matchedProduct = products.find(product =>
-      product.name === item.productName ||
-      product.name === rawName ||
-      product.name.includes(rawName) ||
-      rawName.includes(product.name)
-    )
+    const aiProductId = String(item.productId || '').trim()
+
+    let matchedProduct: Product | undefined = aiProductId
+      ? products.find(product => product.id === aiProductId)
+      : undefined
+    let confidence: PurchaseAiCandidate['confidence'] = matchedProduct ? 'high' : 'low'
+
+    if (!matchedProduct) {
+      const candidateName = String(item.productName || rawName).trim()
+      const result = matchProductByName(candidateName, products)
+      if (result.product) {
+        matchedProduct = result.product
+        confidence = result.confidence
+      }
+    }
+
     const quantity = Math.max(1, Number(item.quantity) || 1)
     const totalPrice = Math.max(0, Number(item.totalPrice) || 0)
     const unitPrice = Math.max(0, Number(item.unitPrice) || (totalPrice > 0 ? totalPrice / quantity : 0))
@@ -58,7 +69,7 @@ function normalizeAiCandidates(rawItems: Array<Record<string, unknown>>, product
       rawName: rawName || '未命名商品',
       productId: matchedProduct?.id || '',
       productName: matchedProduct?.name || rawName || '',
-      confidence: matchedProduct ? 'medium' : 'low',
+      confidence,
       quantity,
       unitPrice,
       totalPrice: totalPrice || unitPrice * quantity,
@@ -208,6 +219,15 @@ export function usePurchases() {
     recognizing.value = true
     aiError.value = null
     try {
+      const catalog = buildProductCatalogPrompt(products.value)
+      const userPrompt = [
+        '从截图中识别进货商品明细，返回 {"items":[{"rawName":"截图原文","productId":"匹配到的商品 id 或空字符串","productName":"匹配到的商品名","quantity":数量,"unitPrice":单价,"totalPrice":小计}]}。',
+        '匹配规则：尽量在下面给出的商品清单中找最接近的一项，返回它的 productId；若清单中没有相似项，productId 留空字符串，rawName 保留截图原文。',
+        '注意名称同义：如"毫升=ml"、"克=g"、"瓶装"可省略、"1L=1000ml"。',
+        'AI 结果只用于人工确认，不能自动入账。',
+        '',
+        catalog
+      ].join('\n')
       const response = await request<{ text: string }, Record<string, unknown>>('/ai-proxy', {
         method: 'POST',
         body: {
@@ -215,7 +235,7 @@ export function usePurchases() {
           mimeType: receiptImage.value.mimeType,
           maxTokens: 1600,
           systemPrompt: '你是进货截图识别助手。只返回 JSON，不要解释。',
-          userPrompt: '从截图中识别进货商品明细，返回 {"items":[{"rawName":"商品名","quantity":数量,"unitPrice":单价,"totalPrice":小计}]}。AI 结果只用于人工确认，不能自动入账。'
+          userPrompt
         }
       })
       const parsed = extractJsonObject(response.text || '')
