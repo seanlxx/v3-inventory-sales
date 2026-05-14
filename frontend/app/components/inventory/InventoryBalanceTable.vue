@@ -26,6 +26,17 @@ function stockTone(balance: InventoryBalance) {
   <section class="inventory-table" aria-label="库存余额表">
     <div class="inventory-table__scroll">
       <table class="inventory-table__table">
+        <colgroup>
+          <col class="inventory-table__col--product">
+          <col class="inventory-table__col--category">
+          <col class="inventory-table__col--machine">
+          <col class="inventory-table__col--stock">
+          <col class="inventory-table__col--price">
+          <col class="inventory-table__col--value">
+          <col class="inventory-table__col--status">
+          <col class="inventory-table__col--updated">
+          <col class="inventory-table__col--actions">
+        </colgroup>
         <thead>
           <tr>
             <th scope="col">商品</th>
@@ -205,8 +216,45 @@ function stockTone(balance: InventoryBalance) {
 
 .inventory-table__table {
   width: 100%;
-  min-width: 1040px;
+  min-width: 1088px;
   border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.inventory-table__col--product {
+  width: 300px;
+}
+
+.inventory-table__col--category {
+  width: 72px;
+}
+
+.inventory-table__col--machine {
+  width: 76px;
+}
+
+.inventory-table__col--stock {
+  width: 104px;
+}
+
+.inventory-table__col--price {
+  width: 84px;
+}
+
+.inventory-table__col--value {
+  width: 104px;
+}
+
+.inventory-table__col--status {
+  width: 96px;
+}
+
+.inventory-table__col--updated {
+  width: 126px;
+}
+
+.inventory-table__col--actions {
+  width: 126px;
 }
 
 .inventory-table__table th,
@@ -235,11 +283,13 @@ function stockTone(balance: InventoryBalance) {
 
 .inventory-table__table .inventory-table__actions-heading,
 .inventory-table__table .inventory-table__actions-cell {
-  text-align: right;
-  width: 148px;
+  padding-right: var(--space-2);
+  padding-left: var(--space-2);
+  text-align: center;
 }
 
 .inventory-table__name-cell {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -292,8 +342,12 @@ function stockTone(balance: InventoryBalance) {
 
 .inventory-table__actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: center;
   gap: var(--space-2);
+}
+
+.inventory-table__actions :deep(.app-button) {
+  min-width: 46px;
 }
 
 .inventory-table__state {
