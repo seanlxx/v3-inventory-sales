@@ -112,6 +112,7 @@ function confirmOrder() {
     v-model:open="open"
     title="AI 销售识别确认"
     description="AI 结果只进入确认表，人工确认后才会创建销售单。"
+    size="wide"
   >
     <div class="sales-ai">
       <div class="sales-ai__top">
@@ -147,14 +148,14 @@ function confirmOrder() {
         <table class="sales-ai__table">
           <thead>
             <tr>
-              <th scope="col">识别名称</th>
-              <th scope="col">匹配商品</th>
+              <th scope="col" class="sales-ai__raw-col">识别名称</th>
+              <th scope="col" class="sales-ai__product-col">匹配商品</th>
               <th scope="col">库存</th>
-              <th scope="col">置信度</th>
+              <th scope="col" class="sales-ai__badge-col">置信度</th>
               <th scope="col" class="sales-ai__number">数量</th>
               <th scope="col" class="sales-ai__number">单价</th>
               <th scope="col" class="sales-ai__number">小计</th>
-              <th scope="col">异常</th>
+              <th scope="col" class="sales-ai__badge-col">异常</th>
             </tr>
           </thead>
           <tbody>
@@ -164,8 +165,11 @@ function confirmOrder() {
               </td>
             </tr>
             <tr v-for="(candidate, index) in props.candidates" v-else :key="candidate.id">
-              <td>{{ candidate.rawName }}</td>
-              <td>
+              <td data-label="识别名称" class="sales-ai__name-cell">{{ candidate.rawName }}</td>
+              <td data-label="匹配商品" class="sales-ai__product-cell">
+                <span class="sales-ai__matched-name">
+                  {{ candidate.productName || '未匹配商品' }}
+                </span>
                 <select
                   class="sales-ai__select"
                   :value="candidate.productId"
@@ -177,11 +181,11 @@ function confirmOrder() {
                   </option>
                 </select>
               </td>
-              <td>{{ formatQuantity(productById(candidate.productId)?.currentStock) }}</td>
-              <td>
+              <td data-label="库存">{{ formatQuantity(productById(candidate.productId)?.currentStock) }}</td>
+              <td data-label="置信度">
                 <StatusBadge :label="confidenceLabel(candidate.confidence)" :tone="confidenceTone(candidate.confidence)" />
               </td>
-              <td class="sales-ai__number">
+              <td class="sales-ai__number" data-label="数量">
                 <input
                   class="sales-ai__input"
                   type="number"
@@ -190,7 +194,7 @@ function confirmOrder() {
                   @input="updateCandidate(index, { quantity: Number(($event.target as HTMLInputElement).value) })"
                 >
               </td>
-              <td class="sales-ai__number">
+              <td class="sales-ai__number" data-label="单价">
                 <input
                   class="sales-ai__input"
                   type="number"
@@ -200,10 +204,10 @@ function confirmOrder() {
                   @input="updateCandidate(index, { sellPrice: Number(($event.target as HTMLInputElement).value) })"
                 >
               </td>
-              <td class="sales-ai__number">
+              <td class="sales-ai__number" data-label="小计">
                 {{ formatMoney(candidate.itemRevenue) }}
               </td>
-              <td>
+              <td data-label="异常">
                 <StatusBadge :label="candidate.issue || '已确认'" :tone="candidate.issue ? 'danger' : 'success'" />
               </td>
             </tr>
@@ -297,17 +301,19 @@ function confirmOrder() {
 
 .sales-ai__table {
   width: 100%;
-  min-width: 980px;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .sales-ai__table th,
 .sales-ai__table td {
   height: 52px;
-  padding: 0 var(--space-3);
+  padding: 0 var(--space-2);
   border-bottom: 1px solid var(--color-border);
   text-align: left;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sales-ai__table th {
@@ -322,6 +328,18 @@ function confirmOrder() {
   font-variant-numeric: tabular-nums;
 }
 
+.sales-ai__raw-col {
+  width: 24%;
+}
+
+.sales-ai__product-col {
+  width: 24%;
+}
+
+.sales-ai__badge-col {
+  width: 72px;
+}
+
 .sales-ai__select,
 .sales-ai__input {
   width: 100%;
@@ -332,8 +350,12 @@ function confirmOrder() {
   background: var(--color-surface);
 }
 
+.sales-ai__matched-name {
+  display: none;
+}
+
 .sales-ai__input {
-  max-width: 110px;
+  max-width: 82px;
   text-align: right;
 }
 
@@ -382,8 +404,82 @@ tbody tr:last-child td {
     min-height: var(--control-height-mobile);
   }
 
+  .sales-ai__scroll {
+    overflow-x: visible;
+  }
+
+  .sales-ai__table,
+  .sales-ai__table tbody,
+  .sales-ai__table tr,
+  .sales-ai__table td {
+    display: block;
+  }
+
   .sales-ai__table {
-    min-width: 900px;
+    table-layout: auto;
+  }
+
+  .sales-ai__table thead {
+    display: none;
+  }
+
+  .sales-ai__table tbody {
+    display: grid;
+  }
+
+  .sales-ai__table tr {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .sales-ai__table td {
+    min-width: 0;
+    height: auto;
+    padding: 0;
+    border-bottom: 0;
+    white-space: normal;
+    overflow: visible;
+  }
+
+  .sales-ai__table td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 4px;
+    color: var(--color-text-muted);
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .sales-ai__name-cell,
+  .sales-ai__product-cell,
+  .sales-ai__empty {
+    grid-column: 1 / -1;
+  }
+
+  .sales-ai__name-cell {
+    line-height: 1.45;
+  }
+
+  .sales-ai__matched-name {
+    display: block;
+    margin-bottom: var(--space-2);
+    line-height: 1.45;
+  }
+
+  .sales-ai__select,
+  .sales-ai__input {
+    min-height: var(--control-height-mobile);
+  }
+
+  .sales-ai__table {
+    min-width: 0;
+  }
+
+  .sales-ai__input {
+    max-width: none;
   }
 }
 </style>

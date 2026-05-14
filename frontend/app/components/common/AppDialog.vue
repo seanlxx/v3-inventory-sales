@@ -1,11 +1,15 @@
 <script setup lang="ts">
 const open = defineModel<boolean>('open', { default: false })
 
+type DialogSize = 'default' | 'wide'
+
 const props = withDefaults(defineProps<{
   title: string
   description?: string
+  size?: DialogSize
 }>(), {
-  description: ''
+  description: '',
+  size: 'default'
 })
 
 const emit = defineEmits<{
@@ -23,7 +27,13 @@ function closeDialog() {
     <Transition name="app-dialog">
       <div v-if="open" class="app-dialog" role="presentation">
         <button class="app-dialog__backdrop" type="button" aria-label="关闭弹窗" @click="closeDialog" />
-        <section class="app-dialog__panel" role="dialog" aria-modal="true" :aria-label="props.title">
+        <section
+          class="app-dialog__panel"
+          :class="`app-dialog__panel--${props.size}`"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="props.title"
+        >
           <header class="app-dialog__header">
             <div>
               <h2 class="app-dialog__title">{{ props.title }}</h2>
@@ -74,6 +84,10 @@ function closeDialog() {
   border-radius: var(--radius-3);
   background: var(--color-surface);
   box-shadow: var(--shadow-popover);
+}
+
+.app-dialog__panel--wide {
+  width: min(980px, 100%);
 }
 
 .app-dialog__header,
