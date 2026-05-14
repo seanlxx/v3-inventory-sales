@@ -227,12 +227,15 @@
                           https://github.com/seanlxx/v3-inventory-sales.git
                                         │
                           Cloudflare Pages 自动拉取 → 构建 → 部署上线
+                                        │
+                          检查最新生产部署是否指向当前 commit
 ```
 
 - **代码仓库：** `https://github.com/seanlxx/v3-inventory-sales.git`
 - **部署分支：** `master`
 - **自动部署：** Cloudflare Pages 已绑定 GitHub 仓库，push 到 `master` 后自动触发构建与部署。
-- **AI agent 的职责：** 每次修改文件后，必须完成 `git add → commit → push`，推送到 GitHub 即完成部署。
+- **稳定发布：** push 后必须运行 `powershell -ExecutionPolicy Bypass -File ./scripts/deploy-pages.ps1`，脚本会重新构建 `dist/`、用 Wrangler 发布当前 commit，并验证生产地址。
+- **AI agent 的职责：** 每次修改文件后，必须完成 `git add → commit → push`，并确认 Cloudflare Pages 最新生产部署成功。
 
 ---
 
@@ -293,9 +296,12 @@ dev.bat（同步线上数据后启动）
 git add -A
 git commit -m "<简明描述本次改动>"
 git push origin master
+
+# ── 稳定发布当前 commit，并验证生产地址 ──
+powershell -ExecutionPolicy Bypass -File ./scripts/deploy-pages.ps1
 ```
 
-> 推送成功后，Cloudflare Pages 会自动拉取最新代码并部署。无需手动触发。
+> `scripts/deploy-pages.ps1` 会拒绝未提交的工作区，避免发布内容和 commit 不一致。脚本完成后，最新生产部署的 `Source` 必须等于当前 commit 短 hash，且生产 `/inventory` 返回 200。
 
 ---
 
@@ -349,8 +355,7 @@ git push origin master
 
 ### 3.5 提交、推送与部署
 
-> **核心规则：每次修改了文件，任务结束前必须 commit + push 到 GitHub。**
-> Cloudflare Pages 会自动从 GitHub 拉取并部署，无需手动干预。
+> **核心规则：每次修改了文件，任务结束前必须 commit + push 到 GitHub，并确认 Cloudflare Pages 已部署当前 commit。**
 
 #### 自动提交流程
 
@@ -359,6 +364,7 @@ git push origin master
 1. `git add -A` — 暂存所有修改（`.gitignore` 已排除敏感文件）
 2. `git commit -m "<简明中文描述>"` — 提交，commit message 用中文简述本次改动
 3. `git push origin master` — 推送到 GitHub，触发 Cloudflare Pages 自动部署
+4. `powershell -ExecutionPolicy Bypass -File ./scripts/deploy-pages.ps1` — 重新构建并用 Wrangler 发布当前 commit，脚本会验证最新生产部署和线上 `/inventory`
 
 > 如果用户有未提交的改动与本次任务无关，先用 `git stash` 暂存，完成本次提交推送后再 `git stash pop` 恢复。
 
@@ -395,6 +401,7 @@ git push origin master
 | 15 | 用 PowerShell `Set-Content -Encoding UTF8` 写脚本 / 配置文件，留下 BOM（§9.2）→ 必须用 `[System.IO.File]::WriteAllText($p, $content, (New-Object System.Text.UTF8Encoding $false))` |
 | 16 | 纯 UI / CSS 改动验证时自建静态服务 + mock API + Playwright 自动化，绕开项目标准的 `dev.bat` / `dev.ps1` → 走 §3.4 / §4.3 标准流程：`build.ps1` + `dev.bat` + DevTools 三宽度目视 |
 | 17 | 为一次性 UI 布局验证写 100 行 Playwright 脚本（注入 session、route 拦截、6 视口截图），结果在调脚本本身的路由 404 / 模块解析 / 选择器 → 验证投入应与改动复杂度匹配，CSS / 布局类改动用 DevTools 目视即可 |
+| 18 | push 后只看 GitHub 成功就认为已上线 → 必须运行 `scripts/deploy-pages.ps1` 发布并验证当前 commit，避免 Cloudflare Git 集成停在 `Idle` / `Skipped` |
 
 ### 3.7 结束前记录
 
