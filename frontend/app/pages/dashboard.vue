@@ -154,7 +154,12 @@ onMounted(() => {
     gap: var(--space-3);
   }
 
-  .dashboard-page__header,
+  .dashboard-page__header {
+    display: grid;
+    align-items: start;
+    justify-items: start;
+  }
+
   .dashboard-page__error {
     display: grid;
   }

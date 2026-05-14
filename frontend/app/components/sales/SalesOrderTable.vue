@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ApiError } from '~/types/api'
 import type { SalesOrder, SalesOrderType } from '~/types/sale'
-import { formatDateTime, formatMoney, formatQuantity } from '~/utils/format'
+import { formatMoney, formatQuantity } from '~/utils/format'
 
 const props = defineProps<{
   orders: readonly SalesOrder[]
@@ -38,7 +38,6 @@ function orderQuantity(order: SalesOrder) {
       <table class="sales-table__table">
         <thead>
           <tr>
-            <th scope="col">单据</th>
             <th scope="col">类型</th>
             <th scope="col">日期</th>
             <th scope="col">售货机</th>
@@ -51,12 +50,12 @@ function orderQuantity(order: SalesOrder) {
         </thead>
         <tbody>
           <tr v-if="props.loading">
-            <td class="sales-table__state" colspan="9">
+            <td class="sales-table__state" colspan="8">
               正在加载单据
             </td>
           </tr>
           <tr v-else-if="props.error">
-            <td class="sales-table__state sales-table__state--error" colspan="9">
+            <td class="sales-table__state sales-table__state--error" colspan="8">
               <div class="sales-table__state-stack">
                 <strong>{{ props.error.message }}</strong>
                 <AppButton variant="secondary" size="sm" @click="emit('retry')">
@@ -66,17 +65,11 @@ function orderQuantity(order: SalesOrder) {
             </td>
           </tr>
           <tr v-else-if="props.orders.length === 0">
-            <td class="sales-table__state" colspan="9">
+            <td class="sales-table__state" colspan="8">
               没有符合筛选条件的单据
             </td>
           </tr>
           <tr v-for="order in props.orders" v-else :key="order.id">
-            <td>
-              <div class="sales-table__order">
-                <strong>{{ order.id }}</strong>
-                <span>{{ formatDateTime(order.createdAt) }}</span>
-              </div>
-            </td>
             <td>
               <StatusBadge :label="typeLabel(order.type)" :tone="typeTone(order.type)" />
             </td>
@@ -135,7 +128,7 @@ function orderQuantity(order: SalesOrder) {
 
 .sales-table__table {
   width: 100%;
-  min-width: 1000px;
+  min-width: 820px;
   border-collapse: collapse;
 }
 
@@ -167,24 +160,6 @@ function orderQuantity(order: SalesOrder) {
   text-align: right;
 }
 
-.sales-table__order {
-  display: grid;
-  gap: 4px;
-}
-
-.sales-table__order strong,
-.sales-table__order span {
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.sales-table__order span {
-  color: var(--color-text-soft);
-  font-family: var(--font-mono);
-  font-size: 12px;
-}
-
 .sales-table__actions {
   display: flex;
   justify-content: flex-end;
@@ -213,7 +188,7 @@ tbody tr:last-child td {
 
 @media (max-width: 760px) {
   .sales-table__table {
-    min-width: 900px;
+    min-width: 720px;
   }
 
   .sales-table__table th,

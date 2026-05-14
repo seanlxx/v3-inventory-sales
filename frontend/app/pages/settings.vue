@@ -11,6 +11,10 @@ type AiProviderDraft = {
   baseUrl: string
   apiKey: string
   apiKeyMasked: string
+  modelId: string
+  models: string[]
+  modelLoading: boolean
+  modelError: string
   configured: boolean
 }
 
@@ -30,7 +34,8 @@ const {
   saveBusinessSettings,
   saveMachines,
   saveCategories,
-  saveAiClientConfigs,
+  saveAiClientSettings,
+  fetchAiModels,
   updateAccount
 } = useSettings()
 
@@ -42,16 +47,24 @@ const businessDraft = reactive({
 const machinesDraft = shallowRef('')
 const categoriesDraft = shallowRef('')
 const aiDraft = reactive<Record<AiProviderId, AiProviderDraft>>({
-  opencode: { baseUrl: '', apiKey: '', apiKeyMasked: '', configured: false },
-  qwen: { baseUrl: '', apiKey: '', apiKeyMasked: '', configured: false },
-  deepseek: { baseUrl: '', apiKey: '', apiKeyMasked: '', configured: false },
-  claude: { baseUrl: '', apiKey: '', apiKeyMasked: '', configured: false },
-  yunwu: { baseUrl: '', apiKey: '', apiKeyMasked: '', configured: false }
+  opencode: { baseUrl: '', apiKey: '', apiKeyMasked: '', modelId: '', models: [], modelLoading: false, modelError: '', configured: false },
+  qwen: { baseUrl: '', apiKey: '', apiKeyMasked: '', modelId: '', models: [], modelLoading: false, modelError: '', configured: false },
+  deepseek: { baseUrl: '', apiKey: '', apiKeyMasked: '', modelId: '', models: [], modelLoading: false, modelError: '', configured: false },
+  claude: { baseUrl: '', apiKey: '', apiKeyMasked: '', modelId: '', models: [], modelLoading: false, modelError: '', configured: false },
+  yunwu: { baseUrl: '', apiKey: '', apiKeyMasked: '', modelId: '', models: [], modelLoading: false, modelError: '', configured: false }
 })
-const aiProviderRows = computed(() => providerOptions.map(provider => ({
-  ...provider,
-  draft: aiDraft[provider.id]
-})))
+const activeAiProvider = shallowRef<AiProviderId>('qwen')
+const activeAiDraft = computed(() => aiDraft[activeAiProvider.value])
+const activeAiProviderOption = computed(() =>
+  providerOptions.find(provider => provider.id === activeAiProvider.value) ?? providerOptions[0]!
+)
+const activeAiModelOptions = computed(() => {
+  const draft = activeAiDraft.value
+  return Array.from(new Set([
+    draft.modelId,
+    ...draft.models
+  ].map(model => model.trim()).filter(Boolean)))
+})
 
 function syncDrafts() {
   const business = settings.value.businessSettings
@@ -60,13 +73,19 @@ function syncDrafts() {
   businessDraft.restockTargetDays = String(business.restockTargetDays)
   machinesDraft.value = settings.value.machines.join('\n')
   categoriesDraft.value = settings.value.categories.join('\n')
+  activeAiProvider.value = settings.value.aiActiveProvider
 
   for (const provider of providerOptions) {
     const config = settings.value.aiClientConfigs[provider.id]
+    const modelId = config?.modelId || ''
     aiDraft[provider.id] = {
       baseUrl: config?.baseUrl || provider.defaultBaseUrl,
       apiKey: '',
       apiKeyMasked: config?.apiKeyMasked || '',
+      modelId,
+      models: modelId ? [modelId] : [],
+      modelLoading: false,
+      modelError: '',
       configured: !!config?.configured
     }
   }
@@ -103,13 +122,37 @@ async function submitAiConfigs() {
     return [provider.id, {
       baseUrl: draft.baseUrl.trim(),
       apiKey: draft.apiKey.trim() || undefined,
-      apiKeyMasked: draft.apiKey.trim() ? undefined : draft.apiKeyMasked
+      apiKeyMasked: draft.apiKey.trim() ? undefined : draft.apiKeyMasked,
+      modelId: draft.modelId.trim() || undefined
     }]
   })) as AiClientConfigs
 
-  await saveAiClientConfigs(configs)
+  await saveAiClientSettings(activeAiProvider.value, configs)
   for (const provider of providerOptions) {
     aiDraft[provider.id].apiKey = ''
+  }
+}
+
+async function loadAiModels() {
+  const draft = activeAiDraft.value
+  draft.modelLoading = true
+  draft.modelError = ''
+  try {
+    const response = await fetchAiModels(activeAiProvider.value, {
+      baseUrl: draft.baseUrl.trim(),
+      apiKey: draft.apiKey.trim() || undefined,
+      apiKeyMasked: draft.apiKey.trim() ? undefined : draft.apiKeyMasked
+    })
+    draft.models = response.models
+    const firstModel = response.models[0]
+    if (!draft.modelId && firstModel) {
+      draft.modelId = firstModel
+    }
+  } catch (caught) {
+    const normalized = normalizeApiError(caught)
+    draft.modelError = normalized.message
+  } finally {
+    draft.modelLoading = false
   }
 }
 
@@ -215,41 +258,70 @@ onMounted(async () => {
       </form>
     </SettingsSection>
 
-    <SettingsSection title="AI provider" description="API Key 仅提交到服务端，页面只显示脱敏状态。">
+    <SettingsSection title="AI provider" description="填写 Base URL 和 API Key 后手动获取模型，再选择当前要使用的模型。">
       <form class="settings-page__form" @submit.prevent="submitAiConfigs">
-        <div class="settings-page__providers">
-          <article
-            v-for="provider in aiProviderRows"
-            :key="provider.id"
-            class="settings-page__provider"
-          >
-            <div class="settings-page__provider-heading">
-              <div>
-                <h3>{{ provider.label }}</h3>
-                <p>{{ provider.baseUrlEnv }} / {{ provider.keyEnv }}</p>
-              </div>
-              <StatusBadge
-                :label="provider.draft.configured ? provider.draft.apiKeyMasked || '已配置' : '未配置'"
-                :tone="provider.draft.configured ? 'success' : 'neutral'"
-              />
+        <article class="settings-page__provider">
+          <div class="settings-page__provider-heading">
+            <div>
+              <h3>{{ activeAiProviderOption.label }}</h3>
+              <p>{{ activeAiProviderOption.baseUrlEnv }} / {{ activeAiProviderOption.keyEnv }}</p>
             </div>
-            <div class="settings-page__grid settings-page__grid--two">
-              <AppInput
-                v-model="provider.draft.baseUrl"
-                label="Base URL"
-              />
-              <AppInput
-                v-model="provider.draft.apiKey"
-                label="API Key"
-                type="password"
-                placeholder="留空则保留原 Key"
-              />
-            </div>
-          </article>
-        </div>
+            <StatusBadge
+              :label="activeAiDraft.configured ? activeAiDraft.apiKeyMasked || '已配置' : '未配置'"
+              :tone="activeAiDraft.configured ? 'success' : 'neutral'"
+            />
+          </div>
+
+          <div class="settings-page__grid settings-page__grid--two">
+            <label class="settings-page__select-field">
+              <span>Provider</span>
+              <select v-model="activeAiProvider">
+                <option
+                  v-for="provider in providerOptions"
+                  :key="provider.id"
+                  :value="provider.id"
+                >
+                  {{ provider.label }}
+                </option>
+              </select>
+            </label>
+            <AppInput
+              v-model="activeAiDraft.baseUrl"
+              label="Base URL"
+            />
+            <AppInput
+              v-model="activeAiDraft.apiKey"
+              label="API Key"
+              type="password"
+              placeholder="留空则保留原 Key"
+            />
+            <label class="settings-page__select-field">
+              <span>模型</span>
+              <select v-model="activeAiDraft.modelId" :disabled="activeAiModelOptions.length === 0">
+                <option value="">
+                  {{ activeAiModelOptions.length === 0 ? '请先获取模型' : '选择模型' }}
+                </option>
+                <option
+                  v-for="model in activeAiModelOptions"
+                  :key="model"
+                  :value="model"
+                >
+                  {{ model }}
+                </option>
+              </select>
+            </label>
+          </div>
+
+          <p v-if="activeAiDraft.modelError" class="settings-page__provider-error">
+            {{ activeAiDraft.modelError }}
+          </p>
+        </article>
         <div class="settings-page__actions">
+          <AppButton type="button" variant="secondary" :loading="activeAiDraft.modelLoading" @click="loadAiModels">
+            获取模型
+          </AppButton>
           <AppButton type="submit" :loading="saving">
-            保存 AI 配置
+            保存 AI 设置
           </AppButton>
         </div>
       </form>
@@ -335,6 +407,34 @@ onMounted(async () => {
   font-weight: 700;
 }
 
+.settings-page__select-field {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.settings-page__select-field span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.settings-page__select-field select {
+  width: 100%;
+  min-height: var(--control-height);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2);
+  padding: 0 var(--space-3);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.settings-page__select-field select:disabled {
+  background: var(--color-surface-muted);
+  color: var(--color-text-soft);
+}
+
 .settings-page__field textarea {
   width: 100%;
   resize: vertical;
@@ -376,9 +476,17 @@ onMounted(async () => {
   font-size: 12px;
 }
 
+.settings-page__provider-error {
+  margin: 0;
+  color: var(--color-danger);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .settings-page__actions {
   display: flex;
   justify-content: flex-end;
+  gap: var(--space-2);
 }
 
 @media (max-width: 760px) {
@@ -402,11 +510,16 @@ onMounted(async () => {
   }
 
   .settings-page__actions {
+    display: grid;
     justify-content: stretch;
   }
 
   .settings-page__actions :deep(.app-button) {
     width: 100%;
+  }
+
+  .settings-page__select-field select {
+    min-height: var(--control-height-mobile);
   }
 }
 </style>

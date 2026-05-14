@@ -5,6 +5,9 @@ const DEFAULT_DEEPSEEK_BASE_URL = 'https://api.deepseek.com/v1';
 const DEFAULT_CLAUDE_BASE_URL = 'https://xcode.best/v1';
 const DEFAULT_OPENCODE_BASE_URL = 'https://api.243706.xyz/v1';
 const DEFAULT_YUNWU_BASE_URL = 'https://yunwu.ai/v1';
+const DEFAULT_QWEN_MODEL_ID = 'qwen3.5-omni-plus';
+const AI_MODEL_LIST_TIMEOUT_MS = 30000;
+const AI_PLATFORMS = new Set(['opencode', 'qwen', 'deepseek', 'claude', 'yunwu']);
 
 function json(status, payload) {
   return Response.json(payload, {
@@ -52,11 +55,15 @@ async function requireSession(context) {
 }
 
 function getPlatform(modelId = '') {
-  if (modelId === 'qwen3.5-omni-plus') return 'qwen';
+  if (modelId === DEFAULT_QWEN_MODEL_ID || modelId.startsWith('qwen')) return 'qwen';
   if (modelId === 'gemini-3.1-flash-lite') return 'yunwu';
   if (modelId.startsWith('deepseek')) return 'deepseek';
   if (modelId.startsWith('claude')) return 'claude';
   return 'opencode';
+}
+
+function normalizePlatform(value, fallback = 'qwen') {
+  return AI_PLATFORMS.has(value) ? value : fallback;
 }
 
 function getConfig(platform, env) {
@@ -104,6 +111,76 @@ function normalizeClientConfig(platform, clientConfig) {
   };
 }
 
+function safeParse(value, fallback = null) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
+async function getSettingValue(db, key) {
+  if (!db) return null;
+  const row = await db.prepare(`
+    SELECT data
+    FROM vending_records
+    WHERE store = 'settings' AND record_id = ?
+    LIMIT 1
+  `).bind(key).first();
+  const data = safeParse(row?.data || '{}', {});
+  return data?.value ?? null;
+}
+
+async function getStoredAiSettings(db) {
+  const [configs, activeProvider] = await Promise.all([
+    getSettingValue(db, 'aiClientConfigs'),
+    getSettingValue(db, 'aiActiveProvider')
+  ]);
+  return {
+    configs: configs && typeof configs === 'object' && !Array.isArray(configs) ? configs : {},
+    activeProvider: normalizePlatform(activeProvider, 'qwen')
+  };
+}
+
+function mergeClientConfig(platform, draftConfig, storedConfig, envConfig) {
+  const draft = draftConfig && typeof draftConfig === 'object' ? draftConfig : {};
+  const stored = storedConfig && typeof storedConfig === 'object' ? storedConfig : {};
+  const apiKey = typeof draft.apiKey === 'string' && draft.apiKey.trim()
+    ? draft.apiKey.trim()
+    : typeof stored.apiKey === 'string' && stored.apiKey.trim()
+      ? stored.apiKey.trim()
+      : envConfig.apiKey;
+  const baseUrl = typeof draft.baseUrl === 'string' && draft.baseUrl.trim()
+    ? draft.baseUrl.trim()
+    : typeof stored.baseUrl === 'string' && stored.baseUrl.trim()
+      ? stored.baseUrl.trim()
+      : envConfig.baseUrl || getConfig(platform, {}).baseUrl;
+
+  if (!apiKey) return null;
+  return { apiKey, baseUrl };
+}
+
+async function resolveAiRequest(context, body) {
+  if (body.modelId) {
+    const platform = normalizePlatform(body.platform, getPlatform(body.modelId));
+    const config = normalizeClientConfig(platform, body.clientConfig) || getConfig(platform, context.env);
+    return {
+      platform,
+      config: config?.apiKey ? config : null,
+      modelId: String(body.modelId).trim()
+    };
+  }
+
+  const storedSettings = await getStoredAiSettings(context.env.DB);
+  const platform = normalizePlatform(body.platform, storedSettings.activeProvider);
+  const storedConfig = storedSettings.configs[platform];
+  const config = mergeClientConfig(platform, body.clientConfig, storedConfig, getConfig(platform, context.env));
+  const storedModelId = typeof storedConfig?.modelId === 'string' ? storedConfig.modelId.trim() : '';
+  const modelId = storedModelId || (platform === 'qwen' ? DEFAULT_QWEN_MODEL_ID : '');
+
+  return { platform, config, modelId };
+}
+
 function configuredModels(env) {
   return {
     opencode: !!env.OPENCODE_API_KEY,
@@ -112,6 +189,15 @@ function configuredModels(env) {
     claude: !!env.CLAUDE_API_KEY,
     yunwu: !!env.YUNWU_API_KEY
   };
+}
+
+async function configuredModelSources(env) {
+  const storedSettings = await getStoredAiSettings(env.DB);
+  return Object.fromEntries(Array.from(AI_PLATFORMS).map(platform => {
+    const envConfigured = configuredModels(env)[platform];
+    const storedConfig = storedSettings.configs[platform];
+    return [platform, envConfigured || !!String(storedConfig?.apiKey || '').trim()];
+  }));
 }
 
 async function fetchWithTimeout(url, options, timeoutMs) {
@@ -193,6 +279,28 @@ async function callOpenAICompatible({ platform, config, body, timeoutMs }) {
     throw new Error(data.error?.message || data.error?.code || `${platform} HTTP ${res.status}`);
   }
   return data.choices?.[0]?.message?.content || '';
+}
+
+async function listOpenAICompatibleModels({ platform, config }) {
+  const res = await fetchWithTimeout(`${openAIBaseUrl(config.baseUrl)}/models`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${config.apiKey}`
+    }
+  }, AI_MODEL_LIST_TIMEOUT_MS);
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error?.message || data.error?.code || `${platform} HTTP ${res.status}`);
+  }
+
+  const rawModels = Array.isArray(data.data) ? data.data : Array.isArray(data.models) ? data.models : [];
+  const models = rawModels
+    .map(model => typeof model === 'string' ? model : model?.id)
+    .map(model => String(model || '').trim())
+    .filter(Boolean);
+  return Array.from(new Set(models));
 }
 
 /**
@@ -335,7 +443,7 @@ export async function onRequestGet(context) {
   const auth = await requireSession(context);
   if (auth.error) return auth.error;
 
-  return json(200, { configured: configuredModels(context.env) });
+  return json(200, { configured: await configuredModelSources(context.env) });
 }
 
 export async function onRequestPost(context) {
@@ -349,28 +457,41 @@ export async function onRequestPost(context) {
     return json(400, { error: 'Invalid JSON body' });
   }
 
-  if (!body.modelId) {
+  const request = await resolveAiRequest(context, body);
+  if (body.action === 'models') {
+    if (!request.config) {
+      return json(503, { error: `${request.platform} API key is not configured` });
+    }
+
+    try {
+      const models = await listOpenAICompatibleModels({ platform: request.platform, config: request.config });
+      return json(200, { models });
+    } catch (err) {
+      return json(502, { error: err.message || 'Failed to fetch AI models' });
+    }
+  }
+
+  if (!request.modelId) {
     return json(400, { error: 'Missing modelId' });
   }
 
-  const platform = getPlatform(body.modelId);
-  const config = normalizeClientConfig(platform, body.clientConfig) || getConfig(platform, context.env);
-  if (!config.apiKey) {
-    return json(503, { error: `${platform} API key is not configured on the server` });
+  if (!request.config) {
+    return json(503, { error: `${request.platform} API key is not configured on the server` });
   }
 
-  const timeoutMs = body.imageBase64 ? AI_IMAGE_TIMEOUT_MS : AI_TEXT_TIMEOUT_MS;
+  const requestBody = { ...body, modelId: request.modelId };
+  const timeoutMs = requestBody.imageBase64 ? AI_IMAGE_TIMEOUT_MS : AI_TEXT_TIMEOUT_MS;
 
   // 流式模式: 前端通过 ?stream=1 或 body.stream=true 主动启用
   const url = new URL(context.request.url);
-  const wantStream = url.searchParams.get('stream') === '1' || body.stream === true;
+  const wantStream = url.searchParams.get('stream') === '1' || requestBody.stream === true;
   if (wantStream) {
     // 流式路径不抛异常, 错误经 SSE event:error 下发
-    return streamOpenAICompatible({ platform, config, body, timeoutMs });
+    return streamOpenAICompatible({ platform: request.platform, config: request.config, body: requestBody, timeoutMs });
   }
 
   try {
-    const text = await callOpenAICompatible({ platform, config, body, timeoutMs });
+    const text = await callOpenAICompatible({ platform: request.platform, config: request.config, body: requestBody, timeoutMs });
     return json(200, { text });
   } catch (err) {
     return json(502, { error: err.message || 'AI request failed' });

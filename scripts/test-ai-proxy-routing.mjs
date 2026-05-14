@@ -29,6 +29,12 @@ async function loadCloudflareProxy() {
     console,
     fetch: async (url, options) => {
       calls.push({ url: String(url), options });
+      if (String(url).endsWith('/models')) {
+        return {
+          ok: true,
+          json: async () => ({ data: [{ id: 'qwen-test-model' }, { id: 'qwen-other-model' }] })
+        };
+      }
       return {
         ok: true,
         json: async () => ({ choices: [{ message: { content: '{"items":[]}' } }] })
@@ -52,6 +58,26 @@ function sessionDb() {
         }
       })
     })
+  };
+}
+
+function settingsDb(settings) {
+  const base = sessionDb();
+  return {
+    prepare: (sql) => {
+      if (/FROM app_sessions/.test(sql)) return base.prepare(sql);
+      if (/FROM vending_records/.test(sql)) {
+        return {
+          bind: (key) => ({
+            first: async () => {
+              if (!(key in settings)) return null;
+              return { data: JSON.stringify({ key, value: settings[key] }) };
+            }
+          })
+        };
+      }
+      throw new Error(`Unexpected SQL: ${sql}`);
+    }
   };
 }
 
@@ -111,6 +137,60 @@ async function testTextJsonRouting() {
   assert.deepEqual(payload.response_format, { type: 'json_object' });
 }
 
+async function testStoredModelRouting() {
+  const { api, calls } = await loadCloudflareProxy();
+  const request = new Request('https://app.test/api/ai-proxy', {
+    method: 'POST',
+    headers: { 'X-VM-Session': 'valid-session' },
+    body: JSON.stringify(proxyBody({
+      modelId: undefined,
+      clientConfig: undefined
+    }))
+  });
+  const response = await api.onRequestPost({
+    request,
+    env: {
+      DB: settingsDb({
+        aiActiveProvider: 'qwen',
+        aiClientConfigs: {
+          qwen: {
+            apiKey: 'stored-key',
+            baseUrl: 'https://stored.example/v1',
+            modelId: 'qwen-test-model'
+          }
+        }
+      })
+    }
+  });
+  assert.equal(response.status, 200);
+  assert.equal(calls[0].url, 'https://stored.example/v1/chat/completions');
+  assert.equal(calls[0].options.headers.Authorization, 'Bearer stored-key');
+  assert.equal(JSON.parse(calls[0].options.body).model, 'qwen-test-model');
+}
+
+async function testModelListRouting() {
+  const { api, calls } = await loadCloudflareProxy();
+  const request = new Request('https://app.test/api/ai-proxy', {
+    method: 'POST',
+    headers: { 'X-VM-Session': 'valid-session' },
+    body: JSON.stringify({
+      action: 'models',
+      platform: 'qwen',
+      clientConfig: {
+        apiKey: 'test-key',
+        baseUrl: 'https://example.test/v1'
+      }
+    })
+  });
+  const response = await api.onRequestPost({
+    request,
+    env: { DB: settingsDb({}) }
+  });
+  assert.equal(response.status, 200);
+  assert.equal(calls[0].url, 'https://example.test/v1/models');
+  assert.deepEqual(await response.json(), { models: ['qwen-test-model', 'qwen-other-model'] });
+}
+
 async function testRequiresSession() {
   const { api, calls } = await loadCloudflareProxy();
   const request = new Request('https://app.test/api/ai-proxy', {
@@ -124,6 +204,8 @@ async function testRequiresSession() {
 
 await testCloudflareImageRouting();
 await testTextJsonRouting();
+await testStoredModelRouting();
+await testModelListRouting();
 await testRequiresSession();
 
 console.log('AI proxy routing tests passed');

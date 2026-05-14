@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ApiError } from '~/types/api'
 import type { PurchaseOrder } from '~/types/purchase'
-import { formatDateTime, formatMoney, formatQuantity } from '~/utils/format'
+import { formatMoney, formatQuantity } from '~/utils/format'
 
 const props = defineProps<{
   orders: readonly PurchaseOrder[]
@@ -22,7 +22,6 @@ const emit = defineEmits<{
       <table class="purchase-table__table">
         <thead>
           <tr>
-            <th scope="col">单据</th>
             <th scope="col">日期</th>
             <th scope="col">供应商</th>
             <th scope="col">售货机</th>
@@ -35,12 +34,12 @@ const emit = defineEmits<{
         </thead>
         <tbody>
           <tr v-if="props.loading">
-            <td class="purchase-table__state" colspan="9">
+            <td class="purchase-table__state" colspan="8">
               正在加载进货单
             </td>
           </tr>
           <tr v-else-if="props.error">
-            <td class="purchase-table__state purchase-table__state--error" colspan="9">
+            <td class="purchase-table__state purchase-table__state--error" colspan="8">
               <div class="purchase-table__state-stack">
                 <strong>{{ props.error.message }}</strong>
                 <AppButton variant="secondary" size="sm" @click="emit('retry')">
@@ -50,17 +49,11 @@ const emit = defineEmits<{
             </td>
           </tr>
           <tr v-else-if="props.orders.length === 0">
-            <td class="purchase-table__state" colspan="9">
+            <td class="purchase-table__state" colspan="8">
               没有符合筛选条件的进货单
             </td>
           </tr>
           <tr v-for="order in props.orders" v-else :key="order.id">
-            <td>
-              <div class="purchase-table__order">
-                <strong>{{ order.id }}</strong>
-                <span>{{ formatDateTime(order.createdAt) }}</span>
-              </div>
-            </td>
             <td>{{ order.date }}</td>
             <td>{{ order.source || '拼多多' }}</td>
             <td>{{ order.machineId || '-' }}</td>
@@ -117,7 +110,7 @@ const emit = defineEmits<{
 
 .purchase-table__table {
   width: 100%;
-  min-width: 980px;
+  min-width: 800px;
   border-collapse: collapse;
 }
 
@@ -149,24 +142,6 @@ const emit = defineEmits<{
   text-align: right;
 }
 
-.purchase-table__order {
-  display: grid;
-  gap: 4px;
-}
-
-.purchase-table__order strong,
-.purchase-table__order span {
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.purchase-table__order span {
-  color: var(--color-text-soft);
-  font-family: var(--font-mono);
-  font-size: 12px;
-}
-
 .purchase-table__actions {
   display: flex;
   justify-content: flex-end;
@@ -195,7 +170,7 @@ tbody tr:last-child td {
 
 @media (max-width: 760px) {
   .purchase-table__table {
-    min-width: 860px;
+    min-width: 700px;
   }
 
   .purchase-table__table th,

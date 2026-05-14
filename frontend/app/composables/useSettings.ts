@@ -1,6 +1,8 @@
 import type { ApiError } from '~/types/api'
 import type {
   AiClientConfigs,
+  AiClientConfig,
+  AiProviderId,
   AiProviderOption,
   BusinessSettings,
   SettingEntry,
@@ -109,12 +111,17 @@ function normalizeAiClientConfigs(value: unknown): AiClientConfigs {
   return parsed as AiClientConfigs
 }
 
+function normalizeAiProvider(value: unknown): AiProviderId {
+  return aiProviderOptions.some(provider => provider.id === value) ? value as AiProviderId : 'qwen'
+}
+
 function mapSettings(entries: SettingEntry[]): SettingsState {
   const byKey = new Map(entries.map(entry => [entry.key, entry.value]))
   return {
     businessSettings: normalizeBusinessSettings(byKey),
     machines: normalizeStringList(byKey.get('machines'), defaultMachines),
     categories: normalizeStringList(byKey.get('categories'), defaultCategories),
+    aiActiveProvider: normalizeAiProvider(byKey.get('aiActiveProvider')),
     aiClientConfigs: normalizeAiClientConfigs(byKey.get('aiClientConfigs'))
   }
 }
@@ -128,6 +135,7 @@ export function useSettings() {
     businessSettings: { ...defaultBusinessSettings },
     machines: [...defaultMachines],
     categories: [...defaultCategories],
+    aiActiveProvider: 'qwen',
     aiClientConfigs: {}
   })
   const loading = shallowRef(false)
@@ -231,6 +239,38 @@ export function useSettings() {
     }
   }
 
+  async function saveAiClientSettings(activeProvider: AiProviderId, configs: AiClientConfigs) {
+    saving.value = true
+    error.value = null
+    try {
+      const normalizedProvider = normalizeAiProvider(activeProvider)
+      const response = await saveSetting('aiClientConfigs', configs)
+      await saveSetting('aiActiveProvider', normalizedProvider)
+      settings.value = {
+        ...settings.value,
+        aiActiveProvider: normalizedProvider,
+        aiClientConfigs: normalizeAiClientConfigs(response.value)
+      }
+      toastStore.show('AI 设置已保存', 'success')
+    } catch (caught) {
+      error.value = normalizeApiError(caught)
+      throw error.value
+    } finally {
+      saving.value = false
+    }
+  }
+
+  async function fetchAiModels(provider: AiProviderId, clientConfig: AiClientConfig) {
+    return await request<{ models: string[] }, Record<string, unknown>>('/ai-proxy', {
+      method: 'POST',
+      body: {
+        action: 'models',
+        platform: provider,
+        clientConfig
+      }
+    })
+  }
+
   async function updateAccount(payload: UpdateAuthPayload) {
     accountSaving.value = true
     error.value = null
@@ -257,6 +297,8 @@ export function useSettings() {
     saveMachines,
     saveCategories,
     saveAiClientConfigs,
+    saveAiClientSettings,
+    fetchAiModels,
     updateAccount
   }
 }

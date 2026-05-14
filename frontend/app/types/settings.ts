@@ -23,6 +23,7 @@ export type AiClientConfig = {
   apiKey?: string
   apiKeyMasked?: string
   baseUrl?: string
+  modelId?: string
   configured?: boolean
 }
 
@@ -32,5 +33,6 @@ export type SettingsState = {
   businessSettings: BusinessSettings
   machines: string[]
   categories: string[]
+  aiActiveProvider: AiProviderId
   aiClientConfigs: AiClientConfigs
 }

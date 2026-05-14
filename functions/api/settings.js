@@ -29,7 +29,8 @@ function sanitizeAiClientConfigs(value) {
     return [platform, {
       configured: !!String(config.apiKey || '').trim(),
       apiKeyMasked: maskSecret(config.apiKey),
-      baseUrl: typeof config.baseUrl === 'string' ? config.baseUrl : ''
+      baseUrl: typeof config.baseUrl === 'string' ? config.baseUrl : '',
+      modelId: typeof config.modelId === 'string' ? config.modelId : ''
     }];
   }));
 }
@@ -63,16 +64,18 @@ async function resolveAiClientConfigsValue(db, nextValue) {
     const hasApiKey = typeof config.apiKey === 'string' && config.apiKey.trim();
     const hasMaskedApiKey = typeof config.apiKeyMasked === 'string' && config.apiKeyMasked.startsWith(SECRET_MASK);
     const baseUrl = typeof config.baseUrl === 'string' ? config.baseUrl.trim() : '';
+    const modelId = typeof config.modelId === 'string' ? config.modelId.trim() : '';
     const apiKey = hasApiKey
       ? config.apiKey.trim()
       : hasMaskedApiKey
         ? String(current.apiKey || '').trim()
         : '';
 
-    if (!apiKey && !baseUrl) continue;
+    if (!apiKey && !baseUrl && !modelId) continue;
     merged[platform] = {
       apiKey,
-      baseUrl: baseUrl || String(current.baseUrl || '').trim()
+      baseUrl: baseUrl || String(current.baseUrl || '').trim(),
+      modelId
     };
   }
 

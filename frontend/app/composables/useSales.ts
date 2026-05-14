@@ -290,7 +290,6 @@ export function useSales() {
       const response = await request<{ text: string }, Record<string, unknown>>('/ai-proxy', {
         method: 'POST',
         body: {
-          modelId: 'qwen3.5-omni-plus',
           imageBase64: salesImage.value.imageBase64,
           mimeType: salesImage.value.mimeType,
           maxTokens: 1600,

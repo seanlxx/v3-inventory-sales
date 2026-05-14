@@ -114,6 +114,7 @@ function shortDate(value: string) {
 
 .sales-trend__bar {
   width: min(26px, 70%);
+  max-height: 100%;
   border-radius: var(--radius-2) var(--radius-2) 0 0;
   background: var(--color-primary);
 }
@@ -130,12 +131,18 @@ function shortDate(value: string) {
   }
 
   .sales-trend__chart {
-    min-width: 520px;
+    min-height: 136px;
+    grid-template-columns: repeat(auto-fit, minmax(32px, 1fr));
+    gap: 7px;
   }
 
-  .sales-trend {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+  .sales-trend__bar-track {
+    min-width: 0;
+    height: 104px;
+  }
+
+  .sales-trend__bar {
+    width: min(22px, 66%);
   }
 }
 </style>
