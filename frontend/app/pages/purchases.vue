@@ -77,16 +77,6 @@ onMounted(async () => {
 
 <template>
   <div class="purchases-page">
-    <header class="purchases-page__header">
-      <div>
-        <h1 class="purchases-page__title">进货</h1>
-        <p class="purchases-page__description">
-          以进货单为中心录入，多商品明细确认后由服务端创建入库流水；AI 识别必须人工确认后才能入账。
-        </p>
-      </div>
-      <StatusBadge label="确认后入库" tone="success" />
-    </header>
-
     <PurchaseSummaryStrip
       :total-cost="summary.totalCost"
       :quantity="summary.quantity"
@@ -158,37 +148,9 @@ onMounted(async () => {
   gap: var(--space-4);
 }
 
-.purchases-page__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-4);
-}
-
-.purchases-page__title {
-  margin: 0;
-  font-size: 24px;
-  line-height: 1.25;
-}
-
-.purchases-page__description {
-  max-width: 860px;
-  margin: var(--space-2) 0 0;
-  color: var(--color-text-muted);
-  line-height: 1.7;
-}
-
 @media (max-width: 760px) {
   .purchases-page {
     gap: var(--space-3);
-  }
-
-  .purchases-page__header {
-    display: grid;
-  }
-
-  .purchases-page__title {
-    font-size: 20px;
   }
 }
 </style>

@@ -56,16 +56,6 @@ onMounted(async () => {
 
 <template>
   <div class="inventory-page">
-    <header class="inventory-page__header">
-      <div>
-        <h1 class="inventory-page__title">库存</h1>
-        <p class="inventory-page__description">
-          余额从服务端读取，库存真相以 stock_movements 为准；浏览器只能通过盘点调整接口发起变化。
-        </p>
-      </div>
-      <StatusBadge label="库存不可直改" tone="info" />
-    </header>
-
     <InventoryFilters
       :filters="filters"
       :machines="machineOptions"
@@ -126,26 +116,6 @@ onMounted(async () => {
   gap: var(--space-4);
 }
 
-.inventory-page__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-4);
-}
-
-.inventory-page__title {
-  margin: 0;
-  font-size: 24px;
-  line-height: 1.25;
-}
-
-.inventory-page__description {
-  max-width: 820px;
-  margin: var(--space-2) 0 0;
-  color: var(--color-text-muted);
-  line-height: 1.7;
-}
-
 .inventory-page__body {
   min-width: 0;
   display: grid;
@@ -172,14 +142,6 @@ onMounted(async () => {
 @media (max-width: 760px) {
   .inventory-page {
     gap: var(--space-3);
-  }
-
-  .inventory-page__header {
-    display: grid;
-  }
-
-  .inventory-page__title {
-    font-size: 20px;
   }
 }
 </style>

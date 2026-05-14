@@ -93,16 +93,6 @@ onMounted(async () => {
 
 <template>
   <div class="sales-page">
-    <header class="sales-page__header">
-      <div>
-        <h1 class="sales-page__title">销售</h1>
-        <p class="sales-page__description">
-          销售、退款、损耗使用独立单据入口；前端只读取库存快照并做提交前提示，最终库存变更以后端流水为准。
-        </p>
-      </div>
-      <StatusBadge label="不使用负数销售" tone="info" />
-    </header>
-
     <SalesModeTabs v-model="activeType" />
 
     <SalesSummaryStrip
@@ -182,37 +172,9 @@ onMounted(async () => {
   gap: var(--space-4);
 }
 
-.sales-page__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-4);
-}
-
-.sales-page__title {
-  margin: 0;
-  font-size: 24px;
-  line-height: 1.25;
-}
-
-.sales-page__description {
-  max-width: 880px;
-  margin: var(--space-2) 0 0;
-  color: var(--color-text-muted);
-  line-height: 1.7;
-}
-
 @media (max-width: 760px) {
   .sales-page {
     gap: var(--space-3);
-  }
-
-  .sales-page__header {
-    display: grid;
-  }
-
-  .sales-page__title {
-    font-size: 20px;
   }
 }
 </style>

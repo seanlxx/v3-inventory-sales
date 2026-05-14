@@ -14,7 +14,6 @@ const {
   productMovements,
   loading,
   saving,
-  archiving,
   movementsLoading,
   error,
   movementsError,
@@ -67,16 +66,6 @@ onMounted(() => {
 
 <template>
   <div class="products-page">
-    <header class="products-page__header">
-      <div>
-        <h1 class="products-page__title">商品</h1>
-        <p class="products-page__description">
-          管理商品主数据；库存只展示服务端余额，变化来源以 stock_movements 为准。
-        </p>
-      </div>
-      <StatusBadge :label="archiving ? '归档中' : '库存只读'" :tone="archiving ? 'warning' : 'info'" />
-    </header>
-
     <ProductFilters
       :filters="filters"
       :machines="machineOptions"
@@ -125,37 +114,9 @@ onMounted(() => {
   gap: var(--space-4);
 }
 
-.products-page__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-4);
-}
-
-.products-page__title {
-  margin: 0;
-  font-size: 24px;
-  line-height: 1.25;
-}
-
-.products-page__description {
-  max-width: 760px;
-  margin: var(--space-2) 0 0;
-  color: var(--color-text-muted);
-  line-height: 1.7;
-}
-
 @media (max-width: 760px) {
   .products-page {
     gap: var(--space-3);
-  }
-
-  .products-page__header {
-    display: grid;
-  }
-
-  .products-page__title {
-    font-size: 20px;
   }
 }
 </style>

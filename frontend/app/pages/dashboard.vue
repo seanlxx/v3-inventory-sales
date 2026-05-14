@@ -26,16 +26,6 @@ onMounted(() => {
 
 <template>
   <div class="dashboard-page">
-    <header class="dashboard-page__header">
-      <div>
-        <h1 class="dashboard-page__title">仪表盘</h1>
-        <p class="dashboard-page__description">
-          查看经营指标、销售趋势、售货机排行和库存风险。
-        </p>
-      </div>
-      <StatusBadge :label="loading ? '更新中' : '已更新'" :tone="loading ? 'warning' : 'success'" />
-    </header>
-
     <DashboardFilters
       :filters="filters"
       :machines="machineOptions"
@@ -88,26 +78,6 @@ onMounted(() => {
   gap: var(--space-4);
 }
 
-.dashboard-page__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-4);
-}
-
-.dashboard-page__title {
-  margin: 0;
-  font-size: 24px;
-  line-height: 1.25;
-}
-
-.dashboard-page__description {
-  max-width: 760px;
-  margin: var(--space-2) 0 0;
-  color: var(--color-text-muted);
-  line-height: 1.7;
-}
-
 .dashboard-page__error {
   display: flex;
   align-items: center;
@@ -156,18 +126,8 @@ onMounted(() => {
     gap: var(--space-3);
   }
 
-  .dashboard-page__header {
-    display: grid;
-    align-items: start;
-    justify-items: start;
-  }
-
   .dashboard-page__error {
     display: grid;
-  }
-
-  .dashboard-page__title {
-    font-size: 20px;
   }
 }
 </style>

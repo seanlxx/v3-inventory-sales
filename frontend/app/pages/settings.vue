@@ -170,16 +170,6 @@ onMounted(async () => {
 
 <template>
   <div class="settings-page">
-    <header class="settings-page__header">
-      <div>
-        <h1 class="settings-page__title">设置</h1>
-        <p class="settings-page__description">
-          维护账号、售货机、分类、库存阈值和 AI provider 配置。
-        </p>
-      </div>
-      <StatusBadge :label="loading ? '加载中' : '已加载'" :tone="loading ? 'warning' : 'success'" />
-    </header>
-
     <section v-if="error" class="settings-page__error surface-panel" role="alert">
       <div>
         <h2 class="settings-page__error-title">设置加载失败</h2>
@@ -336,26 +326,6 @@ onMounted(async () => {
   gap: var(--space-4);
 }
 
-.settings-page__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-4);
-}
-
-.settings-page__title {
-  margin: 0;
-  font-size: 24px;
-  line-height: 1.25;
-}
-
-.settings-page__description {
-  max-width: 760px;
-  margin: var(--space-2) 0 0;
-  color: var(--color-text-muted);
-  line-height: 1.7;
-}
-
 .settings-page__error {
   display: flex;
   align-items: center;
@@ -494,14 +464,9 @@ onMounted(async () => {
     gap: var(--space-3);
   }
 
-  .settings-page__header,
   .settings-page__error,
   .settings-page__provider-heading {
     display: grid;
-  }
-
-  .settings-page__title {
-    font-size: 20px;
   }
 
   .settings-page__grid,
