@@ -234,12 +234,14 @@ function confirmOrder() {
 
 <style scoped>
 .sales-ai {
+  min-width: 0;
   display: grid;
   gap: var(--space-4);
 }
 
 .sales-ai__top,
 .sales-ai__actions {
+  min-width: 0;
   display: flex;
   align-items: end;
   justify-content: space-between;
@@ -247,6 +249,7 @@ function confirmOrder() {
 }
 
 .sales-ai__upload {
+  min-width: 0;
   flex: 1 1 auto;
   display: grid;
   gap: var(--space-2);
@@ -264,6 +267,8 @@ function confirmOrder() {
 }
 
 .sales-ai__upload input {
+  min-width: 0;
+  max-width: 100%;
   min-height: 44px;
 }
 
@@ -273,18 +278,21 @@ function confirmOrder() {
 }
 
 .sales-ai__grid {
+  min-width: 0;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-3);
 }
 
 .sales-ai__field {
+  min-width: 0;
   display: grid;
   gap: 6px;
 }
 
 .sales-ai__select-control {
   width: 100%;
+  min-width: 0;
   min-height: var(--control-height);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-2);
@@ -343,7 +351,9 @@ function confirmOrder() {
 .sales-ai__select,
 .sales-ai__input {
   width: 100%;
+  min-width: 0;
   min-height: 38px;
+  box-sizing: border-box;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-2);
   padding: 0 var(--space-2);
@@ -393,6 +403,7 @@ tbody tr:last-child td {
 @media (max-width: 760px) {
   .sales-ai__top,
   .sales-ai__actions {
+    min-width: 0;
     display: grid;
     grid-template-columns: 1fr;
     align-items: stretch;
@@ -415,6 +426,7 @@ tbody tr:last-child td {
 
   .sales-ai__scroll {
     overflow-x: visible;
+    border: 0;
   }
 
   .sales-ai__table,
@@ -434,14 +446,20 @@ tbody tr:last-child td {
 
   .sales-ai__table tbody {
     display: grid;
+    gap: var(--space-3);
   }
 
   .sales-ai__table tr {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: var(--space-2);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3) var(--space-2);
     padding: var(--space-3);
-    border-bottom: 1px solid var(--color-border);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-2);
+    background: var(--color-surface);
   }
 
   .sales-ai__table td {
@@ -462,6 +480,10 @@ tbody tr:last-child td {
     font-weight: 800;
   }
 
+  .sales-ai__number {
+    text-align: left;
+  }
+
   .sales-ai__name-cell,
   .sales-ai__product-cell,
   .sales-ai__empty {
@@ -473,9 +495,7 @@ tbody tr:last-child td {
   }
 
   .sales-ai__matched-name {
-    display: block;
-    margin-bottom: var(--space-2);
-    line-height: 1.45;
+    display: none;
   }
 
   .sales-ai__select,
@@ -485,10 +505,24 @@ tbody tr:last-child td {
 
   .sales-ai__table {
     min-width: 0;
+    max-width: 100%;
   }
 
   .sales-ai__input {
     max-width: none;
+  }
+
+  .sales-ai__footer {
+    position: sticky;
+    bottom: calc(-1 * var(--space-4));
+    margin: 0 calc(-1 * var(--space-4));
+    padding: var(--space-3) var(--space-4) calc(var(--space-3) + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--color-border);
+    background: var(--color-surface);
+  }
+
+  .sales-ai__footer p {
+    text-align: left;
   }
 }
 </style>

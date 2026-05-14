@@ -224,12 +224,14 @@ function confirmOrder() {
 
 <style scoped>
 .ai-review {
+  min-width: 0;
   display: grid;
   gap: var(--space-4);
 }
 
 .ai-review__top,
 .ai-review__actions {
+  min-width: 0;
   display: flex;
   align-items: end;
   justify-content: space-between;
@@ -237,6 +239,7 @@ function confirmOrder() {
 }
 
 .ai-review__upload {
+  min-width: 0;
   flex: 1 1 auto;
   display: grid;
   gap: var(--space-2);
@@ -253,6 +256,8 @@ function confirmOrder() {
 }
 
 .ai-review__upload input {
+  min-width: 0;
+  max-width: 100%;
   min-height: 44px;
 }
 
@@ -262,6 +267,7 @@ function confirmOrder() {
 }
 
 .ai-review__grid {
+  min-width: 0;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-3);
@@ -318,7 +324,9 @@ function confirmOrder() {
 .ai-review__select,
 .ai-review__input {
   width: 100%;
+  min-width: 0;
   min-height: 38px;
+  box-sizing: border-box;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-2);
   padding: 0 var(--space-2);
@@ -368,6 +376,7 @@ tbody tr:last-child td {
 @media (max-width: 760px) {
   .ai-review__top,
   .ai-review__actions {
+    min-width: 0;
     display: grid;
     grid-template-columns: 1fr;
     align-items: stretch;
@@ -386,6 +395,7 @@ tbody tr:last-child td {
 
   .ai-review__scroll {
     overflow-x: visible;
+    border: 0;
   }
 
   .ai-review__table,
@@ -405,14 +415,20 @@ tbody tr:last-child td {
 
   .ai-review__table tbody {
     display: grid;
+    gap: var(--space-3);
   }
 
   .ai-review__table tr {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(116px, 42%);
-    gap: var(--space-2);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3) var(--space-2);
     padding: var(--space-3);
-    border-bottom: 1px solid var(--color-border);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-2);
+    background: var(--color-surface);
   }
 
   .ai-review__table td {
@@ -433,6 +449,10 @@ tbody tr:last-child td {
     font-weight: 800;
   }
 
+  .ai-review__number {
+    text-align: left;
+  }
+
   .ai-review__name-cell,
   .ai-review__product-cell,
   .ai-review__empty {
@@ -444,9 +464,7 @@ tbody tr:last-child td {
   }
 
   .ai-review__matched-name {
-    display: block;
-    margin-bottom: var(--space-2);
-    line-height: 1.45;
+    display: none;
   }
 
   .ai-review__select,
@@ -456,10 +474,24 @@ tbody tr:last-child td {
 
   .ai-review__table {
     min-width: 0;
+    max-width: 100%;
   }
 
   .ai-review__input {
     max-width: none;
+  }
+
+  .ai-review__footer {
+    position: sticky;
+    bottom: calc(-1 * var(--space-4));
+    margin: 0 calc(-1 * var(--space-4));
+    padding: var(--space-3) var(--space-4) calc(var(--space-3) + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--color-border);
+    background: var(--color-surface);
+  }
+
+  .ai-review__footer p {
+    text-align: left;
   }
 }
 </style>
