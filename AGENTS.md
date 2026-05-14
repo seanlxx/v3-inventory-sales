@@ -1,8 +1,59 @@
 # AGENTS.md
 
 > 本文件是本仓库唯一的项目说明与 AI 操作规范。
-> §1–§2 面向人类读者，§3–§8 面向 AI agent。
+> §1–§2 面向人类读者，§3–§9 面向 AI agent。
 > **开始任何任务前先读完本文件。**
+>
+> 章节速查：
+> - §0 接到需求后的标准工作流（最重要，禁止"挨个方法试一遍"）
+> - §1 项目概况 / §2 常用命令
+> - §3 AI 操作规则 / §4 移动端 UI 规则
+> - §5 代码定位速查表 / §6 常见任务决策树
+> - §7 前后端联调规则 / §8 AI 对话行为规范 / §9 反复出现的坑
+
+---
+
+## 0. 接到需求后的标准工作流
+
+> **核心原则：先理解 → 再定位 → 再动手。禁止"挨个方法试一遍"。**
+> 用户每次提需求，按下面 5 步走，不要跳步、不要发明新流程。
+
+### 0.1 五步工作法
+
+```
+① 理解   → 复述用户需求，识别任务类型（UI / 后端 / 文档 / 排查）
+② 定位   → 用 §5 速查表锁定最多 1–3 个目标文件，不做全仓库搜索
+③ 计划   → 列出"准备改哪些文件、为什么改"，等用户确认或直接执行
+④ 执行   → 一次性改完一批相关文件，不试探性地反复改
+⑤ 验证+提交 → 按 §3.4 选最小验证方式 → §3.5 自动 commit + push
+```
+
+### 0.2 禁止的"盲试"模式
+
+| ❌ 盲试行为 | ✅ 正确做法 |
+| --- | --- |
+| 不读 §5 速查表，先 `Glob` 全仓库，再 `Grep` 全仓库，再逐个 `Read` | 先查 §5.1 / §5.2 找到具体文件，再 `Read` 那一个 |
+| 一种方案没生效就改成另一种，再不行再换第三种 | 第一次失败后**停下来**看报错，理解根因再改 |
+| 同一个错误反复 build 3 次以上，每次只改一点 | 第 2 次还没好 → 重新读源代码 / 报错堆栈，不要继续盲改 |
+| 不确认用户意图，假设"用户大概是想……" | 意图不明时**一句话问清**，比返工 10 分钟更省时间 |
+| 改之前先把目录列一遍、把 README 读一遍、把同名文件全打开 | 直接打开目标文件，不需要的不读 |
+| 用 PowerShell `Get-Content` 读含中文的 UTF-8 文件 | 用 `Read` 工具读，PowerShell 默认编码会乱码 |
+
+### 0.3 何时该停下来问用户
+
+遇到以下情况**必须**问用户，不要猜：
+
+1. 用户描述里有歧义词："优化一下"、"改好看点"、"处理掉" → 问具体期望
+2. 改动会影响数据库 schema、删除字段、重命名表 → 先确认
+3. 改动涉及钱（价格、利润计算、库存余额公式） → 先确认
+4. 用户说"那个 bug" 但没说哪个 → 先确认是哪个
+5. 同一个问题已经返工过 2 次 → 停下来对齐理解
+
+### 0.4 何时不需要问、直接做
+
+- 任务描述明确 + §5 能定位到文件 + 改动不涉及上面 §0.3 的情况 → 直接做
+- 用户给了清晰的修改点（"把 X 改成 Y"） → 直接做
+- 纯文档 / 纯样式微调 → 直接做
 
 ---
 
@@ -69,16 +120,19 @@
 │   └── test-inventory-service.mjs
 ├── public_headers          # Pages 安全响应头 → 构建时复制为 dist/_headers
 ├── wrangler.jsonc           # Cloudflare 部署配置
+├── dev.bat                  # Windows 双击入口：调用 scripts/dev.ps1 -SyncRemote
 ├── AGENTS.md               # ← 你正在读的文件
 ├── CLAUDE.md               # Claude 专用指令（OpenACP 本地工作区说明）
 └── .gitignore
 ```
 
-**不手工编辑 / 不提交的目录：**
+**不手工编辑 / 不提交的目录（已在 `.gitignore`）：**
 
 | 路径 | 说明 |
 | --- | --- |
 | `dist/` | 构建产物，由 `scripts/build.ps1` 生成 |
+| `output/` | 本地调试日志、截图、临时产物 |
+| `.migration/` | 旧版数据迁移导出的 JSON / SQL，含敏感数据 |
 | `.wrangler/` | wrangler 本地缓存 |
 | `.sisyphus/` | 本地编排状态 |
 | `.openacp/` | OpenACP 本地工作区（含 secrets） |
@@ -174,6 +228,10 @@ npx wrangler d1 migrations apply v3-vending-inventory-sales-db --local
 
 # ── 仅应用 D1 迁移（远程生产）──
 npx wrangler d1 migrations apply v3-vending-inventory-sales-db --remote
+
+# ── 跑回归测试（改了 inventory-service.js / ai-proxy.js 后必须跑）──
+powershell -ExecutionPolicy Bypass -File ./scripts/test.ps1
+# 内部依次执行：test-inventory-service.mjs / test-ai-purchase-recognition.mjs / test-ai-proxy-routing.mjs
 ```
 
 **本地启动流程摘要：**
@@ -390,6 +448,22 @@ frontend/app/composables/      ← API 封装和页面数据流
 
 > 新增 UI 元素时，**先查看上表有没有现成组件**。不要自己写 `<dialog>` 或手搓表格。
 
+#### 认证与请求基础设施
+
+| 文件 | 职责 |
+| --- | --- |
+| `composables/useApi.ts` | `$fetch` 封装：自动加 `X-VM-Session` token、统一错误处理、loading 状态 |
+| `composables/useAuth.ts` | 登录、登出、改密码等认证操作 |
+| `composables/useClipboardImagePaste.ts` | 剪贴板图片粘贴（进货/销售单图片录入） |
+| `stores/auth.ts` | 登录态、token、过期处理 |
+| `stores/toast.ts` | 全局提示消息 |
+| `plugins/auth.client.ts` | 启动时恢复登录态、路由守卫 |
+| `types/api.ts` | `ApiError` / `ApiRequestOptions` 等通用 API 类型 |
+| `types/auth.ts` | 登录响应、用户信息类型 |
+| `utils/format.ts` | 金额（分→元）、日期、数量等格式化函数（业务代码反复用到，**不要重写**） |
+
+> 改登录态、token 刷新、401 处理 → 看 `useApi.ts` + `stores/auth.ts`，不要去翻别的地方。
+
 #### 样式文件分层
 
 | 文件 | 职责 | 什么时候改 |
@@ -527,7 +601,7 @@ Composable (composables/use*.ts)  ←──→  API 端点 (functions/api/*.js)
 | API 返回字段名或结构 | 前端 `types/` 类型定义 + `composables/` 中的解析逻辑 |
 | 前端请求参数 | 后端 `validators.js` 校验规则 + API 处理函数 |
 | 数据库表结构（新迁移） | `inventory-service.js` 中的 SQL + 前端类型 |
-| 新增 API 路由 | `composables/useApi.ts` 中的 base URL 配置 + 对应 composable |
+| 新增 API 路由 | 对应 `composables/use*.ts` 中要新增请求方法（前端通过 `useApi().request('/path')` 调用，路径前缀由 `useApi.ts` 内部统一拼接，**不需要改 base URL**） |
 | 删除 / 重命名 API | 全局搜索前端中对该路径的 `fetch` / `$fetch` 调用 |
 
 ### 7.3 API 请求约定
