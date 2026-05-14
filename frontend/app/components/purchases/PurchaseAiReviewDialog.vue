@@ -70,6 +70,26 @@ function handleFileChange(event: Event) {
   if (file) emit('imageSelected', file)
 }
 
+function addManualCandidate() {
+  const newCandidate: PurchaseAiCandidate = {
+    id: `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    rawName: '手动添加',
+    productId: '',
+    productName: '',
+    confidence: 'high',
+    quantity: 1,
+    unitPrice: 0,
+    totalPrice: 0,
+    issue: '未匹配商品'
+  }
+  emit('updateCandidates', [...props.candidates, newCandidate])
+}
+
+function removeCandidate(index: number) {
+  const next = props.candidates.filter((_, i) => i !== index)
+  emit('updateCandidates', next)
+}
+
 useClipboardImagePaste({
   enabled: open,
   fileNamePrefix: 'purchase-screenshot',
@@ -130,6 +150,12 @@ function confirmOrder() {
         {{ props.errorMessage }}
       </p>
 
+      <div class="ai-review__toolbar">
+        <AppButton variant="secondary" @click="addManualCandidate">
+          + 手动添加商品
+        </AppButton>
+      </div>
+
       <div class="ai-review__scroll">
         <table class="ai-review__table">
           <thead>
@@ -141,12 +167,13 @@ function confirmOrder() {
               <th scope="col" class="ai-review__number">单价</th>
               <th scope="col" class="ai-review__number">小计</th>
               <th scope="col" class="ai-review__badge-col">异常</th>
+              <th scope="col" class="ai-review__action-col">操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="props.candidates.length === 0">
-              <td class="ai-review__empty" colspan="7">
-                上传截图并识别后，在这里人工确认明细
+              <td class="ai-review__empty" colspan="8">
+                上传截图并识别后，在这里人工确认明细；也可以点击上方"+ 手动添加商品"直接录入
               </td>
             </tr>
             <tr v-for="(candidate, index) in props.candidates" v-else :key="candidate.id">
@@ -155,16 +182,12 @@ function confirmOrder() {
                 <span class="ai-review__matched-name">
                   {{ candidate.productName || '未匹配商品' }}
                 </span>
-                <select
-                  class="ai-review__select"
-                  :value="candidate.productId"
-                  @change="updateCandidate(index, { productId: ($event.target as HTMLSelectElement).value })"
-                >
-                  <option value="">选择商品</option>
-                  <option v-for="product in props.products" :key="product.id" :value="product.id">
-                    {{ product.name }}
-                  </option>
-                </select>
+                <ProductSearchSelect
+                  :model-value="candidate.productId"
+                  :products="props.products"
+                  placeholder="选择商品"
+                  @update:model-value="(value: string) => updateCandidate(index, { productId: value })"
+                />
               </td>
               <td data-label="置信度">
                 <StatusBadge :label="confidenceLabel(candidate.confidence)" :tone="confidenceTone(candidate.confidence)" />
@@ -196,6 +219,11 @@ function confirmOrder() {
                   :label="candidate.issue || '已确认'"
                   :tone="candidate.issue ? 'danger' : 'success'"
                 />
+              </td>
+              <td data-label="操作" class="ai-review__action-cell">
+                <button type="button" class="ai-review__remove" @click="removeCandidate(index)">
+                  删除
+                </button>
               </td>
             </tr>
           </tbody>
@@ -369,6 +397,35 @@ function confirmOrder() {
   font-weight: 700;
 }
 
+.ai-review__toolbar {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.ai-review__action-col {
+  width: 72px;
+}
+
+.ai-review__action-cell {
+  text-align: center;
+}
+
+.ai-review__remove {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2);
+  padding: 6px 10px;
+  background: var(--color-surface);
+  color: var(--color-danger);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ai-review__remove:hover {
+  border-color: var(--color-danger);
+  background: var(--color-danger-soft, #fef2f2);
+}
+
 tbody tr:last-child td {
   border-bottom: 0;
 }
@@ -457,6 +514,15 @@ tbody tr:last-child td {
   .ai-review__product-cell,
   .ai-review__empty {
     grid-column: 1 / -1;
+  }
+
+  .ai-review__action-cell {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
+
+  .ai-review__remove {
+    width: 100%;
   }
 
   .ai-review__name-cell {

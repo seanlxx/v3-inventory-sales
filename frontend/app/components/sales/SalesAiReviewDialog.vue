@@ -76,6 +76,26 @@ function handleFileChange(event: Event) {
   if (file) emit('imageSelected', file)
 }
 
+function addManualCandidate() {
+  const newCandidate: SalesAiCandidate = {
+    id: `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    rawName: '手动添加',
+    productId: '',
+    productName: '',
+    confidence: 'high',
+    quantity: 1,
+    sellPrice: 0,
+    itemRevenue: 0,
+    issue: '未匹配商品'
+  }
+  emit('updateCandidates', [...props.candidates, newCandidate])
+}
+
+function removeCandidate(index: number) {
+  const next = props.candidates.filter((_, i) => i !== index)
+  emit('updateCandidates', next)
+}
+
 useClipboardImagePaste({
   enabled: open,
   fileNamePrefix: 'sales-screenshot',
@@ -144,6 +164,12 @@ function confirmOrder() {
         {{ props.errorMessage || formError || props.inventoryError }}
       </p>
 
+      <div class="sales-ai__toolbar">
+        <AppButton variant="secondary" @click="addManualCandidate">
+          + 手动添加商品
+        </AppButton>
+      </div>
+
       <div class="sales-ai__scroll">
         <table class="sales-ai__table">
           <thead>
@@ -156,12 +182,13 @@ function confirmOrder() {
               <th scope="col" class="sales-ai__number">单价</th>
               <th scope="col" class="sales-ai__number">小计</th>
               <th scope="col" class="sales-ai__badge-col">异常</th>
+              <th scope="col" class="sales-ai__action-col">操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="props.candidates.length === 0">
-              <td class="sales-ai__empty" colspan="8">
-                上传截图并识别后，在这里人工确认销售明细
+              <td class="sales-ai__empty" colspan="9">
+                上传截图并识别后，在这里人工确认销售明细；也可以点击上方"+ 手动添加商品"直接录入
               </td>
             </tr>
             <tr v-for="(candidate, index) in props.candidates" v-else :key="candidate.id">
@@ -170,16 +197,12 @@ function confirmOrder() {
                 <span class="sales-ai__matched-name">
                   {{ candidate.productName || '未匹配商品' }}
                 </span>
-                <select
-                  class="sales-ai__select"
-                  :value="candidate.productId"
-                  @change="updateCandidate(index, { productId: ($event.target as HTMLSelectElement).value })"
-                >
-                  <option value="">选择商品</option>
-                  <option v-for="product in props.products" :key="product.id" :value="product.id">
-                    {{ product.name }}
-                  </option>
-                </select>
+                <ProductSearchSelect
+                  :model-value="candidate.productId"
+                  :products="props.products"
+                  placeholder="选择商品"
+                  @update:model-value="(value: string) => updateCandidate(index, { productId: value })"
+                />
               </td>
               <td data-label="库存">{{ formatQuantity(productById(candidate.productId)?.currentStock) }}</td>
               <td data-label="置信度">
@@ -209,6 +232,11 @@ function confirmOrder() {
               </td>
               <td data-label="异常">
                 <StatusBadge :label="candidate.issue || '已确认'" :tone="candidate.issue ? 'danger' : 'success'" />
+              </td>
+              <td data-label="操作" class="sales-ai__action-cell">
+                <button type="button" class="sales-ai__remove" @click="removeCandidate(index)">
+                  删除
+                </button>
               </td>
             </tr>
           </tbody>
@@ -396,6 +424,35 @@ function confirmOrder() {
   font-weight: 700;
 }
 
+.sales-ai__toolbar {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.sales-ai__action-col {
+  width: 72px;
+}
+
+.sales-ai__action-cell {
+  text-align: center;
+}
+
+.sales-ai__remove {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2);
+  padding: 6px 10px;
+  background: var(--color-surface);
+  color: var(--color-danger);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sales-ai__remove:hover {
+  border-color: var(--color-danger);
+  background: var(--color-danger-soft, #fef2f2);
+}
+
 tbody tr:last-child td {
   border-bottom: 0;
 }
@@ -488,6 +545,15 @@ tbody tr:last-child td {
   .sales-ai__product-cell,
   .sales-ai__empty {
     grid-column: 1 / -1;
+  }
+
+  .sales-ai__action-cell {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
+
+  .sales-ai__remove {
+    width: 100%;
   }
 
   .sales-ai__name-cell {
