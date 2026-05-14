@@ -667,3 +667,109 @@ Composable (composables/use*.ts)  ←──→  API 端点 (functions/api/*.js)
 - 前端改动在 dev 服务运行中会自动热更新（Nuxt HMR），**不需要重启**。
 - 改了 `functions/api/` 的文件才需要重启 dev 服务。
 - 不要在同一次任务中启动多个 dev 服务实例。
+
+---
+
+## 9. 反复出现的坑（环境问题速查）
+
+> 这些不是项目代码问题，是 Windows + PowerShell 5.1 + Node 工具链的固定坑。
+> **下次再遇到不要重新摸索，直接照抄解决方案。**
+
+### 9.1 `npx.ps1` / `npm.ps1` 被执行策略拦截
+
+**症状：** 跑 `npx wrangler ...` 或 `npm install` 报 `脚本无法加载，因为在此系统上禁止运行脚本` / `is not digitally signed`。
+
+**根因：** PowerShell 5.1 默认执行策略 `Restricted` / `Undefined` 不允许跑 `.ps1`。npm 同时装了 `npx.cmd` 和 `npx.ps1`，PowerShell 优先选 `.ps1` → 被拦。
+
+**永久解决（推荐，做一次就行）：**
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+
+**临时绕过（不改策略）：**
+```powershell
+# 用 .cmd 后缀显式调用 cmd 版本
+npx.cmd wrangler d1 execute ...
+npm.cmd install ...
+
+# 或用 cmd /c 包裹
+cmd /c "npx wrangler d1 execute ..."
+```
+
+### 9.2 PowerShell 5.1 写文件默认带 UTF-8 BOM
+
+**症状：** 用 `Set-Content` / `Out-File` / `>` 写出的 JSON / 配置文件，被 Node / `JSON.parse` / Playwright / 其他工具读取时报 `Unexpected token` 或编码错误。
+
+**根因：** PowerShell 5.1 默认编码是 `UTF-8 with BOM`，BOM 字符（`\uFEFF`）会让大部分非 Windows 工具解析失败。
+
+**正确写法（写文件时直接禁 BOM）：**
+```powershell
+$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+[System.IO.File]::WriteAllText($path, $content, $utf8NoBom)
+```
+
+**已经写了 BOM 想剥掉：**
+```powershell
+$text = [System.IO.File]::ReadAllText($path) -replace '^\uFEFF',''
+$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+[System.IO.File]::WriteAllText($path, $text, $utf8NoBom)
+```
+
+**Node 端兜底（读的时候剥）：**
+```js
+const raw = fs.readFileSync(path, 'utf8').replace(/^\uFEFF/, '')
+const data = JSON.parse(raw)
+```
+
+> ⚠️ 同样的坑也会让 agent 用 PowerShell `Get-Content` 读中文 UTF-8 源文件时显示乱码 → 应改用 `Read` 工具或 `[System.IO.File]::ReadAllText`。
+
+### 9.3 `npx --package X -- node -e "..."` 找不到模块
+
+**症状：** 跑 `npx --package playwright -- node -e "require('playwright')"` 报 `Cannot find module 'playwright'`。
+
+**根因：** `npx --package` 只把临时包的 `bin/` 加进 PATH，**不会**把 `node_modules` 加进 Node 的模块解析路径。
+
+**正确做法：在临时目录装包，从该目录跑脚本：**
+```powershell
+$qaDir = "output\codex-playwright-runner"   # output/ 已被 .gitignore 忽略
+New-Item -ItemType Directory -Force -Path $qaDir | Out-Null
+Push-Location $qaDir
+try {
+  if (!(Test-Path package.json)) { npm.cmd init -y | Out-Null }
+  npm.cmd install playwright@1.60.0 --no-save --no-audit --no-fund
+} finally { Pop-Location }
+
+# 把脚本写成 .mjs 文件放在 $qaDir 里，node 会从该目录解析 node_modules
+node "$qaDir\qa.mjs"
+```
+
+> ⚠️ 临时安装只能放 `output/` 或其他 `.gitignore` 排除的目录，**不要**在 `frontend/` 或仓库根目录装临时依赖。
+
+### 9.4 本地 D1 注入登录 session
+
+**症状：** 本地用 `dev.bat` 启动后，需要带登录态访问 API（例如跑 Playwright 自动化）但没有现成的 session token。
+
+**正确做法：** 用 `scripts/inject-local-session.ps1`（见下文）一键生成 token + 写入本地 D1 + 输出无 BOM 的 `session.json`：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ./scripts/inject-local-session.ps1 -Username admin
+# 输出：
+#   token         : <原始 token，前端用，写到 sessionStorage / X-VM-Session>
+#   tokenHash     : <SHA256 base64url，已写入 app_sessions 表>
+#   sessionFile   : output\local-session\session.json（无 BOM）
+```
+
+**反模式：** 手工拼 INSERT 语句、手工算 SHA256、手工写 session.json（已踩过 BOM 坑）。
+
+### 9.5 Windows 路径与编码相关的其他注意
+
+| 场景 | 正确做法 |
+| --- | --- |
+| 路径含空格 | 用双引号包，例 `& "C:\path with space\tool.exe" args` |
+| 跨平台路径 | Node 脚本里用 `path.join()`，不要手拼 `\` |
+| import 路径大小写 | Windows 不敏感，Cloudflare Pages（Linux）敏感 → push 前确认大小写一致 |
+| 读取含中文的 UTF-8 文件 | 优先用 `Read` 工具，PowerShell 5.1 `Get-Content` 默认会乱码 |
+| 终端显示乱码 | `chcp 65001` 切到 UTF-8 代码页，或用 PowerShell 7（`pwsh`） |
+| **写含中文的 `.ps1` 文件** | **必须用 UTF-8 with BOM 保存**。PS 5.1 默认按系统 ANSI（GBK）解析无 BOM 文件，中文会变乱码并报语法错。AI 工具写出来的 `.ps1` 默认是无 BOM UTF-8，需要重新编码：`[System.IO.File]::WriteAllText($p, [System.IO.File]::ReadAllText($p,[Text.Encoding]::UTF8), (New-Object System.Text.UTF8Encoding $true))` |
+
+
