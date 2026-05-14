@@ -20,7 +20,12 @@ assert.match(matchUtil, /毫升/, 'unit synonyms must cover 毫升 → ml');
 assert.match(matchUtil, /千克/, 'unit synonyms must cover 千克 → kg');
 assert.match(matchUtil, /公斤/, 'unit synonyms must cover 公斤 → kg');
 assert.match(matchUtil, /瓶装/, 'stopwords must cover 瓶装');
+assert.match(matchUtil, /饮用/, 'stopwords must cover 饮用');
+assert.match(matchUtil, /倍半/, 'stopwords must cover 倍半');
 assert.match(matchUtil, /value\s*\*\s*1000/, 'L → ml conversion must be present');
+assert.match(matchUtil, /combinedNameScore/, 'product-match must use combined scoring');
+assert.match(matchUtil, /charCoverage/, 'product-match must use character coverage');
+assert.match(matchUtil, /specScore/, 'product-match must use specification matching');
 
 // ── 3. useSales 必须使用新匹配工具，并注入商品清单 prompt ─────────────────
 assert.match(

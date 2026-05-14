@@ -8,7 +8,7 @@ import type { Product } from '~/types/product'
  * 一旦差一个字就匹配不到。本工具做：
  *   1. 归一化（半角化、去空格/标点、单位同义、去常见修饰词）
  *   2. 双向 includes
- *   3. 字符 bigram Jaccard 评分作为兜底
+ *   3. 字符覆盖率 + 规格命中 + bigram Jaccard 综合评分作为兜底
  */
 
 type UnitReplacer = string | ((match: string, ...groups: string[]) => string)
@@ -40,6 +40,7 @@ const UNIT_SYNONYMS: Array<[RegExp, UnitReplacer]> = [
 ]
 
 const STOPWORDS = [
+  '饮用',
   '装',
   '盒',
   '装版',
@@ -50,10 +51,13 @@ const STOPWORDS = [
   '新品',
   '促销',
   '原味',
-  '原装'
+  '原装',
+  '1倍半',
+  '倍半'
 ]
 
 const PUNCT_RE = /[\s\-_/\\()（）【】\[\]·•・,.，。、;:：；！!?？"'"'""]/g
+const SPEC_RE = /\d+(?:\.\d+)?(?:ml|g|kg|cm|mm|罐|支|包|袋|瓶)?/g
 
 function toHalfWidth(value: string): string {
   let result = ''
@@ -123,6 +127,54 @@ export function nameSimilarity(left: string, right: string): number {
   return intersection / union
 }
 
+function extractSpecs(value: string): string[] {
+  return normalizeProductName(value).match(SPEC_RE) || []
+}
+
+function removeSpecs(value: string): string {
+  return normalizeProductName(value).replace(SPEC_RE, '')
+}
+
+function charCoverage(needle: string, haystack: string): number {
+  if (!needle || !haystack) return 0
+  const chars = Array.from(new Set(needle.split('')))
+  if (chars.length === 0) return 0
+  const hits = chars.filter(char => haystack.includes(char)).length
+  return hits / chars.length
+}
+
+function specScore(left: string, right: string): number {
+  const leftSpecs = extractSpecs(left)
+  const rightSpecs = extractSpecs(right)
+  if (leftSpecs.length === 0 || rightSpecs.length === 0) return 0
+  const hits = leftSpecs.filter(spec => rightSpecs.includes(spec)).length
+  return hits / Math.max(leftSpecs.length, rightSpecs.length)
+}
+
+function combinedNameScore(productName: string, rawName: string): number {
+  const productN = normalizeProductName(productName)
+  const rawN = normalizeProductName(rawName)
+  if (!productN || !rawN) return 0
+  if (productN === rawN) return 1
+  if (productN.includes(rawN) || rawN.includes(productN)) return 0.9
+
+  const productCore = removeSpecs(productName)
+  const rawCore = removeSpecs(rawName)
+  const coverage = Math.max(
+    charCoverage(productCore, rawCore),
+    charCoverage(rawCore, productCore)
+  )
+  const productCoverage = charCoverage(productCore, rawCore)
+  const specs = specScore(productName, rawName)
+  const jaccard = nameSimilarity(productName, rawName)
+
+  // 库名常比 AI 识别名短：库名核心字符都在识别名里，且规格一致时应强匹配。
+  if (specs >= 1 && productCoverage >= 0.72) return Math.max(0.82, jaccard)
+
+  const specBoost = specs >= 1 ? 0.22 : specs > 0 ? 0.1 : 0
+  return Math.min(1, Math.max(jaccard, coverage * 0.72 + specBoost))
+}
+
 export type ProductMatchConfidence = 'high' | 'medium' | 'low'
 
 export type ProductMatchResult = {
@@ -137,8 +189,8 @@ export type ProductMatchResult = {
  * 评分策略：
  *  - 完全相等 / 归一化相等 → 1.0（high）
  *  - 双向 includes 命中 → 0.85（high）
- *  - bigram Jaccard 相似度 ≥ 0.6 → high
- *  - 0.45 ≤ Jaccard < 0.6 → medium
+ *  - 综合相似度 ≥ 0.6 → high
+ *  - 0.45 ≤ 综合相似度 < 0.6 → medium
  *  - 否则 → 视为未匹配（返回 null）
  *
  * 阈值保守：宁可让人工再选一下，也不要错配到不同商品。
@@ -182,7 +234,7 @@ export function matchProductByName(
       }
     }
 
-    const score = nameSimilarity(productName, trimmed)
+    const score = combinedNameScore(productName, trimmed)
     if (score > bestScore) {
       bestScore = score
       bestProduct = product

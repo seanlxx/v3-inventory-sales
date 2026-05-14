@@ -25,8 +25,9 @@ const UNIT_SYNONYMS = [
   [/罐装/g, '']
 ];
 
-const STOPWORDS = ['装', '盒', '装版', '版', '款', '正品', '官方', '新品', '促销', '原味', '原装'];
+const STOPWORDS = ['饮用', '装', '盒', '装版', '版', '款', '正品', '官方', '新品', '促销', '原味', '原装', '1倍半', '倍半'];
 const PUNCT_RE = /[\s\-_/\\()（）【】\[\]·•・,.，。、;:：；！!?？"'"'""]/g;
+const SPEC_RE = /\d+(?:\.\d+)?(?:ml|g|kg|cm|mm|罐|支|包|袋|瓶)?/g;
 
 function toHalfWidth(value) {
   let result = '';
@@ -75,6 +76,53 @@ function nameSimilarity(left, right) {
   return union <= 0 ? 0 : inter / union;
 }
 
+function extractSpecs(value) {
+  return normalizeProductName(value).match(SPEC_RE) || [];
+}
+
+function removeSpecs(value) {
+  return normalizeProductName(value).replace(SPEC_RE, '');
+}
+
+function charCoverage(needle, haystack) {
+  if (!needle || !haystack) return 0;
+  const chars = Array.from(new Set(needle.split('')));
+  if (chars.length === 0) return 0;
+  const hits = chars.filter(char => haystack.includes(char)).length;
+  return hits / chars.length;
+}
+
+function specScore(left, right) {
+  const leftSpecs = extractSpecs(left);
+  const rightSpecs = extractSpecs(right);
+  if (leftSpecs.length === 0 || rightSpecs.length === 0) return 0;
+  const hits = leftSpecs.filter(spec => rightSpecs.includes(spec)).length;
+  return hits / Math.max(leftSpecs.length, rightSpecs.length);
+}
+
+function combinedNameScore(productName, rawName) {
+  const productN = normalizeProductName(productName);
+  const rawN = normalizeProductName(rawName);
+  if (!productN || !rawN) return 0;
+  if (productN === rawN) return 1;
+  if (productN.includes(rawN) || rawN.includes(productN)) return 0.9;
+
+  const productCore = removeSpecs(productName);
+  const rawCore = removeSpecs(rawName);
+  const coverage = Math.max(
+    charCoverage(productCore, rawCore),
+    charCoverage(rawCore, productCore)
+  );
+  const productCoverage = charCoverage(productCore, rawCore);
+  const specs = specScore(productName, rawName);
+  const jaccard = nameSimilarity(productName, rawName);
+
+  if (specs >= 1 && productCoverage >= 0.72) return Math.max(0.82, jaccard);
+
+  const specBoost = specs >= 1 ? 0.22 : specs > 0 ? 0.1 : 0;
+  return Math.min(1, Math.max(jaccard, coverage * 0.72 + specBoost));
+}
+
 function matchProductByName(rawName, products) {
   const empty = { product: null, score: 0, confidence: 'low' };
   if (!rawName || products.length === 0) return empty;
@@ -99,7 +147,7 @@ function matchProductByName(rawName, products) {
       const length = Math.min(productN.length, target.length);
       if (length > bestIncludeLen) { bestInclude = product; bestIncludeLen = length; }
     }
-    const score = nameSimilarity(product.name, trimmed);
+    const score = combinedNameScore(product.name, trimmed);
     if (score > bestScore) { bestScore = score; bestProduct = product; }
   }
   if (bestExact) return { product: bestExact, score: 1, confidence: 'high' };
@@ -113,6 +161,7 @@ function matchProductByName(rawName, products) {
 const products = [
   { id: 'p-coke', name: '可口可乐330ml' },
   { id: 'p-baoli', name: '宝矿力水特500ml' },
+  { id: 'p-cestbon', name: '怡宝纯净水555ml' },
   { id: 'p-wahaha', name: '娃哈哈纯净水596ml' },
   { id: 'p-dongpeng', name: '东鹏补水啦柠檬味555ml' },
   { id: 'p-kangshifu-tea', name: '康师傅茉莉清茶1L' },
@@ -123,6 +172,7 @@ const products = [
 const cases = [
   { input: '可口可乐330ml', expectedId: 'p-coke', minScore: 1 },
   { input: '宝矿力水特500ml', expectedId: 'p-baoli', minScore: 1 },
+  { input: '怡宝饮用纯净水555ml', expectedId: 'p-cestbon' },
   // 用户原报告里失败的样本：
   { input: '娃哈哈纯净水596毫升', expectedId: 'p-wahaha' },                      // 毫升 → ml
   { input: '东鹏补水啦柠檬味555ml', expectedId: 'p-dongpeng' },                    // 完全相等
