@@ -57,7 +57,10 @@
 
 ### 0.5 项目级 Skills（按场景自动加载）
 
-本项目在 `.opencode/skills/` 下注册了 3 个专项 skill，遇到对应场景**优先加载 skill**，不要凭记忆照本节流程做：
+本项目在 `.opencode/skills/` 下注册了两类 skill：**项目专属**（v3 文件路径）+ **通用设计知识**（社区开源）。
+完整说明见 `.opencode/skills/README.md`。
+
+#### 项目专属 skill（含 v3 具体落点）
 
 | 用户描述场景 | 对应 skill | 何时触发 |
 | --- | --- | --- |
@@ -65,6 +68,23 @@
 | 电脑端 / 1280 / 1440 / 1920px / 侧栏比例 / 桌面排版 | `desktop-ui-fix` | 桌面端 UI 修复 |
 | push 后没上线 / Pages 构建失败 / D1 表不存在 / 绑定缺失 | `pages-deploy-troubleshoot` | Cloudflare Pages 部署排查 |
 
+#### 通用设计知识 skill（社区开源，写 / 改任何 UI 前查）
+
+| 用户描述场景 | 对应 skill | 上游 |
+| --- | --- | --- |
+| 任何"做一个页面 / 表单 / 弹窗 / 表格 / 仪表盘 / 美化 UI" | `ui-design-brain`（60+ 组件最佳实践） | carmahhawwari/ui-design-brain |
+| 调整配色 / 主色 / 状态色 / 语义色 | `color-system` | Owl-Listener/designer-skills |
+| 字号层级 / 标题大小 / 字体堆栈 | `typography-scale` | 同上 |
+| 调 padding / margin / gap / 8px 网格 | `spacing-system` | 同上 |
+| 信息优先级 / 让关键信息先被看到 | `visual-hierarchy` | 同上 |
+| 多栏布局 / 卡片网格 / 栅格 | `layout-grid` | 同上 |
+| 响应式策略 / 跨设备适配 | `responsive-design` | 同上 |
+| 仪表盘图表 / 销售曲线 / 利润对比 | `data-visualization` | 同上 |
+| 暗色模式 / 夜间主题 | `dark-mode-design` | 同上 |
+
+> **协作模式：** 通用 skill 提供"该怎么做"的设计原则，项目专属 skill 提供"在 v3 改哪个文件"的落点。
+> 用户说"把仪表盘做得好看一点" → 同时加载 `ui-design-brain` + `visual-hierarchy` + `data-visualization` + `desktop-ui-fix`。
+>
 > Skill 内容是 §4 / §3 的可执行版本，覆盖具体症状 → 文件 → 修复手法的对应关系。
 
 ---
