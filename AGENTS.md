@@ -1,7 +1,7 @@
 # AGENTS.md
 
 > 本文件是本仓库唯一的项目说明与 AI 操作规范。
-> 前半部分（§1–§2）面向人类读者，后半部分（§3）面向 AI agent。
+> §1–§2 面向人类读者，§3–§8 面向 AI agent。
 > **开始任何任务前先读完本文件。**
 
 ---
@@ -17,12 +17,17 @@
 ```
 ┌──────────────────────────────────────────────────────────┐
 │  浏览器（Nuxt 生成的 dist/ 静态资源）                      │
-│  页面：仪表盘 / 商品管理 / 进货管理 / 销售管理 / AI补货 / 设置  │
+│  页面：仪表盘 / 商品管理 / 库存管理 / 进货管理 / 销售管理 / 设置 │
 └────────────────────────┬─────────────────────────────────┘
                          │ fetch /api/*
 ┌────────────────────────▼─────────────────────────────────┐
 │  Cloudflare Pages Functions（functions/api/）             │
-│  ├─ records.js   → CRUD：商品、进货、销售、设置、图片        │
+│  ├─ auth/        → 登录、获取用户、改密码                   │
+│  ├─ products.js  → 商品 CRUD                             │
+│  ├─ inventory/   → 库存操作（余额、流水、进货、销售等）       │
+│  ├─ reports/     → 报表聚合                               │
+│  ├─ settings.js  → 系统设置                               │
+│  ├─ images.js    → R2 图片读取                            │
 │  └─ ai-proxy.js  → AI 模型代理（多 provider 路由）         │
 │                                                          │
 │  绑定：DB (D1)  ·  IMAGES (R2)  ·  环境变量 (API Key)     │
@@ -38,17 +43,27 @@
 │   ├── nuxt.config.ts
 │   └── package.json
 ├── functions/api/
-│   ├── records.js          # 核心 CRUD API（含认证、分页、图片上传）
+│   ├── _middleware.js      # 全局中间件
+│   ├── _shared/            # 认证、D1、HTTP、图片、库存台账、校验
+│   ├── auth/               # 登录 / 获取用户 / 改密码
+│   ├── inventory/          # 库存操作（余额、流水、进货、销售、调整等）
+│   ├── reports/            # 仪表盘 / 库存 / 月度 报表聚合
+│   ├── products.js         # 商品 CRUD
+│   ├── settings.js         # 系统设置 CRUD
+│   ├── images.js           # R2 图片读取
 │   └── ai-proxy.js         # AI 多模型代理路由
 ├── migrations/
 │   ├── 0001_initial_d1_schema.sql
 │   ├── 0002_chunk_record_images.sql
 │   ├── 0003_cap_password_pbkdf2_iterations.sql
-│   └── 0004_r2_image_keys.sql
+│   ├── 0004_r2_image_keys.sql
+│   ├── 0005_query_path_indexes.sql
+│   └── 0006_v3_structured_inventory_schema.sql
 ├── scripts/
 │   ├── build.ps1           # 构建 dist/（Nuxt generate + 复制 _headers）
 │   ├── dev.ps1             # 本地开发（构建 → 迁移 → wrangler pages dev）
 │   ├── sync-d1-remote-to-local.ps1
+│   ├── test.ps1            # 统一回归测试入口
 │   ├── test-ai-proxy-routing.mjs
 │   ├── test-ai-purchase-recognition.mjs
 │   └── test-inventory-service.mjs
@@ -72,8 +87,8 @@
 
 | 类型 | 绑定名 | 资源名 |
 | --- | --- | --- |
-| D1 数据库 | `DB` | `vending-inventory-sales-db` |
-| R2 存储桶 | `IMAGES` | `vending-inventory-sales-images` |
+| D1 数据库 | `DB` | `v3-vending-inventory-sales-db` |
+| R2 存储桶 | `IMAGES` | `v3-vending-inventory-sales-images` |
 
 - Pages 输出目录：`./dist`
 - 数据库迁移目录：`migrations/`
@@ -81,17 +96,21 @@
 
 ### 1.4 数据模型
 
-所有业务数据存储在 `vending_records` 表中，通过 `store` 字段区分类型：
+ v3 使用结构化关系表，schema 定义在 `migrations/0006_v3_structured_inventory_schema.sql`：
 
-| store 值 | 用途 | 关键索引列 |
+| 表 | 用途 | 关键列 |
 | --- | --- | --- |
-| `products` | 商品信息 | `machine_id` |
-| `purchases` | 进货记录 | `product_id`, `record_date` |
-| `sales` | 销售记录 | `machine_id`, `year_month`, `record_date` |
-| `settings` | 系统设置 | — |
+| `products` | 商品主数据 | `id`, `machine_id`, `status` |
+| `purchase_orders` | 进货单头 | `id`, `machine_id`, `date`, `status` |
+| `purchase_items` | 进货单明细 | `order_id`, `product_id`, `quantity`, `unit_price_cents` |
+| `sales_orders` | 销售/退款/损耗单头 | `id`, `type`, `machine_id`, `date`, `status` |
+| `sales_items` | 销售单明细 | `order_id`, `product_id`, `quantity` |
+| `stock_movements` | **库存流水账本**（唯一可信来源） | `product_id`, `movement_type`, `qty_delta` |
+| `inventory_balances` | 库存余额缓存（可由流水重建） | `product_id` |
+| `image_assets` | R2 图片元数据 | `id`, `r2_key`, `source_store` |
+| `settings` | 系统设置 | `key` |
 
-- 每条记录的业务数据以 JSON 存储在 `data` 列。
-- 图片存储在 R2（`IMAGES` 绑定），由 `vending_record_images` 表 + R2 key 关联。
+- 图片二进制存储在 R2（`IMAGES` 绑定），由 `image_assets` 表 + R2 key 关联。
 - 认证相关：`app_auth`（单行密码）、`app_sessions`（会话 token）、`app_login_attempts`（限流）。
 
 ### 1.5 AI 代理环境变量
@@ -119,12 +138,12 @@
 本地修改 → git add → git commit → git push origin master
                                         │
                           GitHub 仓库收到 push
-                          https://github.com/seanlxx/v2-inventory-sales.git
+                          https://github.com/seanlxx/v3-inventory-sales.git
                                         │
                           Cloudflare Pages 自动拉取 → 构建 → 部署上线
 ```
 
-- **代码仓库：** `https://github.com/seanlxx/v2-inventory-sales.git`
+- **代码仓库：** `https://github.com/seanlxx/v3-inventory-sales.git`
 - **部署分支：** `master`
 - **自动部署：** Cloudflare Pages 已绑定 GitHub 仓库，push 到 `master` 后自动触发构建与部署。
 - **AI agent 的职责：** 每次修改文件后，必须完成 `git add → commit → push`，推送到 GitHub 即完成部署。
@@ -181,9 +200,9 @@ dev.bat（同步线上数据后启动）
 
 ```powershell
 # ── 提交并推送到 GitHub，触发 Cloudflare Pages 自动部署 ──
-git -C "C:\Users\Admin\Desktop\v2-inventory-sales" add -A
-git -C "C:\Users\Admin\Desktop\v2-inventory-sales" commit -m "<简明描述本次改动>"
-git -C "C:\Users\Admin\Desktop\v2-inventory-sales" push origin master
+git add -A
+git commit -m "<简明描述本次改动>"
+git push origin master
 ```
 
 > 推送成功后，Cloudflare Pages 会自动拉取最新代码并部署。无需手动触发。
@@ -272,7 +291,7 @@ git -C "C:\Users\Admin\Desktop\v2-inventory-sales" push origin master
 | 1 | 在已知目标文件的情况下，跑全仓库范围的 `rg` / `Select-String` |
 | 2 | 在文档任务里跑前端构建或启动 `wrangler pages dev` |
 | 3 | 把 `dist/` 下的文件当源码来读或改 |
-| 4 | 把已存在的同名规则再加一遍到 `style.fixes.css`，而不是直接修改 |
+| 4 | 改了 CSS 却不检查是否已有同名选择器，导致重复覆盖 |
 | 5 | 把 `.env` / 恢复码 / D1 导出 SQL 的内容粘到对话或文档里 |
 | 6 | 修完一个点顺手重构邻近无关代码 |
 | 7 | 修改了 `dev.bat` 的启动流程后，忘记同步更新本文件中的启动说明 |
