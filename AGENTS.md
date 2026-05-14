@@ -276,6 +276,11 @@ git -C "C:\Users\Admin\Desktop\v2-inventory-sales" push origin master
 | 5 | 把 `.env` / 恢复码 / D1 导出 SQL 的内容粘到对话或文档里 |
 | 6 | 修完一个点顺手重构邻近无关代码 |
 | 7 | 修改了 `dev.bat` 的启动流程后，忘记同步更新本文件中的启动说明 |
+| 8 | 项目已有 `AppDialog`、`DataTable` 等通用组件，却自己手写 `<dialog>` 或 `<table>` |
+| 9 | 改了 API 返回字段但没同步更新前端 `types/` 定义，导致 TypeScript 报错 |
+| 10 | 前端改动后反复重启 dev 服务，实际上 Nuxt HMR 会自动热更新 |
+| 11 | 每改一行就跑一次 `build.ps1`，应该改完一批再跑一次 |
+| 12 | 不确定用户意图时猜着做了一堆，结果方向错了全部返工 |
 
 ### 3.7 结束前记录
 
@@ -329,3 +334,231 @@ frontend/app/composables/      ← API 封装和页面数据流
 | 设置 | `frontend/app/pages/settings.vue` |
 
 4. 确认每个页面在 3 个宽度下均无横向溢出、无遮挡、表格可横滑、按钮可点击。
+
+---
+
+## 5. 代码定位速查表
+
+> **目标：拿到任务后 30 秒内定位到要改的文件，不要做全仓库搜索。**
+
+### 5.1 前端文件定位
+
+#### 页面 → 组件 → composable → 类型 的对应关系
+
+| 页面 | 入口文件 | 业务组件目录 | Composable | 类型定义 |
+| --- | --- | --- | --- | --- |
+| 仪表盘 | `pages/dashboard.vue` | `components/dashboard/` | `useReports.ts` | `types/report.ts` |
+| 商品管理 | `pages/products.vue` | `components/products/` | `useProducts.ts` | `types/product.ts` |
+| 库存管理 | `pages/inventory.vue` | `components/inventory/` | `useInventory.ts` | `types/inventory.ts` |
+| 进货管理 | `pages/purchases.vue` | `components/purchases/` | `usePurchases.ts` | `types/purchase.ts` |
+| 销售管理 | `pages/sales.vue` | `components/sales/` | `useSales.ts` | `types/sale.ts` |
+| 设置 | `pages/settings.vue` | `components/settings/` | `useSettings.ts` | `types/settings.ts` |
+
+> 以上路径都在 `frontend/app/` 下。例：完整路径是 `frontend/app/pages/dashboard.vue`。
+
+#### 通用组件（不要重复造轮子）
+
+| 组件 | 文件 | 用途 |
+| --- | --- | --- |
+| `AppShell` | `components/app/AppShell.vue` | 全局导航框架（顶栏 + 侧栏 + 主区域） |
+| `PagePlaceholder` | `components/app/PagePlaceholder.vue` | 页面骨架屏 / 加载占位 |
+| `AppButton` | `components/common/AppButton.vue` | 统一按钮样式 |
+| `AppDialog` | `components/common/AppDialog.vue` | 弹窗 / 模态框 |
+| `AppDrawer` | `components/common/AppDrawer.vue` | 侧滑抽屉 |
+| `AppInput` | `components/common/AppInput.vue` | 输入框 |
+| `DataTable` | `components/common/DataTable.vue` | 数据表格（已支持横向滚动） |
+| `StatusBadge` | `components/common/StatusBadge.vue` | 状态标签 |
+
+> 新增 UI 元素时，**先查看上表有没有现成组件**。不要自己写 `<dialog>` 或手搓表格。
+
+#### 样式文件分层
+
+| 文件 | 职责 | 什么时候改 |
+| --- | --- | --- |
+| `assets/css/tokens.css` | CSS 变量（颜色、字号、间距、圆角） | 需要新增设计 token 时 |
+| `assets/css/base.css` | 全局重置、body / html 基础样式 | 极少改动 |
+| `assets/css/layout.css` | 页面布局骨架 | 调整侧栏 / 主区域布局时 |
+| `assets/css/components.css` | 组件样式导入 | 极少改动 |
+
+> 组件样式写在 `<style scoped>` 里。全局覆盖样式放 CSS 文件。不要混用。
+
+### 5.2 后端文件定位
+
+#### API 路由 → 文件 对应关系
+
+| API 路径模式 | 处理文件 | 说明 |
+| --- | --- | --- |
+| `/api/auth/*` | `functions/api/auth/login.js` / `profile.js` / `update.js` | 登录、获取用户、改密码 |
+| `/api/products` | `functions/api/products.js` | 商品 CRUD |
+| `/api/settings` | `functions/api/settings.js` | 系统设置 CRUD |
+| `/api/images/*` | `functions/api/images.js` | R2 图片读取 |
+| `/api/inventory/*` | `functions/api/inventory/*.js` | 库存操作（余额、流水、进货、销售、调整、报损、退货、作废） |
+| `/api/reports/*` | `functions/api/reports/dashboard.js` / `inventory.js` / `monthly.js` | 报表聚合 |
+| `/api/ai-proxy` | `functions/api/ai-proxy.js` | AI 多模型代理 |
+
+#### 后端共享模块
+
+| 文件 | 职责 |
+| --- | --- |
+| `functions/api/_shared/auth.js` | 认证中间件（session 校验、密码哈希） |
+| `functions/api/_shared/d1.js` | D1 查询辅助函数 |
+| `functions/api/_shared/http.js` | HTTP 响应构建（JSON / 错误） |
+| `functions/api/_shared/image-service.js` | R2 图片上传、关联、删除 |
+| `functions/api/_shared/inventory-service.js` | **核心：库存台账逻辑**（余额计算、流水记录、对账） |
+| `functions/api/_shared/validators.js` | 请求参数校验 |
+| `functions/api/_middleware.js` | Pages Functions 全局中间件 |
+
+> 改库存相关逻辑，**必须先读 `inventory-service.js`**，它是所有库存操作的唯一入口。
+
+### 5.3 状态管理
+
+| Store 文件 | 职责 |
+| --- | --- |
+| `stores/auth.ts` | 登录态、token、用户信息 |
+| `stores/toast.ts` | 全局提示消息 |
+
+> 状态管理只有 2 个 store，逻辑简单。大部分业务状态在 composable 里管理，不在 store。
+
+---
+
+## 6. 常见任务决策树
+
+> **拿到任务后，按这棵树走，不要自己发明流程。**
+
+### 6.1 判断任务类型
+
+```
+用户说了什么？
+│
+├─ "某个页面显示有问题 / 样式不对"
+│   → §6.2 UI 修复流程
+│
+├─ "增加一个新功能 / 新页面"
+│   → §6.3 新功能开发流程
+│
+├─ "接口报错 / 数据不对"
+│   → §6.4 后端排查流程
+│
+├─ "修改文档 / 更新说明"
+│   → 直接改文档，不跑构建，不启动服务
+│
+└─ "不确定"
+    → 先问用户澄清，不要猜着做
+```
+
+### 6.2 UI 修复流程
+
+```
+1. 用户描述的问题在哪个页面？→ 查 §5.1 定位页面入口
+2. 问题是组件级还是布局级？
+   ├─ 组件级 → 找对应 components/ 子目录
+   └─ 布局级 → 看 AppShell.vue 或 layout.css
+3. 只改最小范围的文件
+4. 跑 build.ps1 确认构建通过
+5. 如果用户要求看效果 → 启动 dev 服务
+6. commit + push
+```
+
+### 6.3 新功能开发流程
+
+```
+1. 明确功能需求，列出要新增/修改的文件
+2. 按这个顺序写：
+   ① types/ → 定义接口类型
+   ② functions/api/ → 后端 API（如果需要）
+   ③ composables/ → 前端数据层
+   ④ components/ → UI 组件
+   ⑤ pages/ → 页面集成
+3. 每一步写完可以跑 build 确认不报错
+4. 最后整体测试 → commit + push
+```
+
+### 6.4 后端排查流程
+
+```
+1. 确认报错的 API 路径 → 查 §5.2 定位处理文件
+2. 检查相关的 _shared/ 模块
+3. 如果涉及数据库 schema → 检查 migrations/ 目录
+4. 修复后用 dev 服务验证 API 返回
+5. commit + push
+```
+
+---
+
+## 7. 前后端联调规则
+
+> 改了前端调后端、或改了后端被前端调，必须检查两端一致性。
+
+### 7.1 数据流向
+
+```
+类型定义 (types/*.ts)
+    ↓ 前端使用
+Composable (composables/use*.ts)  ←──→  API 端点 (functions/api/*.js)
+    ↓ 前端使用                              ↓ 后端使用
+组件 (components/*/*.vue)            共享模块 (_shared/*.js)
+    ↓ 前端使用                              ↓ 后端使用
+页面 (pages/*.vue)                   D1 数据库 / R2 存储
+```
+
+### 7.2 改动一致性检查清单
+
+| 改了什么 | 必须同步检查 |
+| --- | --- |
+| API 返回字段名或结构 | 前端 `types/` 类型定义 + `composables/` 中的解析逻辑 |
+| 前端请求参数 | 后端 `validators.js` 校验规则 + API 处理函数 |
+| 数据库表结构（新迁移） | `inventory-service.js` 中的 SQL + 前端类型 |
+| 新增 API 路由 | `composables/useApi.ts` 中的 base URL 配置 + 对应 composable |
+| 删除 / 重命名 API | 全局搜索前端中对该路径的 `fetch` / `$fetch` 调用 |
+
+### 7.3 API 请求约定
+
+- 前端统一通过 `composables/useApi.ts` 封装的 `$fetch` 发请求。
+- 认证 token 由 `stores/auth.ts` 管理，`useApi.ts` 自动附加。
+- 后端认证由 `_shared/auth.js` 中间件统一处理。
+- 不要在组件里直接写 `fetch('/api/...')`，必须走 composable。
+
+---
+
+## 8. AI 对话行为规范
+
+> 减少对话轮次、减少用户等待时间。
+
+### 8.1 不要过度解释
+
+- ❌ 不要在每次改动前列出 "我现在要做的是……首先……然后……最后……"
+- ✅ 直接说 "改 X 文件的 Y 函数" → 改 → 报告结果
+
+### 8.2 不要反复确认显而易见的事
+
+- ❌ "您是要我修改 products.vue 吗？" （用户已经说了改商品页面）
+- ✅ 直接定位、修改、验证
+
+### 8.3 错误处理
+
+- 构建失败 → 先看报错信息，90% 是 TypeScript 类型错误或 import 路径错误
+- 不要第一反应就重新搜索全仓库，先看报错指向的具体文件和行号
+- 同一个错修了 2 次还没好 → 停下来重新理解错误，不要盲目试
+
+### 8.4 不要做"好心"的额外工作
+
+- 用户让你改一个按钮颜色 → 只改按钮颜色。不要顺手改排版、加动画、重构组件。
+- 用户让你修一个 bug → 只修这个 bug。不要顺手升级依赖、重命名变量、调整代码风格。
+- 用户没说要优化性能 → 不要主动做性能优化。
+
+### 8.5 读文件的纪律
+
+| 场景 | 正确做法 | 错误做法 |
+| --- | --- | --- |
+| 知道要改 `products.vue` | 直接打开 `products.vue` | 先 list 整个 `pages/` 目录，再 list `components/`，再逐个打开 |
+| 找某个函数定义 | 用 grep 搜函数名，只在相关目录内搜 | 从根目录递归搜全仓库 |
+| 检查 API 返回格式 | 打开对应的 `functions/api/` 文件 | 先打开 `_middleware.js`，再打开 `_shared/` 的每个文件 |
+| 改 CSS 变量 | 直接打开 `tokens.css` | 先打开 `base.css`、`layout.css`、`components.css` 逐个看 |
+
+### 8.6 命令执行纪律
+
+- `build.ps1` 成功一次就够了，不要每改一行就跑一次构建。
+- `dev.ps1 -SyncRemote` 启动后不要反复停止重启，除非改了后端文件。
+- 前端改动在 dev 服务运行中会自动热更新（Nuxt HMR），**不需要重启**。
+- 改了 `functions/api/` 的文件才需要重启 dev 服务。
+- 不要在同一次任务中启动多个 dev 服务实例。
