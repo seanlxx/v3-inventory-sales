@@ -125,16 +125,19 @@ function orderQuantity(order: SalesOrder) {
       </div>
       <article v-for="order in props.orders" v-else :key="order.id" class="sales-table__card">
         <header class="sales-table__card-header">
-          <div>
+          <div class="sales-table__card-date">
             <span class="sales-table__card-label">单据日期</span>
             <strong>{{ order.date }}</strong>
           </div>
-          <div class="sales-table__card-badges">
-            <StatusBadge :label="typeLabel(order.type)" :tone="typeTone(order.type)" />
-            <StatusBadge
-              :label="order.status === 'voided' ? '已作废' : '正常'"
-              :tone="order.status === 'voided' ? 'warning' : 'success'"
-            />
+          <div class="sales-table__card-summary">
+            <div class="sales-table__card-badges">
+              <StatusBadge :label="typeLabel(order.type)" :tone="typeTone(order.type)" />
+              <StatusBadge
+                :label="order.status === 'voided' ? '已作废' : '正常'"
+                :tone="order.status === 'voided' ? 'warning' : 'success'"
+              />
+            </div>
+            <strong class="sales-table__card-amount">{{ formatMoney(order.totalAmount) }}</strong>
           </div>
         </header>
 
@@ -150,10 +153,6 @@ function orderQuantity(order: SalesOrder) {
           <div>
             <dt>数量</dt>
             <dd>{{ formatQuantity(orderQuantity(order)) }}</dd>
-          </div>
-          <div class="sales-table__card-total">
-            <dt>金额</dt>
-            <dd>{{ formatMoney(order.totalAmount) }}</dd>
           </div>
         </dl>
 
@@ -267,7 +266,7 @@ tbody tr:last-child td {
 
   .sales-table__cards {
     display: grid;
-    gap: var(--space-3);
+    gap: var(--space-2);
   }
 
   .sales-table__card,
@@ -280,8 +279,8 @@ tbody tr:last-child td {
 
   .sales-table__card {
     display: grid;
-    gap: var(--space-3);
-    padding: var(--space-3);
+    gap: var(--space-2);
+    padding: var(--space-2);
   }
 
   .sales-table__card-state {
@@ -303,18 +302,25 @@ tbody tr:last-child td {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-3);
+    gap: var(--space-2);
   }
 
-  .sales-table__card-header > div {
+  .sales-table__card-date,
+  .sales-table__card-summary {
     min-width: 0;
   }
 
-  .sales-table__card-header strong {
+  .sales-table__card-date strong {
     display: block;
-    margin-top: 4px;
+    margin-top: 2px;
     font-size: 16px;
     line-height: 1.25;
+  }
+
+  .sales-table__card-summary {
+    display: grid;
+    justify-items: end;
+    gap: 4px;
   }
 
   .sales-table__card-badges {
@@ -328,21 +334,28 @@ tbody tr:last-child td {
   .sales-table__card-label,
   .sales-table__card-grid dt {
     color: var(--color-text-muted);
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 800;
+  }
+
+  .sales-table__card-amount {
+    color: var(--color-primary);
+    font-size: 18px;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
   }
 
   .sales-table__card-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-3);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-2);
     margin: 0;
   }
 
   .sales-table__card-grid div {
     min-width: 0;
     display: grid;
-    gap: 4px;
+    gap: 2px;
     padding: var(--space-2);
     border-radius: var(--radius-2);
     background: var(--color-surface-subtle);
@@ -355,15 +368,6 @@ tbody tr:last-child td {
     color: var(--color-text);
     font-weight: 700;
     font-variant-numeric: tabular-nums;
-  }
-
-  .sales-table__card-total {
-    grid-column: 1 / -1;
-  }
-
-  .sales-table__card-total dd {
-    color: var(--color-primary);
-    font-size: 18px;
   }
 
   .sales-table__card-actions {
