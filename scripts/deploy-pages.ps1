@@ -20,7 +20,8 @@ npx wrangler pages deploy .\dist `
   --commit-message $commitMessage
 
 $deploymentsJson = npx wrangler pages deployment list --project-name v3-inventory-sales --environment production --json
-$latest = ($deploymentsJson | ConvertFrom-Json | Select-Object -First 1)
+$deployments = @($deploymentsJson | ConvertFrom-Json)
+$latest = $deployments[0]
 
 if ($latest.Source -ne $commitHash.Substring(0, 7)) {
   throw "Latest Pages deployment source is $($latest.Source), expected $($commitHash.Substring(0, 7))"
