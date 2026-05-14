@@ -31,9 +31,9 @@ if ($latest.Status -eq "Failure" -or $latest.Status -eq "Idle") {
   throw "Latest Pages deployment status is $($latest.Status)"
 }
 
-$response = Invoke-WebRequest -Uri "https://v3-inventory-sales.pages.dev/inventory" -UseBasicParsing -TimeoutSec 30
+$response = Invoke-WebRequest -Uri "https://v3-inventory-sales.pages.dev/inventory/" -UseBasicParsing -TimeoutSec 30
 if ($response.StatusCode -ne 200) {
-  throw "Production /inventory returned HTTP $($response.StatusCode)"
+  throw "Production /inventory/ returned HTTP $($response.StatusCode)"
 }
 
 Write-Host "Pages deployment verified: $($latest.Deployment)"
