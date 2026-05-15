@@ -240,13 +240,19 @@ function buildOpenAIPayload({ platform, body, stream }) {
     ? `系统要求：\n${body.systemPrompt}\n\n用户请求：\n${body.userPrompt || ''}`
     : (body.userPrompt || '');
   if (userPrompt) userContent.push({ type: 'text', text: userPrompt });
-  if (body.imageBase64 && body.mimeType) {
+  const images = Array.isArray(body.images) && body.images.length > 0
+    ? body.images
+    : body.imageBase64 && body.mimeType
+      ? [{ imageBase64: body.imageBase64, mimeType: body.mimeType }]
+      : [];
+  for (const image of images) {
+    if (!image?.imageBase64 || !image?.mimeType) continue;
     userContent.push({
       type: 'image_url',
-      image_url: { url: `data:${body.mimeType};base64,${body.imageBase64}` }
+      image_url: { url: `data:${image.mimeType};base64,${image.imageBase64}` }
     });
   }
-  messages.push({ role: 'user', content: body.imageBase64 ? userContent : userPrompt });
+  messages.push({ role: 'user', content: images.length > 0 ? userContent : userPrompt });
 
   const payload = {
     model: body.modelId,
@@ -255,7 +261,7 @@ function buildOpenAIPayload({ platform, body, stream }) {
     max_tokens: body.maxTokens
   };
 
-  if (body.jsonSchema && !body.imageBase64) {
+  if (body.jsonSchema && images.length === 0) {
     payload.response_format = { type: 'json_object' };
   }
 
@@ -480,7 +486,8 @@ export async function onRequestPost(context) {
   }
 
   const requestBody = { ...body, modelId: request.modelId };
-  const timeoutMs = requestBody.imageBase64 ? AI_IMAGE_TIMEOUT_MS : AI_TEXT_TIMEOUT_MS;
+  const hasImages = requestBody.imageBase64 || (Array.isArray(requestBody.images) && requestBody.images.length > 0);
+  const timeoutMs = hasImages ? AI_IMAGE_TIMEOUT_MS : AI_TEXT_TIMEOUT_MS;
 
   // 流式模式: 前端通过 ?stream=1 或 body.stream=true 主动启用
   const url = new URL(context.request.url);

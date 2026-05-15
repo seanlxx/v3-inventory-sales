@@ -10,6 +10,14 @@ import type {
 } from '~/types/sale'
 import { buildProductCatalogPrompt, matchProductByName } from '~/utils/product-match'
 
+type SalesAiImage = {
+  id: string
+  imageBase64: string
+  mimeType: string
+  fileName: string
+  previewUrl: string
+}
+
 const defaultFilters: SalesListFilters = {
   month: new Date().toISOString().slice(0, 7),
   type: 'all',
@@ -48,13 +56,14 @@ function matchesSearch(order: SalesOrder, search: string) {
 }
 
 function readFileAsBase64(file: File) {
-  return new Promise<{ imageBase64: string; mimeType: string }>((resolve, reject) => {
+  return new Promise<{ imageBase64: string; mimeType: string; previewUrl: string }>((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => {
       const value = String(reader.result || '')
       resolve({
         imageBase64: value.includes(',') ? value.split(',').pop() || '' : value,
-        mimeType: file.type || 'image/jpeg'
+        mimeType: file.type || 'image/jpeg',
+        previewUrl: value
       })
     }
     reader.onerror = () => reject(reader.error || new Error('读取图片失败'))
@@ -70,6 +79,13 @@ function extractJsonObject(text: string) {
     return JSON.parse(text.slice(start, end + 1)) as { items?: Array<Record<string, unknown>> }
   } catch {
     return null
+  }
+}
+
+function streamError(message: string): ApiError {
+  return {
+    code: 'UNKNOWN_ERROR',
+    message
   }
 }
 
@@ -121,6 +137,7 @@ function activeProducts(products: readonly Product[]) {
 
 export function useSales() {
   const { request } = useApi()
+  const config = useRuntimeConfig()
   const toastStore = useToastStore()
 
   const orders = shallowRef<SalesOrder[]>([])
@@ -128,12 +145,14 @@ export function useSales() {
   const filters = reactive<SalesListFilters>({ ...defaultFilters })
   const selectedOrder = shallowRef<SalesOrder | null>(null)
   const aiCandidates = shallowRef<SalesAiCandidate[]>([])
-  const salesImage = shallowRef<{ imageBase64: string; mimeType: string; fileName: string } | null>(null)
+  const salesImages = shallowRef<SalesAiImage[]>([])
+  const salesImage = computed(() => salesImages.value[0] || null)
   const loading = shallowRef(false)
   const productsLoading = shallowRef(false)
   const saving = shallowRef(false)
   const voiding = shallowRef(false)
   const recognizing = shallowRef(false)
+  const aiProgress = shallowRef('')
   const error = shallowRef<ApiError | null>(null)
   const productsError = shallowRef<ApiError | null>(null)
   const aiError = shallowRef<ApiError | null>(null)
@@ -217,13 +236,79 @@ export function useSales() {
     }
   }
 
-  async function saveSalesImage(file: File) {
-    const image = await readFileAsBase64(file)
-    salesImage.value = {
-      ...image,
-      fileName: file.name
+  async function saveSalesImages(files: File[] | File) {
+    const nextFiles = Array.isArray(files) ? files : [files]
+    const images = await Promise.all(nextFiles.map(async (file, index) => {
+      const image = await readFileAsBase64(file)
+      return {
+        ...image,
+        id: `${Date.now()}-${index}-${file.name}`,
+        fileName: file.name
+      }
+    }))
+    salesImages.value = [...salesImages.value, ...images]
+    return salesImages.value
+  }
+
+  function removeSalesImage(id: string) {
+    salesImages.value = salesImages.value.filter(image => image.id !== id)
+  }
+
+  function clearSalesImages() {
+    salesImages.value = []
+  }
+
+  async function requestAiStream(body: Record<string, unknown>, onDelta: (text: string) => void) {
+    const authStore = useAuthStore()
+    authStore.initialize()
+    const apiBase = String(config.public.apiBase || '/api').replace(/\/$/, '')
+    const response = await fetch(`${apiBase}/ai-proxy?stream=1`, {
+      method: 'POST',
+      headers: {
+        Accept: 'text/event-stream',
+        'Content-Type': 'application/json',
+        ...(authStore.token ? { 'X-VM-Session': authStore.token } : {})
+      },
+      body: JSON.stringify(body)
+    })
+
+    if (!response.ok || !response.body) {
+      const data = await response.json().catch(() => null) as { error?: string; message?: string } | null
+      throw streamError(data?.message || data?.error || `AI 请求失败：${response.status}`)
     }
-    return salesImage.value
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder('utf-8')
+    let buffered = ''
+    let finalText = ''
+
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+      buffered += decoder.decode(value, { stream: true })
+
+      let index = buffered.indexOf('\n\n')
+      while (index !== -1) {
+        const rawEvent = buffered.slice(0, index)
+        buffered = buffered.slice(index + 2)
+        const lines = rawEvent.split('\n')
+        const event = lines.find(line => line.startsWith('event:'))?.slice(6).trim() || 'message'
+        const dataLine = lines.find(line => line.startsWith('data:'))
+        if (dataLine) {
+          const data = JSON.parse(dataLine.slice(5).trim()) as { text?: string; error?: string }
+          if (event === 'delta' && data.text) {
+            onDelta(data.text)
+          } else if (event === 'done') {
+            finalText = data.text || finalText
+          } else if (event === 'error') {
+            throw streamError(data.error || 'AI 流式识别失败')
+          }
+        }
+        index = buffered.indexOf('\n\n')
+      }
+    }
+
+    return finalText
   }
 
   async function createOrder(type: SalesOrderType, payload: SalesOrderPayload) {
@@ -263,7 +348,7 @@ export function useSales() {
         body
       })
       toastStore.show(type === 'refund' ? '退款单已创建，库存已回补' : type === 'loss' ? '损耗单已创建，库存已扣减' : '销售单已创建，库存已扣减', 'success')
-      salesImage.value = null
+      clearSalesImages()
       aiCandidates.value = []
       await Promise.all([loadOrders(), loadProducts()])
       return normalizeOrder(saved)
@@ -294,7 +379,7 @@ export function useSales() {
   }
 
   async function recognizeSalesScreenshot() {
-    if (!salesImage.value) {
+    if (salesImages.value.length === 0) {
       aiError.value = {
         code: 'BAD_REQUEST',
         message: '请先上传销售截图'
@@ -303,27 +388,33 @@ export function useSales() {
     }
     recognizing.value = true
     aiError.value = null
+    aiProgress.value = '正在连接 AI，准备上传图片...'
     try {
       const catalog = buildProductCatalogPrompt(activeProducts(products.value))
       const userPrompt = [
-        '从截图中识别销售商品明细，返回 {"items":[{"rawName":"截图原文","productId":"匹配到的商品 id 或空字符串","productName":"匹配到的商品名","quantity":数量,"sellPrice":销售单价,"itemRevenue":小计}]}。',
+        `从 ${salesImages.value.length} 张截图中识别销售商品明细，合并重复商品数量，返回 {"items":[{"rawName":"截图原文","productId":"匹配到的商品 id 或空字符串","productName":"匹配到的商品名","quantity":数量,"sellPrice":销售单价,"itemRevenue":小计}]}。`,
         '匹配规则：尽量在下面给出的商品清单中找最接近的一项，返回它的 productId；若清单中没有相似项，productId 留空字符串，rawName 保留截图原文。',
         '注意名称同义：如"毫升=ml"、"克=g"、"瓶装"可省略、"1L=1000ml"。',
         'AI 结果只用于人工确认，不能自动入账。',
         '',
         catalog
       ].join('\n')
-      const response = await request<{ text: string }, Record<string, unknown>>('/ai-proxy', {
-        method: 'POST',
-        body: {
-          imageBase64: salesImage.value.imageBase64,
-          mimeType: salesImage.value.mimeType,
-          maxTokens: 1600,
-          systemPrompt: '你是销售截图识别助手。只返回 JSON，不要解释。',
-          userPrompt
-        }
+      let receivedLength = 0
+      const text = await requestAiStream({
+        images: salesImages.value.map(image => ({
+          imageBase64: image.imageBase64,
+          mimeType: image.mimeType
+        })),
+        maxTokens: 2200,
+        stream: true,
+        systemPrompt: '你是销售截图识别助手。只返回 JSON，不要解释。',
+        userPrompt
+      }, (delta) => {
+        receivedLength += delta.length
+        aiProgress.value = `AI 正在识别，已接收 ${receivedLength} 个字符...`
       })
-      const parsed = extractJsonObject(response.text || '')
+      aiProgress.value = 'AI 识别完成，正在整理结果...'
+      const parsed = extractJsonObject(text || '')
       aiCandidates.value = normalizeAiCandidates(parsed?.items || [], products.value)
       if (aiCandidates.value.length === 0) {
         aiError.value = {
@@ -337,6 +428,7 @@ export function useSales() {
       return []
     } finally {
       recognizing.value = false
+      if (!aiError.value) aiProgress.value = ''
     }
   }
 
@@ -353,6 +445,7 @@ export function useSales() {
     summary,
     selectedOrder,
     aiCandidates,
+    salesImages,
     salesImage,
     machineOptions,
     loading,
@@ -360,13 +453,16 @@ export function useSales() {
     saving,
     voiding,
     recognizing,
+    aiProgress,
     error,
     productsError,
     aiError,
     updateFilters,
     loadProducts,
     loadOrders,
-    saveSalesImage,
+    saveSalesImage: saveSalesImages,
+    saveSalesImages,
+    removeSalesImage,
     createOrder,
     voidOrder,
     recognizeSalesScreenshot,

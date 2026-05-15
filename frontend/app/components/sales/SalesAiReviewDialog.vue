@@ -12,13 +12,15 @@ const props = defineProps<{
   machines: readonly string[]
   recognizing?: boolean
   submitting?: boolean
-  imageFileName?: string
+  images?: readonly { id: string; fileName: string; previewUrl: string }[]
+  progressMessage?: string
   errorMessage?: string
   inventoryError?: string | null
 }>()
 
 const emit = defineEmits<{
-  imageSelected: [file: File]
+  imageSelected: [files: File[]]
+  imageRemoved: [id: string]
   recognize: []
   updateCandidates: [candidates: SalesAiCandidate[]]
   confirm: [payload: SalesOrderPayload]
@@ -72,8 +74,10 @@ function updateCandidate(index: number, patch: Partial<SalesAiCandidate>) {
 }
 
 function handleFileChange(event: Event) {
-  const file = (event.target as HTMLInputElement).files?.[0]
-  if (file) emit('imageSelected', file)
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files || [])
+  if (files.length > 0) emit('imageSelected', files)
+  input.value = ''
 }
 
 function addManualCandidate() {
@@ -99,7 +103,7 @@ function removeCandidate(index: number) {
 useClipboardImagePaste({
   enabled: open,
   fileNamePrefix: 'sales-screenshot',
-  onImage: (file: File) => emit('imageSelected', file)
+  onImage: (file: File) => emit('imageSelected', [file])
 })
 
 function confirmOrder() {
@@ -138,13 +142,29 @@ function confirmOrder() {
       <div class="sales-ai__top">
         <label class="sales-ai__upload">
           <span>上传销售截图 / 直接粘贴</span>
-          <input type="file" accept="image/*" @change="handleFileChange">
-          <strong>{{ props.imageFileName || '选择销售截图，或复制图片后按 Ctrl+V' }}</strong>
+          <input type="file" accept="image/*" multiple @change="handleFileChange">
+          <strong>{{ props.images?.length ? `已选择 ${props.images.length} 张图片，可继续添加` : '选择一张或多张销售截图，或复制图片后按 Ctrl+V' }}</strong>
         </label>
-        <AppButton variant="secondary" :loading="props.recognizing" @click="emit('recognize')">
+        <AppButton variant="secondary" :loading="props.recognizing" :disabled="!props.images?.length" @click="emit('recognize')">
           开始识别
         </AppButton>
       </div>
+
+      <div v-if="props.images?.length" class="sales-ai__previews" aria-label="待识别图片">
+        <article v-for="image in props.images" :key="image.id" class="sales-ai__preview">
+          <img :src="image.previewUrl" :alt="image.fileName">
+          <div>
+            <strong>{{ image.fileName }}</strong>
+            <button type="button" :disabled="props.recognizing" @click="emit('imageRemoved', image.id)">
+              移除
+            </button>
+          </div>
+        </article>
+      </div>
+
+      <p v-if="props.recognizing || props.progressMessage" class="sales-ai__progress">
+        {{ props.progressMessage || 'AI 正在识别图片...' }}
+      </p>
 
       <div class="sales-ai__grid">
         <AppInput v-model="date" label="销售日期" type="date" />
@@ -305,6 +325,65 @@ function confirmOrder() {
   font-size: 13px;
 }
 
+.sales-ai__previews {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--space-3);
+}
+
+.sales-ai__preview {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2);
+  background: var(--color-surface);
+}
+
+.sales-ai__preview img {
+  width: 56px;
+  height: 56px;
+  border-radius: calc(var(--radius-2) - 2px);
+  object-fit: cover;
+  background: var(--color-surface-subtle);
+}
+
+.sales-ai__preview div {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.sales-ai__preview strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sales-ai__preview button {
+  width: fit-content;
+  min-height: 28px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--color-danger);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.sales-ai__preview button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .sales-ai__grid {
   min-width: 0;
   display: grid;
@@ -424,6 +503,16 @@ function confirmOrder() {
   font-weight: 700;
 }
 
+.sales-ai__progress {
+  margin: 0;
+  border-radius: var(--radius-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .sales-ai__toolbar {
   display: flex;
   justify-content: flex-start;
@@ -474,6 +563,10 @@ tbody tr:last-child td {
   }
 
   .sales-ai__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sales-ai__previews {
     grid-template-columns: 1fr;
   }
 

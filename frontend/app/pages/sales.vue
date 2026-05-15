@@ -12,18 +12,21 @@ const {
   summary,
   selectedOrder,
   aiCandidates,
+  salesImages,
   salesImage,
   machineOptions,
   loading,
   saving,
   voiding,
   recognizing,
+  aiProgress,
   error,
   aiError,
   updateFilters,
   loadProducts,
   loadOrders,
   saveSalesImage,
+  removeSalesImage,
   createOrder,
   voidOrder,
   recognizeSalesScreenshot,
@@ -141,10 +144,12 @@ onMounted(async () => {
       :machines="machineOptions"
       :recognizing="recognizing"
       :submitting="saving"
-      :image-file-name="salesImage?.fileName"
+      :images="salesImages"
+      :progress-message="aiProgress"
       :error-message="aiError?.message"
       :inventory-error="formInventoryError"
       @image-selected="saveSalesImage"
+      @image-removed="removeSalesImage"
       @recognize="recognizeSalesScreenshot"
       @update-candidates="setAiCandidates"
       @confirm="submitAiOrder"
