@@ -23,6 +23,32 @@ function tableRows(html) {
     .filter(row => row.cells.length > 0);
 }
 
+function divBlocksByClass(html, className) {
+  const source = String(html || '');
+  const blocks = [];
+  const pattern = /<div\b[^>]*\bclass=["']([^"']*)["'][^>]*>/gi;
+  for (const match of source.matchAll(pattern)) {
+    if (!match[1].split(/\s+/).includes(className)) continue;
+    const start = match.index;
+    let cursor = start + match[0].length;
+    let depth = 1;
+    while (depth > 0) {
+      const nextOpen = source.slice(cursor).search(/<div\b/i);
+      const nextClose = source.slice(cursor).search(/<\/div>/i);
+      if (nextClose === -1) break;
+      if (nextOpen !== -1 && nextOpen < nextClose) {
+        depth += 1;
+        cursor += nextOpen + 4;
+      } else {
+        depth -= 1;
+        cursor += nextClose + 6;
+      }
+    }
+    if (depth === 0) blocks.push(source.slice(start, cursor));
+  }
+  return blocks;
+}
+
 function parseMoney(text) {
   const match = String(text || '').replace(/,/g, '').match(/-?\d+(?:\.\d+)?/);
   if (!match) return null;
@@ -50,6 +76,39 @@ function rowHidden(row) {
   return /隐藏|已隐藏|display\s*:\s*none/i.test(`${row.html} ${row.cells.join(' ')}`);
 }
 
+function firstClassText(html, className) {
+  const pattern = new RegExp(`<[^>]+\\bclass=["'][^"']*\\b${className}\\b[^"']*["'][^>]*>([\\s\\S]*?)<\\/[^>]+>`, 'i');
+  return stripTags(String(html || '').match(pattern)?.[1] || '');
+}
+
+function attrValue(html, name) {
+  const pattern = new RegExp(`\\b${name}\\s*=\\s*["']?([^"'\\s>]+)`, 'i');
+  return String(html || '').match(pattern)?.[1] || '';
+}
+
+function parseGoodsCards(html) {
+  return divBlocksByClass(html, 'item')
+    .filter(block => /\bhuodao\s*=|goods-name|stock/i.test(block))
+    .map((block) => {
+      const vendorAisleCode = attrValue(block, 'huodao') || firstClassText(firstClassText(block, 'huodao') ? block : '', 'value');
+      const productName = firstClassText(firstClassText(block, 'goods-name') ? block : '', 'goods-name');
+      const priceHtml = divBlocksByClass(block, 'top')[0] || block;
+      const sellPriceCents = parseMoney(firstClassText(priceHtml, 'price'));
+      const stockHtml = divBlocksByClass(block, 'stock')[0] || '';
+      const qty = parseInteger(firstClassText(stockHtml, 'value'));
+      if (!productName || qty === null || sellPriceCents === null) return null;
+      return {
+        vendorAisleCode: vendorAisleCode || null,
+        vendorProductName: productName,
+        qty,
+        sellPriceCents,
+        hidden: /隐藏|已隐藏/i.test(stripTags(block)),
+        raw: [vendorAisleCode, productName, String(qty), String(sellPriceCents / 100)]
+      };
+    })
+    .filter(Boolean);
+}
+
 export function parseGoods(html) {
   const rows = tableRows(html);
   const result = [];
@@ -74,7 +133,28 @@ export function parseGoods(html) {
       raw: cells
     });
   }
-  return result;
+  return result.length > 0 ? result : parseGoodsCards(html);
+}
+
+function parseCostCards(html) {
+  return divBlocksByClass(html, 'item')
+    .filter(block => /curr-jinjia|cost_price|当前进价/i.test(block))
+    .map((block) => {
+      const vendorAisleCode = firstClassText(firstClassText(block, 'huodao') ? block : '', 'num')
+        || stripTags(divBlocksByClass(block, 'huodao')[0] || '').match(/\d+/)?.[0]
+        || null;
+      const productName = firstClassText(block, 'goods');
+      const costHtml = divBlocksByClass(block, 'curr-jinjia')[0] || block;
+      const costCents = parseMoney(firstClassText(costHtml, 'value'));
+      if (!productName || costCents === null) return null;
+      return {
+        vendorAisleCode,
+        vendorProductName: productName,
+        costCents,
+        raw: [vendorAisleCode, productName, String(costCents / 100)]
+      };
+    })
+    .filter(Boolean);
 }
 
 export function parseCosts(html) {
@@ -97,7 +177,7 @@ export function parseCosts(html) {
       raw: cells
     });
   }
-  return costs;
+  return costs.length > 0 ? costs : parseCostCards(html);
 }
 
 function looksPaidShipped(cells) {
@@ -152,4 +232,3 @@ export function hasNextSalesPage(html, currentPage) {
   const totalPages = pageMatches.map(match => Number(match[1])).filter(Number.isFinite).pop();
   return totalPages ? currentPage < totalPages : false;
 }
-

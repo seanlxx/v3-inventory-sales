@@ -8,6 +8,7 @@ import { aggregateInventory, normalizeProductName } from '../functions/api/_shar
 import { encryptLoginPassword } from '../functions/api/_shared/shengma/crypto.js';
 import { ShengmaClient } from '../functions/api/_shared/shengma/client.js';
 import { importShengmaData } from '../functions/api/_shared/shengma/importer.js';
+import { parseCosts, parseGoods } from '../functions/api/_shared/shengma/parser.js';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const projectRoot = dirname(scriptDir);
@@ -130,11 +131,59 @@ try {
 }
 
 const warnings = [];
+const goodsCards = parseGoods(`
+  <div class="to-rep-list">
+    <div class="item" huodao="11">
+      <div class="top">
+        <div class="huodao"><span class="title">货道</span><span class="value">11</span></div>
+        <div class="goods-name"><span class="value">和成天下槟榔干</span></div>
+        <div class="price">30.00</div>
+      </div>
+      <div class="bottom item-huodao">
+        <div class="stock item-huodao"><span class="title">库存:</span><span class="value">5</span></div>
+      </div>
+      <div class="bottom-price item-goods" style="display: none;">
+        <div class="new-price"><span class="title">价格:</span><div class="price"><input value="30.00" /></div></div>
+      </div>
+    </div>
+  </div>
+`);
+assert.deepEqual(goodsCards[0], {
+  vendorAisleCode: '11',
+  vendorProductName: '和成天下槟榔干',
+  qty: 5,
+  sellPriceCents: 3000,
+  hidden: false,
+  raw: ['11', '和成天下槟榔干', '5', '30']
+});
+
+const costCards = parseCosts(`
+  <div class="huodao-list">
+    <div class="item" data-am-scrollspy="{animation: 'slide-bottom'}">
+      <div class="top">
+        <div class="huodao"><span>货道</span><span class="num">11</span></div>
+        <div class="goods">和成天下槟榔干</div>
+      </div>
+      <div class="bottom">
+        <div class="price">30</div>
+        <div class="curr-jinjia"><span class="title">当前进价：</span><span class="value">24.41</span></div>
+      </div>
+    </div>
+  </div>
+`);
+assert.deepEqual(costCards[0], {
+  vendorAisleCode: '11',
+  vendorProductName: '和成天下槟榔干',
+  costCents: 2441,
+  raw: ['11', '和成天下槟榔干', '24.41']
+});
+
 const inventory = aggregateInventory([
   { vendorAisleCode: 'A1', vendorProductName: '可口可乐 330ml', qty: 2, sellPriceCents: 300 },
   { vendorAisleCode: 'A2', vendorProductName: '可口可乐(330ML)', qty: 3, sellPriceCents: 300 },
   { vendorAisleCode: 'B1', vendorProductName: '测试商品', qty: 9, sellPriceCents: 100 },
-  { vendorAisleCode: 'C1', vendorProductName: '占位商品', qty: 1, sellPriceCents: 99900 }
+  { vendorAisleCode: 'C1', vendorProductName: '占位商品', qty: 1, sellPriceCents: 99900 },
+  { vendorAisleCode: 'D1', vendorProductName: '商品6', qty: 5, sellPriceCents: 99990 }
 ], [
   { vendorAisleCode: 'A1', vendorProductName: '可口可乐 330ml', costCents: 180 },
   { vendorAisleCode: 'A2', vendorProductName: '可口可乐(330ML)', costCents: 210 }
@@ -144,7 +193,7 @@ assert.equal(inventory.length, 1);
 assert.equal(inventory[0].qty, 5);
 assert.equal(inventory[0].sellPriceCents, 300);
 assert.equal(inventory[0].costCents, 198);
-assert.equal(warnings.length, 3);
+assert.equal(warnings.length, 4);
 
 const firstRun = await importShengmaData(env, 1, {
   startDate: '2026-05-15',
