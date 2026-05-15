@@ -14,13 +14,11 @@ const emit = defineEmits<{
 }>()
 
 const targetQuantity = shallowRef('')
-const unitCost = shallowRef('')
 const note = shallowRef('')
 const formError = shallowRef('')
 
 watch(() => props.balance, balance => {
   targetQuantity.value = balance ? String(balance.quantityOnHand) : ''
-  unitCost.value = balance?.avgCost ? String(balance.avgCost) : ''
   note.value = ''
   formError.value = ''
 }, { immediate: true })
@@ -38,15 +36,6 @@ function submitAdjustment() {
     machineId: props.balance.machineId,
     quantityOnHand: nextQuantity,
     note: note.value.trim()
-  }
-
-  if (unitCost.value.trim()) {
-    const parsedUnitCost = Number(unitCost.value)
-    if (!Number.isFinite(parsedUnitCost) || parsedUnitCost < 0) {
-      formError.value = '单位成本必须是不小于 0 的数字'
-      return
-    }
-    payload.unitCost = parsedUnitCost
   }
 
   formError.value = ''
@@ -85,12 +74,6 @@ function submitAdjustment() {
         :error="formError"
       />
       <AppInput
-        v-model="unitCost"
-        label="单位成本"
-        type="number"
-        placeholder="可选，用于调整入账成本"
-      />
-      <AppInput
         v-model="note"
         label="备注"
         placeholder="可选"
@@ -101,7 +84,7 @@ function submitAdjustment() {
       </p>
 
       <div class="stock-adjustment__actions">
-        <AppButton variant="secondary" @click="open = false">
+        <AppButton type="button" variant="secondary" @click="open = false">
           取消
         </AppButton>
         <AppButton type="submit" :loading="props.submitting" :disabled="!props.balance">
