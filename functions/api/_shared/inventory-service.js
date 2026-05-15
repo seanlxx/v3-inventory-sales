@@ -15,6 +15,17 @@ import {
   yearMonthFromDate
 } from './validators.js';
 
+export class InventoryValidationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'InventoryValidationError';
+  }
+}
+
+function validationError(message) {
+  return new InventoryValidationError(message);
+}
+
 function balanceKey(productId, machineId) {
   return `${productId}\u0000${machineId}`;
 }
@@ -712,15 +723,22 @@ async function loadProductsForItems(env, items) {
 export async function createSalesOrder(env, payload, forcedType = null) {
   const type = forcedType || normalizeSalesType(payload?.type);
   const rawItems = Array.isArray(payload?.items) ? payload.items : [];
-  if (!rawItems.length) throw new Error('Missing sales items');
+  if (!rawItems.length) throw validationError('缺少销售明细');
 
   const productMap = await loadProductsForItems(env, rawItems);
+  const missingItem = rawItems.find(item => stringOrNull(item?.productId) && !productMap.has(stringOrNull(item.productId)));
+  if (missingItem) throw validationError('销售明细中包含不存在的商品，请重新选择商品');
+
   const timestamp = nowIso();
   const date = recordDate(payload.date);
   const yearMonth = yearMonthFromDate(date);
   const orderId = stringOrNull(payload.id) || newId();
   const productMachineIds = [...new Set(Array.from(productMap.values()).map(product => product.machine_id).filter(Boolean))];
   const machineId = stringOrNull(payload.machineId) || (productMachineIds.length === 1 ? productMachineIds[0] : '1号机');
+  const mismatchedProduct = Array.from(productMap.values()).find(product => product.machine_id !== machineId);
+  if (mismatchedProduct) {
+    throw validationError(`${mismatchedProduct.name} 属于 ${mismatchedProduct.machine_id}，不能记入 ${machineId}`);
+  }
   const statements = [];
   const balanceCache = new Map();
   const savedItems = [];
@@ -759,7 +777,7 @@ export async function createSalesOrder(env, payload, forcedType = null) {
 
     const balance = await getBalance(env, product.id, machineId, balanceCache);
     if ((type === 'sale' || type === 'loss') && qty > balance.quantity_on_hand) {
-      throw new Error(`Insufficient stock for ${product.name}: ${qty} requested, ${balance.quantity_on_hand} available`);
+      throw validationError(`${product.name} 库存不足：当前 ${balance.quantity_on_hand}，本次 ${qty}`);
     }
 
     const unitPriceCents = type === 'loss'
@@ -810,7 +828,7 @@ export async function createSalesOrder(env, payload, forcedType = null) {
     });
   }
 
-  if (!savedItems.length) throw new Error('No valid sales items');
+  if (!savedItems.length) throw validationError('没有有效的销售明细，请确认商品和数量');
 
   statements.push(env.DB.prepare(`
     UPDATE sales_orders

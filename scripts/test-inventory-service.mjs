@@ -120,7 +120,7 @@ await assert.rejects(
     date: '2026-05-02',
     items: [{ productId: 'p1', quantity: 2 }]
   }, 'sale'),
-  /Insufficient stock/
+  /库存不足/
 );
 assert.equal(await rowCount('sales_orders'), 1, 'failed sale should not write a partial order');
 
@@ -151,6 +151,16 @@ assert.deepEqual(await balance('p-inferred-machine', 'machine-b'), {
   total_purchase_qty: 2,
   total_purchase_cost_cents: 800
 });
+await assert.rejects(
+  () => createSalesOrder(env, {
+    id: 'so-wrong-machine',
+    machineId: 'machine-a',
+    date: '2026-05-02',
+    items: [{ productId: 'p-inferred-machine', quantity: 1 }]
+  }, 'sale'),
+  /不能记入 machine-a/
+);
+assert.equal(await rowCount('sales_orders'), 2, 'machine mismatch should not write a partial order');
 
 const refund = await createSalesOrder(env, {
   id: 'rf1',
