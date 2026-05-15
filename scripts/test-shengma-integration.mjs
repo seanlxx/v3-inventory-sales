@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { aggregateInventory, normalizeProductName } from '../functions/api/_shared/shengma/mapper.js';
+import { encryptLoginPassword } from '../functions/api/_shared/shengma/crypto.js';
 import { importShengmaData } from '../functions/api/_shared/shengma/importer.js';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -85,6 +86,10 @@ env.DB.exec(`
 assert.equal(normalizeProductName('可口可乐(330ML)'), '可口可乐330ml');
 assert.equal(normalizeProductName('Coca-Cola 330ML'), 'cocacola330ml');
 assert.equal(normalizeProductName('娃哈哈纯净水596毫升'), '娃哈哈纯净水596ml');
+
+const encryptedLogin = encryptLoginPassword('12345678');
+assert.match(encryptedLogin.password, /^[A-Za-z0-9+/]+=*$/);
+assert.match(encryptedLogin.encryptAesKey, /^[A-Za-z0-9+/]+=*$/);
 
 const warnings = [];
 const inventory = aggregateInventory([

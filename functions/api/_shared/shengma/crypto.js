@@ -15,7 +15,7 @@ function randomAesKey() {
 
 export function encryptLoginPassword(password) {
   const aesKey = randomAesKey();
-  const cipher = createCipheriv('aes-128-ecb', Buffer.from(aesKey, 'utf8'), null);
+  const cipher = createCipheriv('aes-128-ecb', Buffer.from(aesKey, 'utf8'), Buffer.alloc(0));
   cipher.setAutoPadding(true);
 
   const encryptedPassword = Buffer.concat([
@@ -33,4 +33,3 @@ export function encryptLoginPassword(password) {
     encryptAesKey
   };
 }
-
