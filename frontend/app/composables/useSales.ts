@@ -201,13 +201,17 @@ export function useSales() {
     return null
   }
 
-  function machineIdForItems(items: SalesItem[]) {
-    const machineIds = new Set(
-      items
-        .map(item => products.value.find(product => product.id === item.productId)?.machineId)
-        .filter((machineId): machineId is string => Boolean(machineId))
-    )
-    return machineIds.size === 1 ? Array.from(machineIds)[0] : undefined
+  function groupItemsByMachine(items: SalesItem[]) {
+    const groups = new Map<string, { machineId?: string; items: SalesItem[] }>()
+    for (const item of items) {
+      const product = products.value.find(entry => entry.id === item.productId)
+      const machineId = product?.machineId || undefined
+      const key = machineId || ''
+      const group = groups.get(key) || { machineId, items: [] }
+      group.items.push(item)
+      groups.set(key, group)
+    }
+    return Array.from(groups.values())
   }
 
   async function loadProducts() {
@@ -348,26 +352,44 @@ export function useSales() {
     saving.value = true
     error.value = null
     try {
-      const body = {
-        ...payload,
-        machineId: payload.machineId || machineIdForItems(validItems),
-        items: validItems,
-        imageBase64: payload.imageBase64 || salesImage.value?.imageBase64,
-        mimeType: payload.mimeType || salesImage.value?.mimeType
-      }
       const endpoint = type === 'refund'
         ? '/inventory/refunds'
         : type === 'loss'
           ? '/inventory/losses'
           : '/inventory/sales'
-      const saved = await request<SalesOrder, SalesOrderPayload>(endpoint, {
-        method: 'POST',
-        body
-      })
-      toastStore.show(type === 'refund' ? '退款单已创建，库存已回补' : type === 'loss' ? '损耗单已创建，库存已扣减' : '销售单已创建，库存已扣减', 'success')
+      const baseBody = {
+        ...payload,
+        imageBase64: payload.imageBase64 || salesImage.value?.imageBase64,
+        mimeType: payload.mimeType || salesImage.value?.mimeType
+      }
+      const itemGroups = payload.machineId
+        ? [{ machineId: payload.machineId, items: validItems }]
+        : groupItemsByMachine(validItems)
+      const savedOrders: SalesOrder[] = []
+      for (const group of itemGroups) {
+        const saved = await request<SalesOrder, SalesOrderPayload>(endpoint, {
+          method: 'POST',
+          body: {
+            ...baseBody,
+            machineId: group.machineId,
+            items: group.items
+          }
+        })
+        savedOrders.push(saved)
+      }
+      const successMessage = type === 'refund'
+        ? '退款单已创建，库存已回补'
+        : type === 'loss'
+          ? '损耗单已创建，库存已扣减'
+          : itemGroups.length > 1
+            ? `已按商品所属机器创建 ${itemGroups.length} 张销售单，库存已扣减`
+            : '销售单已创建，库存已扣减'
+      toastStore.show(successMessage, 'success')
       clearSalesAiDraft()
       await Promise.all([loadOrders(), loadProducts()])
-      return normalizeOrder(saved)
+      const firstSavedOrder = savedOrders[0]
+      if (!firstSavedOrder) throw streamError('销售单创建失败，请重试')
+      return normalizeOrder(firstSavedOrder)
     } catch (caught) {
       error.value = normalizeApiError(caught)
       throw error.value
