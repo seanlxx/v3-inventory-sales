@@ -458,6 +458,16 @@ function confirmOrder() {
   width: 24%;
 }
 
+.sales-ai__table td.sales-ai__product-cell {
+  overflow: visible;
+  position: relative;
+  z-index: 1;
+}
+
+.sales-ai__table td.sales-ai__product-cell:focus-within {
+  z-index: 20;
+}
+
 .sales-ai__badge-col {
   width: 72px;
 }
