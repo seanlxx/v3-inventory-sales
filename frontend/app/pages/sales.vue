@@ -27,6 +27,7 @@ const {
   loadOrders,
   saveSalesImage,
   removeSalesImage,
+  clearSalesAiDraft,
   createOrder,
   voidOrder,
   recognizeSalesScreenshot,
@@ -150,6 +151,7 @@ onMounted(async () => {
       :inventory-error="formInventoryError"
       @image-selected="saveSalesImage"
       @image-removed="removeSalesImage"
+      @clear="clearSalesAiDraft"
       @recognize="recognizeSalesScreenshot"
       @update-candidates="setAiCandidates"
       @confirm="submitAiOrder"

@@ -21,6 +21,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   imageSelected: [files: File[]]
   imageRemoved: [id: string]
+  clear: []
   recognize: []
   updateCandidates: [candidates: SalesAiCandidate[]]
   confirm: [payload: SalesOrderPayload]
@@ -259,6 +260,13 @@ function confirmOrder() {
       <div class="sales-ai__toolbar">
         <AppButton variant="secondary" @click="addManualCandidate">
           + 手动添加商品
+        </AppButton>
+        <AppButton
+          variant="secondary"
+          :disabled="props.recognizing || (props.candidates.length === 0 && !props.images?.length)"
+          @click="emit('clear')"
+        >
+          一键清空
         </AppButton>
       </div>
 
@@ -514,7 +522,9 @@ function confirmOrder() {
 
 .sales-ai__toolbar {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-start;
+  gap: var(--space-2);
 }
 
 .sales-ai__action-col {

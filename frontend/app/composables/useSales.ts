@@ -258,6 +258,13 @@ export function useSales() {
     salesImages.value = []
   }
 
+  function clearSalesAiDraft() {
+    clearSalesImages()
+    aiCandidates.value = []
+    aiError.value = null
+    aiProgress.value = ''
+  }
+
   async function requestAiStream(body: Record<string, unknown>, onDelta: (text: string) => void) {
     const authStore = useAuthStore()
     authStore.initialize()
@@ -348,8 +355,7 @@ export function useSales() {
         body
       })
       toastStore.show(type === 'refund' ? '退款单已创建，库存已回补' : type === 'loss' ? '损耗单已创建，库存已扣减' : '销售单已创建，库存已扣减', 'success')
-      clearSalesImages()
-      aiCandidates.value = []
+      clearSalesAiDraft()
       await Promise.all([loadOrders(), loadProducts()])
       return normalizeOrder(saved)
     } catch (caught) {
@@ -463,6 +469,7 @@ export function useSales() {
     saveSalesImage: saveSalesImages,
     saveSalesImages,
     removeSalesImage,
+    clearSalesAiDraft,
     createOrder,
     voidOrder,
     recognizeSalesScreenshot,
