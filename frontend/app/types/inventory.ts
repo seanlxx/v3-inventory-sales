@@ -32,6 +32,8 @@ export type StockMovement = {
   refId: string
   refItemId?: string | null
   voidsMovementId?: string | null
+  externalId?: string | null
+  reason?: string
   createdAt: string
 }
 

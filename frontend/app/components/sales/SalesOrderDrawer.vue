@@ -56,6 +56,11 @@ function stockImpact(order: SalesOrder, quantity: number) {
           :tone="props.order.status === 'voided' ? 'warning' : 'success'"
         />
         <StatusBadge :label="typeLabel(props.order.type)" :tone="props.order.type === 'loss' ? 'danger' : props.order.type === 'refund' ? 'info' : 'success'" />
+        <StatusBadge
+          v-if="props.order.source === 'shengma'"
+          label="盛码同步"
+          tone="info"
+        />
         <span>创建 {{ formatDateTime(props.order.createdAt) }}</span>
       </section>
 
@@ -78,7 +83,7 @@ function stockImpact(order: SalesOrder, quantity: number) {
 
       <AppButton
         variant="danger"
-        :disabled="props.order.status === 'voided'"
+        :disabled="props.order.status === 'voided' || props.order.source === 'shengma'"
         @click="emit('void', props.order)"
       >
         作废单据

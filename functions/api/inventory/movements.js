@@ -49,6 +49,8 @@ export async function onRequestGet(context) {
     refId: row.ref_id,
     refItemId: row.ref_item_id || null,
     voidsMovementId: row.voids_movement_id || null,
+    externalId: row.external_id || null,
+    reason: row.reason || '',
     createdAt: row.created_at
   })));
 }

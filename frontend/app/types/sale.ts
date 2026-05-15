@@ -25,6 +25,8 @@ export type SalesOrder = {
   hasImage?: boolean
   status: SalesOrderStatus
   voidedAt?: string | null
+  source?: 'manual' | 'shengma' | string
+  externalId?: string | null
   createdAt: string
 }
 

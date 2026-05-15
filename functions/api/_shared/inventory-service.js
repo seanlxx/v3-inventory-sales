@@ -113,6 +113,8 @@ function saleOrderToLegacy(order, items = []) {
     hasImage: !!order.image_asset_id,
     status: order.voided_at ? 'voided' : 'active',
     voidedAt: order.voided_at || null,
+    source: order.source || 'manual',
+    externalId: order.external_id || null,
     createdAt: order.created_at
   };
 }
@@ -240,8 +242,8 @@ function movementStatement(db, movement) {
   return db.prepare(`
     INSERT INTO stock_movements (
       id, product_id, machine_id, movement_type, qty_delta, unit_cost_cents,
-      ref_type, ref_id, ref_item_id, voids_movement_id, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ref_type, ref_id, ref_item_id, voids_movement_id, external_id, reason, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     movement.id,
     movement.product_id,
@@ -253,6 +255,8 @@ function movementStatement(db, movement) {
     movement.ref_id,
     movement.ref_item_id || null,
     movement.voids_movement_id || null,
+    movement.external_id || null,
+    movement.reason || null,
     movement.created_at
   );
 }
@@ -946,6 +950,7 @@ function itemSignature(items = []) {
 export async function updateSalesOrder(env, id, payload) {
   const existing = await getSale(env, id);
   if (!existing) throw new Error('Sales order not found');
+  if (existing.source && existing.source !== 'manual') throw new Error('外部同步销售单为只读，不能编辑');
 
   const hasItems = Array.isArray(payload?.items);
   if (!hasItems || itemSignature(payload.items) === itemSignature(existing.items)) {
@@ -1017,6 +1022,9 @@ export async function voidDocument(env, payload) {
   const table = refType === 'purchase_order' ? 'purchase_orders' : 'sales_orders';
   const order = await first(env.DB, `SELECT * FROM ${table} WHERE id = ? LIMIT 1`, [id]);
   if (!order) throw new Error('Document not found');
+  if (refType === 'sales_order' && order.source && order.source !== 'manual') {
+    throw new Error('外部同步销售单为只读，不能作废');
+  }
   if (order.voided_at) return { id, refType, voided: true };
 
   const movements = await all(env.DB, `

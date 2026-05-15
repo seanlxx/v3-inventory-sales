@@ -248,6 +248,8 @@ onMounted(async () => {
       </form>
     </SettingsSection>
 
+    <VendorSyncCard />
+
     <SettingsSection title="AI provider" description="填写 Base URL 和 API Key 后手动获取模型，再选择当前要使用的模型。">
       <form class="settings-page__form" @submit.prevent="submitAiConfigs">
         <article class="settings-page__provider">

@@ -82,6 +82,9 @@ function quantityDeltaLabel(movement: StockMovement) {
             <span>{{ movement.refType }} / {{ movement.refId }}</span>
             <span>成本 {{ formatMoney(movement.unitCost) }}</span>
           </div>
+          <p v-if="movement.reason" class="movement-timeline__reason">
+            {{ movement.reason }}
+          </p>
         </div>
       </li>
     </ol>
@@ -186,6 +189,13 @@ function quantityDeltaLabel(movement: StockMovement) {
 
 .movement-timeline__delta.is-minus {
   color: var(--color-outbound);
+}
+
+.movement-timeline__reason {
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 @media (max-width: 760px) {

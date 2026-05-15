@@ -85,10 +85,17 @@ function orderQuantity(order: SalesOrder) {
               {{ formatMoney(order.totalAmount) }}
             </td>
             <td>
-              <StatusBadge
-                :label="order.status === 'voided' ? '已作废' : '正常'"
-                :tone="order.status === 'voided' ? 'warning' : 'success'"
-              />
+              <div class="sales-table__status">
+                <StatusBadge
+                  :label="order.status === 'voided' ? '已作废' : '正常'"
+                  :tone="order.status === 'voided' ? 'warning' : 'success'"
+                />
+                <StatusBadge
+                  v-if="order.source === 'shengma'"
+                  label="盛码"
+                  tone="info"
+                />
+              </div>
             </td>
             <td class="sales-table__actions-cell">
               <div class="sales-table__actions">
@@ -98,7 +105,7 @@ function orderQuantity(order: SalesOrder) {
                 <AppButton
                   size="sm"
                   variant="danger"
-                  :disabled="order.status === 'voided'"
+                  :disabled="order.status === 'voided' || order.source === 'shengma'"
                   @click="emit('void', order)"
                 >
                   作废
@@ -136,6 +143,11 @@ function orderQuantity(order: SalesOrder) {
                 :label="order.status === 'voided' ? '已作废' : '正常'"
                 :tone="order.status === 'voided' ? 'warning' : 'success'"
               />
+              <StatusBadge
+                v-if="order.source === 'shengma'"
+                label="盛码"
+                tone="info"
+              />
             </div>
             <strong class="sales-table__card-amount">{{ formatMoney(order.totalAmount) }}</strong>
           </div>
@@ -163,7 +175,7 @@ function orderQuantity(order: SalesOrder) {
           <AppButton
             size="sm"
             variant="danger"
-            :disabled="order.status === 'voided'"
+            :disabled="order.status === 'voided' || order.source === 'shengma'"
             @click="emit('void', order)"
           >
             作废
@@ -228,6 +240,12 @@ function orderQuantity(order: SalesOrder) {
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
+}
+
+.sales-table__status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
 }
 
 .sales-table__state {
