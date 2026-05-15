@@ -93,9 +93,21 @@ assert.match(encryptedLogin.password, /^[A-Za-z0-9+/]+=*$/);
 assert.match(encryptedLogin.encryptAesKey, /^[A-Za-z0-9+/]+=*$/);
 
 const originalFetch = globalThis.fetch;
+let loginFetchCount = 0;
 globalThis.fetch = async (url, options) => {
+  loginFetchCount += 1;
   assert.equal(url, 'https://example.test/hbshengma/mobile/mobilelogin.html');
+  if (loginFetchCount === 1) {
+    assert.equal(options.method, 'GET');
+    return new Response('<form name="login"><input name="username"></form>', {
+      status: 200,
+      headers: {
+        'set-cookie': 'JSESSIONID=login-page; Path=/; HttpOnly'
+      }
+    });
+  }
   assert.equal(options.method, 'POST');
+  assert.equal(options.headers.Cookie, 'JSESSIONID=login-page');
   return new Response('', {
     status: 302,
     headers: {
@@ -112,6 +124,7 @@ try {
   });
   await client.login();
   assert.equal(client.cookie, 'JSESSIONID=login-ok');
+  assert.equal(loginFetchCount, 2);
 } finally {
   globalThis.fetch = originalFetch;
 }
