@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import type { Product } from '~/types/product'
 
-const modelValue = defineModel<string>({ default: '' })
-
 const props = defineProps<{
+  modelValue?: string
   products: readonly Product[]
   placeholder?: string
 }>()
 
 const emit = defineEmits<{
+  'update:modelValue': [productId: string]
   change: [productId: string]
 }>()
 
@@ -29,12 +29,16 @@ const visibleProducts = computed(() =>
   filteredProducts.value.length > 0 ? filteredProducts.value : props.products
 )
 
+const hasNoSearchResults = computed(() =>
+  searchQuery.value.trim().length > 0 && filteredProducts.value.length === 0
+)
+
 const selectedProduct = computed(() =>
-  props.products.find(p => p.id === modelValue.value)
+  props.products.find(p => p.id === props.modelValue)
 )
 
 function selectProduct(productId: string) {
-  modelValue.value = productId
+  emit('update:modelValue', productId)
   emit('change', productId)
   isOpen.value = false
   searchQuery.value = ''
@@ -99,20 +103,20 @@ onUnmounted(() => {
           @click.stop
         >
       </div>
+      <div v-if="hasNoSearchResults" class="product-search-select__empty">
+        未找到匹配商品，可从全部商品中选择
+      </div>
       <div class="product-search-select__list">
         <button
           v-for="product in visibleProducts"
           :key="product.id"
           type="button"
           class="product-search-select__option"
-          :class="{ 'product-search-select__option--selected': product.id === modelValue }"
+          :class="{ 'product-search-select__option--selected': product.id === props.modelValue }"
           @click="selectProduct(product.id)"
         >
           {{ product.name }}
         </button>
-        <div v-if="searchQuery.trim() && filteredProducts.length === 0" class="product-search-select__empty">
-          未找到匹配商品，下面显示全部商品
-        </div>
       </div>
     </div>
   </div>
@@ -237,9 +241,11 @@ onUnmounted(() => {
 }
 
 .product-search-select__empty {
-  padding: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
   color: var(--color-text-muted);
-  text-align: center;
+  text-align: left;
   font-size: 13px;
 }
 
