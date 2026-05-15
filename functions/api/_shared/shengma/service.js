@@ -11,6 +11,7 @@ import { hasNextSalesPage, parseCosts, parseGoods, parseSales } from './parser.j
 import { importShengmaData, summarizeDryRun } from './importer.js';
 
 const MAX_RANGE_DAYS = 31;
+const MAX_SALES_PAGES = 200;
 const RUN_LOCK_TIMEOUT_MS = 5 * 60 * 1000;
 
 function toDateOnly(value) {
@@ -167,11 +168,15 @@ async function collectVendorData(env, payload) {
 
   const sales = [];
   if (payload.scope.includes('sales')) {
-    for (let page = 1; page <= 20; page += 1) {
+    for (let page = 1; page <= MAX_SALES_PAGES; page += 1) {
       const html = await client.fetchSalesPage(payload.startDate, payload.endDate, page);
       const pageSales = parseSales(html);
       sales.push(...pageSales);
-      if (!hasNextSalesPage(html, page) || pageSales.length === 0) break;
+      const hasNextPage = hasNextSalesPage(html, page);
+      if (page === MAX_SALES_PAGES && hasNextPage) {
+        warnings.push(`销售历史超过 ${MAX_SALES_PAGES} 页，本次只同步前 ${MAX_SALES_PAGES} 页`);
+      }
+      if (!hasNextPage || pageSales.length === 0) break;
     }
   }
 

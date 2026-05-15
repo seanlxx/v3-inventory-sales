@@ -83,6 +83,10 @@ env.DB.exec(`
   VALUES (1, 'shengma', 1, 'success', 0, '2026-05-15', '2026-05-15');
   INSERT INTO external_sync_runs (id, integration, started_at, status, dry_run, date_start, date_end)
   VALUES (2, 'shengma', 2, 'success', 0, '2026-05-15', '2026-05-15');
+  INSERT INTO external_sync_runs (id, integration, started_at, status, dry_run, date_start, date_end)
+  VALUES (3, 'shengma', 3, 'success', 0, '2026-05-15', '2026-05-15');
+  INSERT INTO external_sync_runs (id, integration, started_at, status, dry_run, date_start, date_end)
+  VALUES (4, 'shengma', 4, 'success', 0, '2026-05-15', '2026-05-15');
 `);
 
 assert.equal(normalizeProductName('可口可乐(330ML)'), '可口可乐330ml');
@@ -238,19 +242,111 @@ assert.equal(secondRun.summary.salesImported, 0);
 assert.equal(secondRun.summary.salesDuplicate, 1);
 assert.equal(await movementBalanceDiffCount(), 0);
 
+const partialRun = await importShengmaData(env, 3, {
+  startDate: '2026-05-15',
+  scope: ['sales'],
+  inventoryItems: [],
+  sales: [
+    {
+      vendorOrderNo: 'SM002',
+      vendorProductName: '可口可乐330ml',
+      quantity: 1,
+      amountCents: 300,
+      costCents: -1,
+      date: '2026-05-15',
+      paidShipped: true,
+      raw: []
+    },
+    {
+      vendorOrderNo: 'SM003',
+      vendorProductName: '可口可乐330ml',
+      quantity: 1,
+      amountCents: 300,
+      costCents: 198,
+      date: '2026-05-15',
+      paidShipped: true,
+      raw: []
+    }
+  ],
+  warnings: []
+});
+
+assert.equal(partialRun.summary.salesImported, 1);
+assert.equal(partialRun.summary.salesSkipped, 1);
+assert.equal(partialRun.warnings.some(warning => warning.includes('SM002')), true);
+const importedAfterBadSale = await env.DB.prepare(`
+  SELECT COUNT(*) AS count
+  FROM sales_orders
+  WHERE external_id IN ('SM002', 'SM003')
+`).first();
+assert.equal(Number(importedAfterBadSale.count), 1);
+assert.equal(await movementBalanceDiffCount(), 0);
+
+const partialInventoryRun = await importShengmaData(env, 4, {
+  startDate: '2026-05-15',
+  scope: ['inventory'],
+  inventoryItems: [
+    {
+      vendorProductName: '坏库存项',
+      normalizedName: '坏库存项',
+      qty: 3,
+      sellPriceCents: 100,
+      costCents: 50,
+      aisles: null
+    },
+    {
+      vendorProductName: '雪碧330ml',
+      normalizedName: '雪碧330ml',
+      qty: 7,
+      sellPriceCents: 300,
+      costCents: 150,
+      aisles: [{
+        vendorAisleCode: 'E1',
+        vendorProductName: '雪碧330ml',
+        qty: 7,
+        sellPriceCents: 300,
+        costCents: 150
+      }]
+    }
+  ],
+  sales: [],
+  warnings: []
+});
+
+assert.equal(partialInventoryRun.summary.productsCreated, 1);
+assert.equal(partialInventoryRun.summary.inventoryAdjusted, 1);
+assert.equal(partialInventoryRun.warnings.some(warning => warning.includes('坏库存项')), true);
+const spriteBalance = await env.DB.prepare(`
+  SELECT b.quantity_on_hand, b.avg_cost_cents, b.inventory_value_cents
+  FROM inventory_balances b
+  JOIN products p ON p.id = b.product_id
+  WHERE p.machine_id = '三号机' AND p.name = '雪碧330ml'
+`).first();
+assert.deepEqual({
+  quantity_on_hand: spriteBalance.quantity_on_hand,
+  avg_cost_cents: spriteBalance.avg_cost_cents,
+  inventory_value_cents: spriteBalance.inventory_value_cents
+}, {
+  quantity_on_hand: 7,
+  avg_cost_cents: 150,
+  inventory_value_cents: 1050
+});
+assert.equal(await movementBalanceDiffCount(), 0);
+
 const balance = await env.DB.prepare(`
-  SELECT quantity_on_hand, avg_cost_cents, inventory_value_cents
-  FROM inventory_balances
-  WHERE machine_id = '三号机'
+  SELECT b.quantity_on_hand, b.avg_cost_cents, b.inventory_value_cents
+  FROM inventory_balances b
+  JOIN products p ON p.id = b.product_id
+  WHERE p.machine_id = '三号机' AND p.name = '可口可乐 330ml'
 `).first();
 assert.deepEqual({
   quantity_on_hand: balance.quantity_on_hand,
   avg_cost_cents: balance.avg_cost_cents,
   inventory_value_cents: balance.inventory_value_cents
 }, {
-  quantity_on_hand: 5,
+  quantity_on_hand: 4,
   avg_cost_cents: 198,
-  inventory_value_cents: 990
+  inventory_value_cents: 792
 });
 
 console.log('shengma integration tests passed');

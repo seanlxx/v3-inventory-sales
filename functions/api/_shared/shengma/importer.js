@@ -17,6 +17,20 @@ const EMPTY_SUMMARY = {
   warnings: 0
 };
 
+function newSummaryPatch() {
+  return { ...EMPTY_SUMMARY };
+}
+
+function mergeSummary(target, patch) {
+  for (const key of Object.keys(EMPTY_SUMMARY)) {
+    target[key] += Number(patch[key]) || 0;
+  }
+}
+
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error || '未知错误');
+}
+
 function productToApi(row) {
   return {
     id: row.id,
@@ -197,33 +211,43 @@ function addSnapshotStatements(db, runId, item, timestamp) {
   ));
 }
 
-async function syncInventoryMetadata(env, runId, inventoryItems, statements, summary, timestamp, balanceCache) {
+async function syncInventoryMetadata(env, runId, inventoryItems, summary, warnings, timestamp, balanceCache) {
   const productByNormalized = new Map();
   for (const item of inventoryItems) {
-    const product = await ensureProduct(env, item, statements, summary, timestamp);
-    productByNormalized.set(item.normalizedName, product);
-    statements.push(addMappingStatement(env.DB, item, product.id, timestamp));
-    statements.push(...addSnapshotStatements(env.DB, runId, item, timestamp));
+    const statements = [];
+    const patch = newSummaryPatch();
 
-    const balance = await getCachedBalance(env, balanceCache, product.id);
-    if (item.costCents !== null && item.costCents !== undefined && balance.avg_cost_cents !== item.costCents) {
-      summary.costsUpdated += 1;
+    try {
+      const product = await ensureProduct(env, item, statements, patch, timestamp);
+      statements.push(addMappingStatement(env.DB, item, product.id, timestamp));
+      statements.push(...addSnapshotStatements(env.DB, runId, item, timestamp));
+
+      const balance = await getCachedBalance(env, balanceCache, product.id);
+      if (item.costCents !== null && item.costCents !== undefined && balance.avg_cost_cents !== item.costCents) {
+        patch.costsUpdated += 1;
+      }
+      const quantityOnHand = Number(balance.quantity_on_hand) || 0;
+      const unitCostCents = item.costCents ?? (Number(balance.avg_cost_cents) || 0);
+      const nextBalance = {
+        ...balance,
+        avg_cost_cents: quantityOnHand === 0 ? 0 : unitCostCents,
+        inventory_value_cents: quantityOnHand * unitCostCents,
+        updated_at: timestamp
+      };
+      statements.push(upsertBalanceStatement(env.DB, nextBalance));
+
+      await env.DB.batch(statements);
+      balanceCache.set(product.id, nextBalance);
+      productByNormalized.set(item.normalizedName, product);
+      mergeSummary(summary, patch);
+    } catch (error) {
+      warnings.push(`库存 ${item.vendorProductName} 同步失败：${errorMessage(error)}`);
     }
-    const quantityOnHand = Number(balance.quantity_on_hand) || 0;
-    const unitCostCents = item.costCents ?? (Number(balance.avg_cost_cents) || 0);
-    const nextBalance = {
-      ...balance,
-      avg_cost_cents: quantityOnHand === 0 ? 0 : unitCostCents,
-      inventory_value_cents: quantityOnHand * unitCostCents,
-      updated_at: timestamp
-    };
-    balanceCache.set(product.id, nextBalance);
-    statements.push(upsertBalanceStatement(env.DB, nextBalance));
   }
   return productByNormalized;
 }
 
-async function calibrateInventory(env, runId, inventoryItems, productByNormalized, statements, summary, timestamp, balanceCache) {
+async function calibrateInventory(env, runId, inventoryItems, productByNormalized, summary, warnings, timestamp, balanceCache) {
   for (const item of inventoryItems) {
     const product = productByNormalized.get(item.normalizedName);
     if (!product) continue;
@@ -232,9 +256,11 @@ async function calibrateInventory(env, runId, inventoryItems, productByNormalize
     const delta = item.qty - currentQty;
     const unitCostCents = item.costCents ?? (Number(balance.avg_cost_cents) || 0);
     const externalId = `${SHENGMA_INTEGRATION}:adjust:${runId}:${product.id}`;
+    const statements = [];
+    const patch = newSummaryPatch();
 
     if (delta !== 0) {
-      summary.inventoryAdjusted += 1;
+      patch.inventoryAdjusted += 1;
       statements.push(env.DB.prepare(`
         INSERT OR IGNORE INTO stock_movements (
           id, product_id, machine_id, movement_type, qty_delta, unit_cost_cents,
@@ -260,8 +286,15 @@ async function calibrateInventory(env, runId, inventoryItems, productByNormalize
       inventory_value_cents: item.qty * unitCostCents,
       updated_at: timestamp
     };
-    balanceCache.set(product.id, nextBalance);
     statements.push(upsertBalanceStatement(env.DB, nextBalance));
+
+    try {
+      await env.DB.batch(statements);
+      balanceCache.set(product.id, nextBalance);
+      mergeSummary(summary, patch);
+    } catch (error) {
+      warnings.push(`库存 ${item.vendorProductName} 校准失败：${errorMessage(error)}`);
+    }
   }
 }
 
@@ -270,13 +303,15 @@ function saleDate(sale, fallbackStartDate) {
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : fallbackStartDate;
 }
 
-async function importSale(env, sale, product, date, statements, summary, warnings, timestamp, balanceCache) {
+async function importSale(env, sale, product, date, summary, warnings, timestamp, balanceCache) {
+  const orderId = `shengma:${sale.vendorOrderNo}`.slice(0, 120);
   const existing = await first(env.DB, `
     SELECT id
     FROM sales_orders
-    WHERE source = ? AND external_id = ?
+    WHERE (source = ? AND external_id = ?)
+       OR id = ?
     LIMIT 1
-  `, [SHENGMA_INTEGRATION, sale.vendorOrderNo]);
+  `, [SHENGMA_INTEGRATION, sale.vendorOrderNo, orderId]);
   if (existing) {
     summary.salesDuplicate += 1;
     return;
@@ -294,12 +329,18 @@ async function importSale(env, sale, product, date, statements, summary, warning
 
   const balance = await getCachedBalance(env, balanceCache, product.id);
   const quantity = Math.max(1, Number(sale.quantity) || 1);
-  const orderId = `shengma:${sale.vendorOrderNo}`.slice(0, 120);
   const itemId = `${orderId}:0`;
   const unitPriceCents = Math.round(sale.amountCents / quantity);
+  if (unitPriceCents < 0 || sale.amountCents < 0) {
+    summary.salesSkipped += 1;
+    warnings.push(`销售单 ${sale.vendorOrderNo} 金额无效，已跳过`);
+    return;
+  }
+
   const unitCostCents = sale.costCents ?? (Number(balance.avg_cost_cents) || 0);
   const lineCogsCents = unitCostCents * quantity;
   const orderDate = saleDate(sale, date);
+  const statements = [];
 
   statements.push(env.DB.prepare(`
     INSERT INTO sales_orders (
@@ -348,9 +389,16 @@ async function importSale(env, sale, product, date, statements, summary, warning
     timestamp
   ));
   const nextBalance = applyAdjustmentToBalance(balance, -quantity, unitCostCents, timestamp);
-  balanceCache.set(product.id, nextBalance);
   statements.push(upsertBalanceStatement(env.DB, nextBalance));
-  summary.salesImported += 1;
+
+  try {
+    await env.DB.batch(statements);
+    balanceCache.set(product.id, nextBalance);
+    summary.salesImported += 1;
+  } catch (error) {
+    summary.salesSkipped += 1;
+    warnings.push(`销售单 ${sale.vendorOrderNo} 导入失败：${errorMessage(error)}`);
+  }
 }
 
 export function summarizeDryRun(inventoryItems, sales, warnings) {
@@ -368,12 +416,11 @@ export function summarizeDryRun(inventoryItems, sales, warnings) {
 export async function importShengmaData(env, runId, payload) {
   const summary = { ...EMPTY_SUMMARY };
   const warnings = [...payload.warnings];
-  const statements = [];
   const balanceCache = new Map();
   const timestamp = nowIso();
 
   const productByNormalized = payload.scope.includes('inventory')
-    ? await syncInventoryMetadata(env, runId, payload.inventoryItems, statements, summary, timestamp, balanceCache)
+    ? await syncInventoryMetadata(env, runId, payload.inventoryItems, summary, warnings, timestamp, balanceCache)
     : new Map();
 
   if (!payload.scope.includes('inventory') && payload.scope.includes('sales')) {
@@ -390,16 +437,15 @@ export async function importShengmaData(env, runId, payload) {
   if (payload.scope.includes('sales')) {
     for (const sale of payload.sales) {
       const product = productByNormalized.get(normalizeProductName(sale.vendorProductName));
-      await importSale(env, sale, product, payload.startDate, statements, summary, warnings, timestamp, balanceCache);
+      await importSale(env, sale, product, payload.startDate, summary, warnings, timestamp, balanceCache);
     }
   }
 
   if (payload.scope.includes('inventory')) {
-    await calibrateInventory(env, runId, payload.inventoryItems, productByNormalized, statements, summary, timestamp, balanceCache);
+    await calibrateInventory(env, runId, payload.inventoryItems, productByNormalized, summary, warnings, timestamp, balanceCache);
   }
 
   summary.warnings = warnings.length;
-  if (statements.length) await env.DB.batch(statements);
   return { summary, warnings };
 }
 
