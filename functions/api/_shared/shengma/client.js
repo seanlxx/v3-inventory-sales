@@ -29,6 +29,17 @@ function isLoginPage(text, response) {
     || /name=["']username["']|mobilelogin\.html|encryptAesKey/.test(text || '');
 }
 
+function isSuccessfulLoginResponse(response, cookie) {
+  const location = response.headers.get('location') || '';
+  return !!cookie
+    && (response.ok || response.status === 302 || response.status === 303)
+    && !/mobilelogin|login/i.test(location);
+}
+
+function isLoginFormContent(text) {
+  return /name=["']username["']|mobilelogin\.html|encryptAesKey/.test(text || '');
+}
+
 export function getShengmaConfig(env) {
   return {
     baseUrl: String(env.SHENGMA_BASE_URL || SHENGMA_DEFAULT_BASE_URL).replace(/\/$/, ''),
@@ -92,7 +103,10 @@ export class ShengmaClient {
     });
     const text = await response.text();
     const cookie = joinCookie(response.headers);
-    if (!cookie || response.status >= 400 || isLoginPage(text, response)) {
+    if (!isSuccessfulLoginResponse(response, cookie)) {
+      throw new Error(`盛码登录失败：HTTP ${response.status}`);
+    }
+    if (response.ok && isLoginFormContent(text)) {
       throw new Error(`盛码登录失败：HTTP ${response.status}`);
     }
 

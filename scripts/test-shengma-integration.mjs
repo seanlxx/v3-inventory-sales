@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { aggregateInventory, normalizeProductName } from '../functions/api/_shared/shengma/mapper.js';
 import { encryptLoginPassword } from '../functions/api/_shared/shengma/crypto.js';
+import { ShengmaClient } from '../functions/api/_shared/shengma/client.js';
 import { importShengmaData } from '../functions/api/_shared/shengma/importer.js';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -90,6 +91,30 @@ assert.equal(normalizeProductName('娃哈哈纯净水596毫升'), '娃哈哈纯�
 const encryptedLogin = encryptLoginPassword('12345678');
 assert.match(encryptedLogin.password, /^[A-Za-z0-9+/]+=*$/);
 assert.match(encryptedLogin.encryptAesKey, /^[A-Za-z0-9+/]+=*$/);
+
+const originalFetch = globalThis.fetch;
+globalThis.fetch = async (url, options) => {
+  assert.equal(url, 'https://example.test/hbshengma/mobile/mobilelogin.html');
+  assert.equal(options.method, 'POST');
+  return new Response('', {
+    status: 302,
+    headers: {
+      'set-cookie': 'JSESSIONID=login-ok; Path=/; HttpOnly'
+    }
+  });
+};
+try {
+  const client = new ShengmaClient({
+    DB: env.DB,
+    SHENGMA_BASE_URL: 'https://example.test/hbshengma',
+    SHENGMA_USERNAME: 'demo',
+    SHENGMA_PASSWORD: '12345678'
+  });
+  await client.login();
+  assert.equal(client.cookie, 'JSESSIONID=login-ok');
+} finally {
+  globalThis.fetch = originalFetch;
+}
 
 const warnings = [];
 const inventory = aggregateInventory([
