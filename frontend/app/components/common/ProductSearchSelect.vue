@@ -25,6 +25,10 @@ const filteredProducts = computed(() => {
   )
 })
 
+const visibleProducts = computed(() =>
+  filteredProducts.value.length > 0 ? filteredProducts.value : props.products
+)
+
 const selectedProduct = computed(() =>
   props.products.find(p => p.id === modelValue.value)
 )
@@ -97,7 +101,7 @@ onUnmounted(() => {
       </div>
       <div class="product-search-select__list">
         <button
-          v-for="product in filteredProducts"
+          v-for="product in visibleProducts"
           :key="product.id"
           type="button"
           class="product-search-select__option"
@@ -106,8 +110,8 @@ onUnmounted(() => {
         >
           {{ product.name }}
         </button>
-        <div v-if="filteredProducts.length === 0" class="product-search-select__empty">
-          未找到匹配的商品
+        <div v-if="searchQuery.trim() && filteredProducts.length === 0" class="product-search-select__empty">
+          未找到匹配商品，下面显示全部商品
         </div>
       </div>
     </div>

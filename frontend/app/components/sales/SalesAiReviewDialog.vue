@@ -144,22 +144,21 @@ function confirmOrder() {
           <span>上传销售截图 / 直接粘贴</span>
           <input type="file" accept="image/*" multiple @change="handleFileChange">
           <strong>{{ props.images?.length ? `已选择 ${props.images.length} 张图片，可继续添加` : '选择一张或多张销售截图，或复制图片后按 Ctrl+V' }}</strong>
+          <div v-if="props.images?.length" class="sales-ai__previews" aria-label="待识别图片">
+            <article v-for="image in props.images" :key="image.id" class="sales-ai__preview">
+              <img :src="image.previewUrl" :alt="image.fileName">
+              <div>
+                <strong>{{ image.fileName }}</strong>
+                <button type="button" :disabled="props.recognizing" @click.prevent="emit('imageRemoved', image.id)">
+                  移除
+                </button>
+              </div>
+            </article>
+          </div>
         </label>
         <AppButton variant="secondary" :loading="props.recognizing" :disabled="!props.images?.length" @click="emit('recognize')">
           开始识别
         </AppButton>
-      </div>
-
-      <div v-if="props.images?.length" class="sales-ai__previews" aria-label="待识别图片">
-        <article v-for="image in props.images" :key="image.id" class="sales-ai__preview">
-          <img :src="image.previewUrl" :alt="image.fileName">
-          <div>
-            <strong>{{ image.fileName }}</strong>
-            <button type="button" :disabled="props.recognizing" @click="emit('imageRemoved', image.id)">
-              移除
-            </button>
-          </div>
-        </article>
       </div>
 
       <p v-if="props.recognizing || props.progressMessage" class="sales-ai__progress">
@@ -184,12 +183,6 @@ function confirmOrder() {
         {{ props.errorMessage || formError || props.inventoryError }}
       </p>
 
-      <div class="sales-ai__toolbar">
-        <AppButton variant="secondary" @click="addManualCandidate">
-          + 手动添加商品
-        </AppButton>
-      </div>
-
       <div class="sales-ai__scroll">
         <table class="sales-ai__table">
           <thead>
@@ -208,7 +201,7 @@ function confirmOrder() {
           <tbody>
             <tr v-if="props.candidates.length === 0">
               <td class="sales-ai__empty" colspan="9">
-                上传截图并识别后，在这里人工确认销售明细；也可以点击上方"+ 手动添加商品"直接录入
+                上传截图并识别后，在这里人工确认销售明细；也可以点击下方"+ 手动添加商品"直接录入
               </td>
             </tr>
             <tr v-for="(candidate, index) in props.candidates" v-else :key="candidate.id">
@@ -261,6 +254,12 @@ function confirmOrder() {
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <div class="sales-ai__toolbar">
+        <AppButton variant="secondary" @click="addManualCandidate">
+          + 手动添加商品
+        </AppButton>
       </div>
 
       <footer class="sales-ai__footer">
