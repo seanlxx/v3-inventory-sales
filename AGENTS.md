@@ -13,6 +13,45 @@
 
 ---
 
+## 触发词：「阅读」
+
+> **当且仅当用户消息内容是单独一个词「阅读」（或「阅读 + 任务描述」）时，AI 必须按下面流程执行，不要跳步、不要省略。**
+
+### 触发后必做的 4 件事
+
+1. **重新通读 AGENTS.md 的 §0 / §3 / §5 / §6 / §9**（这 5 节是高频违规重灾区），用一句中文向用户确认"已重读"。
+2. **根据用户当前任务（或最近一条任务描述），从 §0.5 表格里选出本次需要加载的 skills**，列成清单：
+   - 项目专属（`mobile-ui-fix` / `desktop-ui-fix` / `pages-deploy-troubleshoot`）按场景**最多选 1 个**。
+   - 通用设计（`ui-design-brain` / `color-system` / `typography-scale` / `spacing-system` / `visual-hierarchy` / `layout-grid` / `responsive-design` / `data-visualization` / `dark-mode-design`）按需要选 0–3 个，**不要全选**。
+   - 框架/工具类（`vue` / `vue-best-practices` / `nuxt` / `pinia` / `cloudflare` / `wrangler` / `vitest` 等）只在任务确实涉及该领域时选。
+3. **用 `skill` 工具实际加载第 2 步选出的 skills**（不是只列名字），加载完后开始执行任务。
+4. **任务结束前必须按 §3.5 自动提交并部署**（只要本轮触碰过任何文件就必须做，纯问答 / 纯解释除外）：
+   ```powershell
+   git add -A
+   git commit -m "<简明中文描述>"
+   git push origin master
+   powershell -ExecutionPolicy Bypass -File ./scripts/deploy-pages.ps1
+   ```
+   - `git push` 触发 Cloudflare Pages 自动构建。
+   - `deploy-pages.ps1` 用 Wrangler 重新发布当前 commit 并验证生产地址，避免 CF Git 集成停在 `Idle` / `Skipped`（§3.6 反模式 #18）。
+   - 结尾在回复中按 §3.7 列出：触碰文件、验证结果、commit hash、是否多余操作。
+
+### 没有具体任务时的行为
+
+- 用户只发了「阅读」两字，没附带任务描述 → 完成第 1 步重读，列出 §0.5 全部可用 skills 让用户挑，**不主动加载任何 skill**、**也不执行第 4 步**，等用户给具体任务。
+
+### 反模式（看到立即停）
+
+| ❌ | ✅ |
+| --- | --- |
+| 用户说「阅读」就一次性 load 8 个 skill | 按任务挑 1–3 个，多了消耗 context |
+| 跳过重读 AGENTS.md，直接问"要我做什么" | 必须先重读，再问 |
+| 重读完不汇报、直接进入下一步 | 必须用一句话告诉用户"已重读 + 加载了哪些 skill" |
+| 改完文件就结束，等用户提醒才 commit | 改完文件 → `add` / `commit` / `push` / `deploy-pages.ps1` 一条龙跑完 |
+| 只 `git push` 不跑 `deploy-pages.ps1`，以为 CF Git 集成会自动部署 | 必须跑 `scripts/deploy-pages.ps1` 验证生产指向当前 commit |
+
+---
+
 ## 0. 接到需求后的标准工作流
 
 > **核心原则：先理解 → 再定位 → 再动手。禁止"挨个方法试一遍"。**
