@@ -8,7 +8,7 @@ import { aggregateInventory, normalizeProductName } from '../functions/api/_shar
 import { encryptLoginPassword } from '../functions/api/_shared/shengma/crypto.js';
 import { ShengmaClient } from '../functions/api/_shared/shengma/client.js';
 import { importShengmaData } from '../functions/api/_shared/shengma/importer.js';
-import { parseCosts, parseGoods } from '../functions/api/_shared/shengma/parser.js';
+import { parseCosts, parseGoods, parseSales } from '../functions/api/_shared/shengma/parser.js';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const projectRoot = dirname(scriptDir);
@@ -181,6 +181,50 @@ assert.deepEqual(costCards[0], {
   costCents: 2441,
   raw: ['11', '和成天下槟榔干', '24.41']
 });
+
+const salesCards = parseSales(`
+  <div class="to-rep-list">
+    <div class="item">
+      <div class="title">MUDAN <span>17.5</span><span>已支付</span></div>
+      <div>设备名称: 一体10寸屏饮料机33f70ee6d9bfac1</div>
+      <div>订单号码: DDS1260515164302138521E21375F1</div>
+      <div>出货详情: 已出货 未退款</div>
+      <div>交易时间: 2026-05-15 16:43:10</div>
+      <div>进价: 0.00</div>
+      <div>微信 货道24 数量 1</div>
+      <button>立即退款</button>
+    </div>
+    <div class="item">
+      <div class="title">HONGFANGYIN <span>20.0</span><span>已支付</span></div>
+      <div>设备名称: 一体10寸屏饮料机33f70ee6d9bfac1</div>
+      <div>订单号码: DDS1260515164035634C873C0ABA72</div>
+      <div>出货详情: 已出货 未退款</div>
+      <div>交易时间: 2026-05-15 16:40:42</div>
+      <div>进价: 19.05</div>
+      <div>微信 货道45 数量 1</div>
+      <button>立即退款</button>
+    </div>
+  </div>
+`);
+assert.equal(salesCards.length, 2);
+assert.deepEqual({
+  vendorOrderNo: salesCards[0].vendorOrderNo,
+  vendorProductName: salesCards[0].vendorProductName,
+  quantity: salesCards[0].quantity,
+  amountCents: salesCards[0].amountCents,
+  costCents: salesCards[0].costCents,
+  date: salesCards[0].date,
+  paidShipped: salesCards[0].paidShipped
+}, {
+  vendorOrderNo: 'DDS1260515164302138521E21375F1',
+  vendorProductName: 'MUDAN',
+  quantity: 1,
+  amountCents: 1750,
+  costCents: 0,
+  date: '2026-05-15',
+  paidShipped: true
+});
+assert.equal(salesCards[1].costCents, 1905);
 
 const inventory = aggregateInventory([
   { vendorAisleCode: 'A1', vendorProductName: '可口可乐 330ml', qty: 2, sellPriceCents: 300 },

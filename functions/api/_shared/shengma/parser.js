@@ -184,7 +184,8 @@ function looksPaidShipped(cells) {
   const text = cells.join(' ');
   const paid = /已支付|支付成功|已付款|成功/.test(text);
   const shipped = /已出货|出货成功|已取货|完成/.test(text);
-  const refunded = /退款|已退|异常|失败|取消/.test(text);
+  const refundText = text.replace(/未退款|无退款|未退|立即退款|申请退款/g, ' ');
+  const refunded = /已退款|退款成功|退款完成|已退|异常|失败|取消/.test(refundText);
   return paid && shipped && !refunded;
 }
 
@@ -192,6 +193,67 @@ function firstDate(cells) {
   const text = cells.join(' ');
   const match = text.match(/\d{4}-\d{1,2}-\d{1,2}(?:\s+\d{1,2}:\d{1,2}(?::\d{1,2})?)?/);
   return match ? match[0].replace(/\b(\d)\b/g, '0$1') : '';
+}
+
+function labelValue(text, label, nextLabels) {
+  const index = text.indexOf(label);
+  if (index === -1) return '';
+  let rest = text.slice(index + label.length).replace(/^[\s:：]+/, '');
+  const nextIndexes = nextLabels
+    .filter(nextLabel => nextLabel !== label)
+    .map(nextLabel => rest.indexOf(nextLabel))
+    .filter(nextIndex => nextIndex > 0);
+  if (nextIndexes.length > 0) {
+    rest = rest.slice(0, Math.min(...nextIndexes));
+  }
+  return rest.trim();
+}
+
+function parseSalesCards(html) {
+  const labels = [
+    '设备名称',
+    '订单号码',
+    '出货详情',
+    '交易时间',
+    '进价',
+    '商品名称',
+    '货道',
+    '数量',
+    '立即退款'
+  ];
+
+  return divBlocksByClass(html, 'item')
+    .filter(block => /订单号码|交易时间|出货详情/.test(stripTags(block)))
+    .map((block) => {
+      const text = stripTags(block);
+      const beforeMeta = text.slice(0, Math.max(
+        ...['设备名称', '订单号码', '出货详情', '交易时间']
+          .map(label => text.indexOf(label))
+          .filter(index => index >= 0)
+      ));
+      const header = beforeMeta.match(/^\s*(.+?)\s*(?:[>›]\s*)?(-?\d+(?:\.\d+)?)\s*(?:已支付|未支付|支付|$)/);
+      const productName = (header?.[1] || labelValue(text, '商品名称', labels))
+        .replace(/[>›]+$/g, '')
+        .trim();
+      const amountCents = parseMoney(header?.[2] || labelValue(text, '金额', labels));
+      const vendorOrderNo = labelValue(text, '订单号码', labels).split(/\s+/)[0] || '';
+      const quantity = parseInteger(text.match(/数量\s*[:：]?\s*(-?\d+)/)?.[1]) ?? 1;
+      const costCents = parseMoney(labelValue(text, '进价', labels));
+      const date = firstDate([labelValue(text, '交易时间', labels)]);
+
+      if (!vendorOrderNo || !productName || amountCents === null) return null;
+      return {
+        vendorOrderNo,
+        vendorProductName: productName,
+        quantity: Math.max(1, quantity),
+        amountCents,
+        costCents,
+        date: date ? date.slice(0, 10) : '',
+        paidShipped: looksPaidShipped([text]),
+        raw: [text]
+      };
+    })
+    .filter(Boolean);
 }
 
 export function parseSales(html) {
@@ -222,7 +284,7 @@ export function parseSales(html) {
       raw: cells
     });
   }
-  return sales;
+  return sales.length > 0 ? sales : parseSalesCards(html);
 }
 
 export function hasNextSalesPage(html, currentPage) {
