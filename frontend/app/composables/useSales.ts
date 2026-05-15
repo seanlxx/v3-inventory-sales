@@ -201,6 +201,15 @@ export function useSales() {
     return null
   }
 
+  function machineIdForItems(items: SalesItem[]) {
+    const machineIds = new Set(
+      items
+        .map(item => products.value.find(product => product.id === item.productId)?.machineId)
+        .filter((machineId): machineId is string => Boolean(machineId))
+    )
+    return machineIds.size === 1 ? Array.from(machineIds)[0] : undefined
+  }
+
   async function loadProducts() {
     productsLoading.value = true
     productsError.value = null
@@ -341,6 +350,7 @@ export function useSales() {
     try {
       const body = {
         ...payload,
+        machineId: payload.machineId || machineIdForItems(validItems),
         items: validItems,
         imageBase64: payload.imageBase64 || salesImage.value?.imageBase64,
         mimeType: payload.mimeType || salesImage.value?.mimeType

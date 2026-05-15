@@ -124,6 +124,34 @@ await assert.rejects(
 );
 assert.equal(await rowCount('sales_orders'), 1, 'failed sale should not write a partial order');
 
+await saveProduct(env, {
+  id: 'p-inferred-machine',
+  name: 'Inferred Machine Juice',
+  machineId: 'machine-b',
+  category: 'drink',
+  sellPrice: 6
+});
+await createPurchases(env, {
+  id: 'po-inferred-machine',
+  productId: 'p-inferred-machine',
+  quantity: 2,
+  totalPrice: 8,
+  date: '2026-05-02'
+});
+const inferredMachineSale = await createSalesOrder(env, {
+  id: 'so-inferred-machine',
+  date: '2026-05-02',
+  items: [{ productId: 'p-inferred-machine', quantity: 1 }]
+}, 'sale');
+assert.equal(inferredMachineSale.machineId, 'machine-b');
+assert.deepEqual(await balance('p-inferred-machine', 'machine-b'), {
+  quantity_on_hand: 1,
+  avg_cost_cents: 400,
+  inventory_value_cents: 400,
+  total_purchase_qty: 2,
+  total_purchase_cost_cents: 800
+});
+
 const refund = await createSalesOrder(env, {
   id: 'rf1',
   machineId: 'machine-a',

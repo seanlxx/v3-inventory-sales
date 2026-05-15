@@ -719,7 +719,8 @@ export async function createSalesOrder(env, payload, forcedType = null) {
   const date = recordDate(payload.date);
   const yearMonth = yearMonthFromDate(date);
   const orderId = stringOrNull(payload.id) || newId();
-  const machineId = stringOrNull(payload.machineId) || '1号机';
+  const productMachineIds = [...new Set(Array.from(productMap.values()).map(product => product.machine_id).filter(Boolean))];
+  const machineId = stringOrNull(payload.machineId) || (productMachineIds.length === 1 ? productMachineIds[0] : '1号机');
   const statements = [];
   const balanceCache = new Map();
   const savedItems = [];
