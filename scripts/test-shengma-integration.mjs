@@ -183,7 +183,8 @@ const inventory = aggregateInventory([
   { vendorAisleCode: 'A2', vendorProductName: '可口可乐(330ML)', qty: 3, sellPriceCents: 300 },
   { vendorAisleCode: 'B1', vendorProductName: '测试商品', qty: 9, sellPriceCents: 100 },
   { vendorAisleCode: 'C1', vendorProductName: '占位商品', qty: 1, sellPriceCents: 99900 },
-  { vendorAisleCode: 'D1', vendorProductName: '商品6', qty: 5, sellPriceCents: 99990 }
+  { vendorAisleCode: 'D1', vendorProductName: '商品6', qty: 5, sellPriceCents: 99990 },
+  { vendorAisleCode: 'D2', vendorProductName: '商品101', qty: 1, sellPriceCents: 0 }
 ], [
   { vendorAisleCode: 'A1', vendorProductName: '可口可乐 330ml', costCents: 180 },
   { vendorAisleCode: 'A2', vendorProductName: '可口可乐(330ML)', costCents: 210 }
@@ -193,7 +194,7 @@ assert.equal(inventory.length, 1);
 assert.equal(inventory[0].qty, 5);
 assert.equal(inventory[0].sellPriceCents, 300);
 assert.equal(inventory[0].costCents, 198);
-assert.equal(warnings.length, 4);
+assert.equal(warnings.length, 5);
 
 const firstRun = await importShengmaData(env, 1, {
   startDate: '2026-05-15',

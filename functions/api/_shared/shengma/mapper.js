@@ -15,7 +15,7 @@ export function shouldIgnoreAisle(item) {
   const name = String(item.vendorProductName || '');
   return !!item.hidden
     || BLOCKED_KEYWORDS.some(keyword => name.includes(keyword))
-    || (/^商品\d+$/.test(name) && Number(item.sellPriceCents) >= 99900)
+    || /^商品\d+$/.test(name)
     || Number(item.sellPriceCents) === 99900;
 }
 
