@@ -23,6 +23,11 @@ export type ProductListFilters = {
   status: 'active' | 'archived' | 'all'
 }
 
+export type ProductStatusPayload = Record<string, unknown> & {
+  id: string
+  status: ProductStatus
+}
+
 export type ProductMutationPayload = Record<string, unknown> & {
   id?: string
   name: string

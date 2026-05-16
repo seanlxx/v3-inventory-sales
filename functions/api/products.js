@@ -1,4 +1,10 @@
-import { archiveProduct, listProducts, saveProduct } from './_shared/inventory-service.js';
+import {
+  archiveProduct,
+  InventoryValidationError,
+  listProducts,
+  saveProduct,
+  updateProductStatus
+} from './_shared/inventory-service.js';
 import { json, methodNotAllowed, parseJsonBody } from './_shared/http.js';
 
 export async function onRequestGet(context) {
@@ -20,6 +26,20 @@ export async function onRequestPost(context) {
 
 export async function onRequestPut(context) {
   return await onRequestPost(context);
+}
+
+export async function onRequestPatch(context) {
+  const body = await parseJsonBody(context.request);
+  const id = body?.id || new URL(context.request.url).searchParams.get('id');
+  try {
+    const product = await updateProductStatus(context.env, id, body?.status);
+    return json(200, product);
+  } catch (error) {
+    if (error instanceof InventoryValidationError) {
+      return json(400, { message: error.message });
+    }
+    throw error;
+  }
 }
 
 export async function onRequestDelete(context) {

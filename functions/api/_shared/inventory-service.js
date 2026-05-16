@@ -22,6 +22,8 @@ export class InventoryValidationError extends Error {
   }
 }
 
+const PRODUCT_STATUSES = new Set(['active', 'archived']);
+
 function validationError(message) {
   return new InventoryValidationError(message);
 }
@@ -144,6 +146,12 @@ function productRowFromPayload(payload, existing = null) {
     created_at: existing?.created_at || stringOrNull(payload.createdAt) || timestamp,
     updated_at: timestamp
   };
+}
+
+function normalizeProductStatus(value) {
+  const status = stringOrNull(value);
+  if (!PRODUCT_STATUSES.has(status)) throw validationError('Invalid product status');
+  return status;
 }
 
 async function getProduct(env, productId) {
@@ -349,11 +357,24 @@ export async function saveProduct(env, payload) {
 }
 
 export async function archiveProduct(env, productId) {
+  return await updateProductStatus(env, productId, 'archived');
+}
+
+export async function updateProductStatus(env, productId, status) {
+  const id = stringOrNull(productId);
+  if (!id) throw validationError('Missing product id');
+  const existing = await getProduct(env, id);
+  if (!existing) throw validationError('Product not found');
+
+  const normalizedStatus = normalizeProductStatus(status);
   await run(env.DB, `
     UPDATE products
-    SET status = 'archived', updated_at = ?
+    SET status = ?, updated_at = ?
     WHERE id = ?
-  `, [nowIso(), productId]);
+  `, [normalizedStatus, nowIso(), id]);
+
+  const [saved] = await listProducts(env, { id, includeArchived: true });
+  return saved;
 }
 
 async function ensurePurchaseProduct(env, purchase, statements) {

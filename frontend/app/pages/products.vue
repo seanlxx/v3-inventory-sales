@@ -21,6 +21,7 @@ const {
   loadProducts,
   saveProduct,
   archiveProduct,
+  updateProductStatus,
   loadProductMovements
 } = useProducts()
 
@@ -44,9 +45,15 @@ async function submitProduct(payload: ProductMutationPayload) {
 }
 
 async function confirmArchive(product: Product) {
-  const confirmed = window.confirm(`确定归档“${product.name}”吗？归档不会修改库存流水。`)
+  const confirmed = window.confirm(`确定下架“${product.name}”吗？下架不会修改库存流水，并且不会再出现在首页库存风险和异常列表里。`)
   if (!confirmed) return
   await archiveProduct(product).catch(() => null)
+}
+
+async function confirmRestore(product: Product) {
+  const confirmed = window.confirm(`确定重新上架“${product.name}”吗？重新上架后会恢复首页库存风险和异常提示。`)
+  if (!confirmed) return
+  await updateProductStatus(product, 'active').catch(() => null)
 }
 
 async function openHistory(product: Product) {
@@ -83,6 +90,7 @@ onMounted(() => {
       :error="error"
       @edit="openEditDialog"
       @archive="confirmArchive"
+      @restore="confirmRestore"
       @movements="openHistory"
       @retry="loadProducts"
     />

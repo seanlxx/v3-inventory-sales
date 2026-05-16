@@ -12,6 +12,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   edit: [product: Product]
   archive: [product: Product]
+  restore: [product: Product]
   movements: [product: Product]
   retry: []
 }>()
@@ -87,7 +88,7 @@ function stockTone(product: Product) {
             </td>
             <td>
               <StatusBadge
-                :label="product.status === 'archived' ? '已归档' : '正常'"
+                :label="product.status === 'archived' ? '已下架' : '在售'"
                 :tone="product.status === 'archived' ? 'warning' : 'success'"
               />
             </td>
@@ -99,8 +100,16 @@ function stockTone(product: Product) {
                 <AppButton size="sm" variant="secondary" @click="emit('movements', product)">
                   流水
                 </AppButton>
-                <AppButton size="sm" variant="danger" :disabled="product.status === 'archived'" @click="emit('archive', product)">
-                  归档
+                <AppButton
+                  v-if="product.status === 'archived'"
+                  size="sm"
+                  variant="secondary"
+                  @click="emit('restore', product)"
+                >
+                  上架
+                </AppButton>
+                <AppButton v-else size="sm" variant="danger" @click="emit('archive', product)">
+                  下架
                 </AppButton>
               </div>
             </td>

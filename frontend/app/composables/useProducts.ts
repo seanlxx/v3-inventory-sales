@@ -1,6 +1,6 @@
 import type { ApiError } from '~/types/api'
 import type { StockMovement } from '~/types/inventory'
-import type { Product, ProductListFilters, ProductMutationPayload } from '~/types/product'
+import type { Product, ProductListFilters, ProductMutationPayload, ProductStatus, ProductStatusPayload } from '~/types/product'
 
 const defaultFilters: ProductListFilters = {
   search: '',
@@ -108,15 +108,23 @@ export function useProducts() {
   }
 
   async function archiveProduct(product: Product) {
+    return await updateProductStatus(product, 'archived')
+  }
+
+  async function updateProductStatus(product: Product, status: ProductStatus) {
     archiving.value = true
     error.value = null
     try {
-      await request<null>('/products', {
-        method: 'DELETE',
-        query: { id: product.id }
+      const saved = await request<Product, ProductStatusPayload>('/products', {
+        method: 'PATCH',
+        body: {
+          id: product.id,
+          status
+        }
       })
-      toastStore.show('商品已归档', 'success')
+      toastStore.show(status === 'archived' ? '商品已下架' : '商品已重新上架', 'success')
       await loadProducts()
+      return saved
     } catch (caught) {
       error.value = normalizeApiError(caught)
       throw error.value
@@ -162,6 +170,7 @@ export function useProducts() {
     loadProducts,
     saveProduct,
     archiveProduct,
+    updateProductStatus,
     loadProductMovements
   }
 }

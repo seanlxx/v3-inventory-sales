@@ -68,8 +68,8 @@ function updateFilter(key: keyof ProductListFilters, event: Event) {
         :value="props.filters.status"
         @change="updateFilter('status', $event)"
       >
-        <option value="active">正常</option>
-        <option value="archived">已归档</option>
+        <option value="active">在售</option>
+        <option value="archived">已下架</option>
         <option value="all">全部状态</option>
       </select>
     </label>

@@ -5,10 +5,13 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  archiveProduct,
   createAdjustment,
   createPurchases,
+  listProducts,
   createSalesOrder,
   saveProduct,
+  updateProductStatus,
   voidDocument
 } from '../functions/api/_shared/inventory-service.js';
 
@@ -238,6 +241,16 @@ assert.deepEqual(await balance('p2', 'machine-a'), {
   total_purchase_qty: 0,
   total_purchase_cost_cents: 0
 });
+
+await archiveProduct(env, 'p2');
+assert.equal((await listProducts(env, { id: 'p2', includeArchived: true }))[0].status, 'archived');
+assert.equal((await listProducts(env, { id: 'p2' })).length, 0, 'off-shelf products should be hidden from active product lists');
+await updateProductStatus(env, 'p2', 'active');
+assert.equal((await listProducts(env, { id: 'p2' }))[0].status, 'active');
+await assert.rejects(
+  () => updateProductStatus(env, 'p2', 'unknown'),
+  /Invalid product status/
+);
 
 assert.equal(await movementBalanceDiffCount(), 0, 'movement totals should match inventory_balances');
 console.log('inventory service ledger tests passed');
