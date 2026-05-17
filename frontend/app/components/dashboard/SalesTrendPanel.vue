@@ -7,17 +7,10 @@ const props = defineProps<{
   loading?: boolean
 }>()
 
-const CHART_WIDTH = 760
-const CHART_HEIGHT = 230
-const PLOT_TOP = 18
-const PLOT_RIGHT = 54
-const PLOT_BOTTOM = 194
-const PLOT_LEFT = 58
 const REVENUE_GRADIENT_ID = 'salesTrendRevenueArea'
-const PLOT_WIDTH = CHART_WIDTH - PLOT_LEFT - PLOT_RIGHT
-const PLOT_HEIGHT = PLOT_BOTTOM - PLOT_TOP
 
 type ChartPoint = {
+  index: number
   date: string
   revenue: number
   quantity: number
@@ -25,6 +18,39 @@ type ChartPoint = {
   revenueY: number
   quantityY: number
 }
+
+type DateLabel = ChartPoint & {
+  visibleOnMobile: boolean
+}
+
+const compactChart = shallowRef(false)
+const activeDate = shallowRef<string | null>(null)
+let compactMediaQuery: MediaQueryList | null = null
+
+const chartLayout = computed(() => {
+  if (compactChart.value) {
+    return {
+      width: 430,
+      height: 230,
+      top: 18,
+      right: 34,
+      bottom: 194,
+      left: 48
+    }
+  }
+
+  return {
+    width: 760,
+    height: 230,
+    top: 18,
+    right: 54,
+    bottom: 194,
+    left: 58
+  }
+})
+
+const plotWidth = computed(() => chartLayout.value.width - chartLayout.value.left - chartLayout.value.right)
+const plotHeight = computed(() => chartLayout.value.bottom - chartLayout.value.top)
 
 const maxRevenue = computed(() =>
   Math.max(...props.points.map(point => Number(point.revenue) || 0), 0)
@@ -50,6 +76,7 @@ const chartPoints = computed<ChartPoint[]>(() =>
     const revenue = Number(point.revenue) || 0
     const quantity = Number(point.quantity) || 0
     return {
+      index,
       date: point.date,
       revenue,
       quantity,
@@ -63,16 +90,32 @@ const chartPoints = computed<ChartPoint[]>(() =>
 const yAxisTicks = computed(() =>
   [1, 0.75, 0.5, 0.25, 0].map(ratio => ({
     ratio,
-    y: PLOT_TOP + (1 - ratio) * PLOT_HEIGHT,
+    y: chartLayout.value.top + (1 - ratio) * plotHeight.value,
     revenueLabel: formatMoneyTick(maxRevenue.value * ratio),
     quantityLabel: formatQuantityTick(maxQuantity.value * ratio)
   }))
 )
 
-const dateLabels = computed(() => {
+const dateLabels = computed<DateLabel[]>(() => {
   const total = chartPoints.value.length
-  const step = total <= 7 ? 1 : Math.ceil(total / 6)
-  return chartPoints.value.filter((_, index) => index % step === 0 || index === total - 1)
+  if (total === 0) return []
+
+  const desktopStep = total <= 7 ? 1 : Math.ceil(total / 6)
+  const mobileIndexes = mobileLabelIndexes(total)
+  const labelIndexes = new Set<number>([...mobileIndexes])
+
+  chartPoints.value.forEach(point => {
+    if (point.index % desktopStep === 0 || point.index === total - 1) {
+      labelIndexes.add(point.index)
+    }
+  })
+
+  return chartPoints.value
+    .filter(point => labelIndexes.has(point.index))
+    .map(point => ({
+      ...point,
+      visibleOnMobile: mobileIndexes.has(point.index)
+    }))
 })
 
 const revenueLinePath = computed(() =>
@@ -96,18 +139,62 @@ const chartSummary = computed(() => {
   return `销售趋势图，最高销售额出现在 ${peak.date}，${formatMoney(peak.revenue)}，销量 ${formatQuantity(peak.quantity)} 件`
 })
 
+const activePoint = computed(() =>
+  chartPoints.value.find(point => point.date === activeDate.value) ?? null
+)
+
+const pointHitWidth = computed(() => {
+  const total = chartPoints.value.length
+  if (total <= 1) return plotWidth.value
+  return Math.max(24, plotWidth.value / (total - 1))
+})
+
+const tooltipPosition = computed(() => {
+  const point = activePoint.value
+  if (!point) return null
+
+  const width = compactChart.value ? 146 : 168
+  const height = 98
+  const minX = chartLayout.value.left
+  const maxX = chartLayout.value.width - chartLayout.value.right - width
+  const x = clamp(point.x - width / 2, minX, Math.max(minX, maxX))
+  const y = clamp(
+    point.revenueY - height - 14,
+    chartLayout.value.top + 4,
+    chartLayout.value.bottom - height - 12
+  )
+
+  return {
+    x,
+    y,
+    width,
+    height,
+    arrowX: clamp(point.x - x, 14, width - 14)
+  }
+})
+
+onMounted(() => {
+  compactMediaQuery = window.matchMedia('(max-width: 760px)')
+  syncCompactChart(compactMediaQuery)
+  compactMediaQuery.addEventListener('change', syncCompactChart)
+})
+
+onBeforeUnmount(() => {
+  compactMediaQuery?.removeEventListener('change', syncCompactChart)
+})
+
 function shortDate(value: string) {
   return value.slice(5).replace('-', '/')
 }
 
 function scaleX(index: number, total: number) {
-  if (total <= 1) return PLOT_LEFT + PLOT_WIDTH / 2
-  return PLOT_LEFT + (index / (total - 1)) * PLOT_WIDTH
+  if (total <= 1) return chartLayout.value.left + plotWidth.value / 2
+  return chartLayout.value.left + (index / (total - 1)) * plotWidth.value
 }
 
 function scaleY(value: number, maxValue: number) {
-  if (!maxValue) return PLOT_BOTTOM
-  return PLOT_TOP + (1 - Math.max(0, value) / maxValue) * PLOT_HEIGHT
+  if (!maxValue) return chartLayout.value.bottom
+  return chartLayout.value.top + (1 - Math.max(0, value) / maxValue) * plotHeight.value
 }
 
 function formatCoordinate(value: number) {
@@ -149,8 +236,8 @@ function areaPath(points: Array<{ x: number, y: number }>) {
   const last = points[points.length - 1]!
   return [
     smoothPath(points),
-    `L ${formatCoordinate(last.x)} ${PLOT_BOTTOM}`,
-    `L ${formatCoordinate(first.x)} ${PLOT_BOTTOM}`,
+    `L ${formatCoordinate(last.x)} ${chartLayout.value.bottom}`,
+    `L ${formatCoordinate(first.x)} ${chartLayout.value.bottom}`,
     'Z'
   ].join(' ')
 }
@@ -167,6 +254,44 @@ function formatQuantityTick(value: number) {
 
 function pointTitle(point: ChartPoint) {
   return `${point.date} ${formatMoney(point.revenue)} / ${formatQuantity(point.quantity)} 件`
+}
+
+function mobileLabelIndexes(total: number) {
+  if (total <= 4) {
+    return new Set(Array.from({ length: total }, (_, index) => index))
+  }
+  return new Set([0, Math.floor((total - 1) / 2), total - 1])
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
+}
+
+function hitAreaX(point: ChartPoint) {
+  return clamp(
+    point.x - pointHitWidth.value / 2,
+    chartLayout.value.left,
+    chartLayout.value.width - chartLayout.value.right - pointHitWidth.value
+  )
+}
+
+function syncCompactChart(event: MediaQueryList | MediaQueryListEvent) {
+  compactChart.value = event.matches
+}
+
+function setActivePoint(point: ChartPoint) {
+  activeDate.value = point.date
+}
+
+function clearActivePoint() {
+  activeDate.value = null
+}
+
+function averageDeltaText(point: ChartPoint) {
+  const delta = point.revenue - averageRevenue.value
+  const label = formatMoney(Math.abs(delta))
+  if (Math.abs(delta) < 0.01) return '持平日均'
+  return delta > 0 ? `高于日均 ${label}` : `低于日均 ${label}`
 }
 </script>
 
@@ -186,7 +311,7 @@ function pointTitle(point: ChartPoint) {
     <div v-else-if="props.points.length === 0 || !hasTrendData" class="sales-trend__empty">
       当前范围暂无销售趋势
     </div>
-    <div v-else class="sales-trend__chart" role="img" :aria-label="chartSummary">
+    <div v-else class="sales-trend__chart" role="group" :aria-label="chartSummary">
       <div class="sales-trend__legend" aria-hidden="true">
         <span class="sales-trend__legend-item">
           <span class="sales-trend__legend-dot sales-trend__legend-dot--revenue" />
@@ -202,12 +327,16 @@ function pointTitle(point: ChartPoint) {
         </span>
       </div>
 
-      <div class="sales-trend__plot">
+      <div
+        class="sales-trend__plot"
+        @mouseleave="clearActivePoint"
+        @focusout="clearActivePoint"
+      >
         <svg
           class="sales-trend__svg"
-          :viewBox="`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`"
-          aria-hidden="true"
-          focusable="false"
+          :viewBox="`0 0 ${chartLayout.width} ${chartLayout.height}`"
+          role="img"
+          :aria-label="chartSummary"
         >
           <defs>
             <linearGradient :id="REVENUE_GRADIENT_ID" x1="0" x2="0" y1="0" y2="1">
@@ -221,8 +350,8 @@ function pointTitle(point: ChartPoint) {
               v-for="tick in yAxisTicks"
               :key="tick.ratio"
               class="sales-trend__grid-line"
-              :x1="PLOT_LEFT"
-              :x2="CHART_WIDTH - PLOT_RIGHT"
+              :x1="chartLayout.left"
+              :x2="chartLayout.width - chartLayout.right"
               :y1="tick.y"
               :y2="tick.y"
             />
@@ -230,10 +359,11 @@ function pointTitle(point: ChartPoint) {
               v-for="label in dateLabels"
               :key="`x-${label.date}`"
               class="sales-trend__grid-line sales-trend__grid-line--vertical"
+              :class="{ 'sales-trend__grid-line--mobile-hidden': !label.visibleOnMobile }"
               :x1="label.x"
               :x2="label.x"
-              :y1="PLOT_TOP"
-              :y2="PLOT_BOTTOM"
+              :y1="chartLayout.top"
+              :y2="chartLayout.bottom"
             />
           </g>
 
@@ -245,13 +375,35 @@ function pointTitle(point: ChartPoint) {
           <line
             v-if="averageRevenue > 0"
             class="sales-trend__average-line"
-            :x1="PLOT_LEFT"
-            :x2="CHART_WIDTH - PLOT_RIGHT"
+            :x1="chartLayout.left"
+            :x2="chartLayout.width - chartLayout.right"
             :y1="averageRevenueY"
             :y2="averageRevenueY"
           />
           <path class="sales-trend__line sales-trend__line--revenue" :d="revenueLinePath" />
           <path class="sales-trend__line sales-trend__line--quantity" :d="quantityLinePath" />
+
+          <g v-if="activePoint" class="sales-trend__active-layer" aria-hidden="true">
+            <line
+              class="sales-trend__active-guide"
+              :x1="activePoint.x"
+              :x2="activePoint.x"
+              :y1="chartLayout.top"
+              :y2="chartLayout.bottom"
+            />
+            <circle
+              class="sales-trend__active-point sales-trend__active-point--revenue"
+              :cx="activePoint.x"
+              :cy="activePoint.revenueY"
+              r="5.5"
+            />
+            <circle
+              class="sales-trend__active-point sales-trend__active-point--quantity"
+              :cx="activePoint.x"
+              :cy="activePoint.quantityY"
+              r="5"
+            />
+          </g>
 
           <g>
             <circle
@@ -276,12 +428,30 @@ function pointTitle(point: ChartPoint) {
             </circle>
           </g>
 
+          <g>
+            <rect
+              v-for="point in chartPoints"
+              :key="`hit-${point.date}`"
+              class="sales-trend__hit-area"
+              :x="hitAreaX(point)"
+              :y="chartLayout.top"
+              :width="pointHitWidth"
+              :height="plotHeight"
+              tabindex="0"
+              role="button"
+              :aria-label="pointTitle(point)"
+              @mouseenter="setActivePoint(point)"
+              @focus="setActivePoint(point)"
+              @click="setActivePoint(point)"
+            />
+          </g>
+
           <g class="sales-trend__axis-layer">
             <text
               v-for="tick in yAxisTicks"
               :key="`left-${tick.ratio}`"
               class="sales-trend__axis-label sales-trend__axis-label--left"
-              :x="PLOT_LEFT - 10"
+              :x="chartLayout.left - 10"
               :y="tick.y + 4"
               text-anchor="end"
             >
@@ -291,7 +461,7 @@ function pointTitle(point: ChartPoint) {
               v-for="tick in yAxisTicks"
               :key="`right-${tick.ratio}`"
               class="sales-trend__axis-label sales-trend__axis-label--right"
-              :x="CHART_WIDTH - PLOT_RIGHT + 10"
+              :x="chartLayout.width - chartLayout.right + 10"
               :y="tick.y + 4"
               text-anchor="start"
             >
@@ -301,11 +471,53 @@ function pointTitle(point: ChartPoint) {
               v-for="label in dateLabels"
               :key="`date-${label.date}`"
               class="sales-trend__axis-label sales-trend__date-label"
+              :class="{ 'sales-trend__date-label--mobile-hidden': !label.visibleOnMobile }"
               :x="label.x"
-              :y="PLOT_BOTTOM + 26"
+              :y="chartLayout.bottom + 26"
               text-anchor="middle"
             >
               {{ shortDate(label.date) }}
+            </text>
+          </g>
+
+          <g
+            v-if="activePoint && tooltipPosition"
+            class="sales-trend__tooltip"
+            aria-hidden="true"
+          >
+            <rect
+              class="sales-trend__tooltip-box"
+              :x="tooltipPosition.x"
+              :y="tooltipPosition.y"
+              :width="tooltipPosition.width"
+              :height="tooltipPosition.height"
+              rx="6"
+            />
+            <path
+              class="sales-trend__tooltip-arrow"
+              :d="`M ${tooltipPosition.x + tooltipPosition.arrowX - 7} ${tooltipPosition.y + tooltipPosition.height} L ${tooltipPosition.x + tooltipPosition.arrowX + 7} ${tooltipPosition.y + tooltipPosition.height} L ${tooltipPosition.x + tooltipPosition.arrowX} ${tooltipPosition.y + tooltipPosition.height + 9} Z`"
+            />
+            <text
+              class="sales-trend__tooltip-title"
+              :x="tooltipPosition.x + 10"
+              :y="tooltipPosition.y + 18"
+            >
+              {{ activePoint.date }}
+            </text>
+            <rect class="sales-trend__tooltip-marker sales-trend__tooltip-marker--revenue" :x="tooltipPosition.x + 10" :y="tooltipPosition.y + 30" width="8" height="8" />
+            <text class="sales-trend__tooltip-text" :x="tooltipPosition.x + 22" :y="tooltipPosition.y + 38">
+              销售额: {{ formatMoney(activePoint.revenue) }}
+            </text>
+            <rect class="sales-trend__tooltip-marker sales-trend__tooltip-marker--quantity" :x="tooltipPosition.x + 10" :y="tooltipPosition.y + 48" width="8" height="8" />
+            <text class="sales-trend__tooltip-text" :x="tooltipPosition.x + 22" :y="tooltipPosition.y + 56">
+              销量: {{ formatQuantity(activePoint.quantity) }} 件
+            </text>
+            <rect class="sales-trend__tooltip-marker sales-trend__tooltip-marker--average" :x="tooltipPosition.x + 10" :y="tooltipPosition.y + 66" width="8" height="8" />
+            <text class="sales-trend__tooltip-text" :x="tooltipPosition.x + 22" :y="tooltipPosition.y + 74">
+              日均: {{ formatMoney(averageRevenue) }}
+            </text>
+            <text class="sales-trend__tooltip-emphasis" :x="tooltipPosition.x + 10" :y="tooltipPosition.y + 91">
+              {{ averageDeltaText(activePoint) }}
             </text>
           </g>
         </svg>
@@ -391,12 +603,11 @@ function pointTitle(point: ChartPoint) {
 
 .sales-trend__plot {
   min-width: 0;
-  overflow-x: auto;
+  overflow: hidden;
 }
 
 .sales-trend__svg {
   width: 100%;
-  min-width: 680px;
   height: auto;
   display: grid;
 }
@@ -452,6 +663,77 @@ function pointTitle(point: ChartPoint) {
   stroke: #16a34a;
 }
 
+.sales-trend__hit-area {
+  fill: transparent;
+  cursor: crosshair;
+  outline: none;
+}
+
+.sales-trend__hit-area:focus-visible {
+  stroke: var(--color-primary);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.sales-trend__active-guide {
+  stroke: rgb(23 32 51 / 48%);
+  stroke-width: 1.25;
+  stroke-dasharray: 4 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.sales-trend__active-point {
+  fill: var(--color-surface);
+  stroke-width: 2.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.sales-trend__active-point--revenue {
+  stroke: #0ea5e9;
+}
+
+.sales-trend__active-point--quantity {
+  stroke: #16a34a;
+}
+
+.sales-trend__tooltip {
+  pointer-events: none;
+}
+
+.sales-trend__tooltip-box,
+.sales-trend__tooltip-arrow {
+  fill: rgb(38 38 38 / 94%);
+}
+
+.sales-trend__tooltip-title {
+  fill: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.sales-trend__tooltip-text,
+.sales-trend__tooltip-emphasis {
+  fill: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.sales-trend__tooltip-emphasis {
+  fill: #f8fafc;
+}
+
+.sales-trend__tooltip-marker--revenue {
+  fill: #0ea5e9;
+}
+
+.sales-trend__tooltip-marker--quantity {
+  fill: #16a34a;
+}
+
+.sales-trend__tooltip-marker--average {
+  fill: var(--color-warning);
+}
+
 .sales-trend__axis-label {
   fill: var(--color-text-muted);
   font-size: 11px;
@@ -467,8 +749,28 @@ function pointTitle(point: ChartPoint) {
     padding: var(--space-3);
   }
 
-  .sales-trend__svg {
-    min-width: 620px;
+  .sales-trend__legend {
+    justify-content: flex-start;
+    gap: var(--space-2);
+    font-size: 11px;
+  }
+
+  .sales-trend__grid-line--mobile-hidden,
+  .sales-trend__date-label--mobile-hidden {
+    display: none;
+  }
+
+  .sales-trend__axis-label {
+    font-size: 10px;
+  }
+
+  .sales-trend__tooltip-title {
+    font-size: 11px;
+  }
+
+  .sales-trend__tooltip-text,
+  .sales-trend__tooltip-emphasis {
+    font-size: 10px;
   }
 }
 </style>
