@@ -141,19 +141,37 @@ async function getSalesTrend(env, days, machineId) {
   if (machineId) params.push(machineId);
 
   const rows = await all(env.DB, `
+    WITH revenue_by_date AS (
+      SELECT
+        record_date AS date,
+        COALESCE(SUM(total_amount_cents), 0) AS revenue_cents
+      FROM sales_orders
+      WHERE voided_at IS NULL
+        AND type = 'sale'
+        AND record_date >= ?
+        ${machineFilter}
+      GROUP BY record_date
+    ),
+    quantity_by_date AS (
+      SELECT
+        o.record_date AS date,
+        COALESCE(SUM(i.quantity), 0) AS quantity
+      FROM sales_orders o
+      JOIN sales_items i ON i.sales_order_id = o.id
+      WHERE o.voided_at IS NULL
+        AND o.type = 'sale'
+        AND o.record_date >= ?
+        ${machineFilter ? 'AND o.machine_id = ?' : ''}
+      GROUP BY o.record_date
+    )
     SELECT
-      record_date AS date,
-      COALESCE(SUM(total_amount_cents), 0) AS revenue_cents,
-      COALESCE(SUM(i.quantity), 0) AS quantity
-    FROM sales_orders o
-    LEFT JOIN sales_items i ON i.sales_order_id = o.id
-    WHERE o.voided_at IS NULL
-      AND o.type = 'sale'
-      AND o.record_date >= ?
-      ${machineFilter}
-    GROUP BY record_date
-    ORDER BY record_date
-  `, params);
+      r.date,
+      r.revenue_cents,
+      COALESCE(q.quantity, 0) AS quantity
+    FROM revenue_by_date r
+    LEFT JOIN quantity_by_date q ON q.date = r.date
+    ORDER BY r.date
+  `, [...params, ...params]);
   const rowMap = new Map(rows.map(row => [row.date, row]));
 
   return dateSeries(days).map(date => {
@@ -168,20 +186,38 @@ async function getSalesTrend(env, days, machineId) {
 
 async function getMachineRanking(env, month) {
   const rows = await all(env.DB, `
+    WITH revenue_by_machine AS (
+      SELECT
+        machine_id,
+        COALESCE(SUM(total_amount_cents), 0) AS revenue_cents,
+        COALESCE(SUM(total_cogs_cents), 0) AS cogs_cents
+      FROM sales_orders
+      WHERE voided_at IS NULL
+        AND type = 'sale'
+        AND year_month = ?
+      GROUP BY machine_id
+    ),
+    quantity_by_machine AS (
+      SELECT
+        o.machine_id,
+        COALESCE(SUM(i.quantity), 0) AS quantity
+      FROM sales_orders o
+      JOIN sales_items i ON i.sales_order_id = o.id
+      WHERE o.voided_at IS NULL
+        AND o.type = 'sale'
+        AND o.year_month = ?
+      GROUP BY o.machine_id
+    )
     SELECT
-      machine_id,
-      COALESCE(SUM(total_amount_cents), 0) AS revenue_cents,
-      COALESCE(SUM(total_cogs_cents), 0) AS cogs_cents,
-      COALESCE(SUM(i.quantity), 0) AS quantity
-    FROM sales_orders o
-    LEFT JOIN sales_items i ON i.sales_order_id = o.id
-    WHERE o.voided_at IS NULL
-      AND o.type = 'sale'
-      AND o.year_month = ?
-    GROUP BY machine_id
-    ORDER BY revenue_cents DESC
+      r.machine_id,
+      r.revenue_cents,
+      r.cogs_cents,
+      COALESCE(q.quantity, 0) AS quantity
+    FROM revenue_by_machine r
+    LEFT JOIN quantity_by_machine q ON q.machine_id = r.machine_id
+    ORDER BY r.revenue_cents DESC
     LIMIT 8
-  `, [month]);
+  `, [month, month]);
 
   return rows.map(row => ({
     machineId: row.machine_id,
