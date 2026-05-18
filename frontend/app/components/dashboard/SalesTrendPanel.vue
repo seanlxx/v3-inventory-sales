@@ -40,11 +40,6 @@ const hasTrendData = computed(() =>
   props.points.some(point => (Number(point.revenue) || 0) > 0 || (Number(point.quantity) || 0) > 0)
 )
 
-const averageRevenue = computed(() => {
-  if (props.points.length === 0) return 0
-  return props.points.reduce((sum, point) => sum + (Number(point.revenue) || 0), 0) / props.points.length
-})
-
 const chartSummary = computed(() => {
   const peak = props.points.reduce<SalesTrendPoint | null>((current, point) => {
     if (!current || Number(point.revenue) > Number(current.revenue)) return point
@@ -58,7 +53,6 @@ const chartData = computed<ChartData<'line'>>(() => {
   const labels = props.points.map(point => point.date)
   const revenueValues = props.points.map(point => Number(point.revenue) || 0)
   const quantityValues = props.points.map(point => Number(point.quantity) || 0)
-  const averageValues = props.points.map(() => averageRevenue.value)
   const pointRadius = compactChart.value ? 2.5 : 3.5
 
   return {
@@ -93,19 +87,6 @@ const chartData = computed<ChartData<'line'>>(() => {
         pointHoverRadius: 5,
         tension: 0.32,
         yAxisID: 'yQuantity'
-      },
-      {
-        label: '日均销售额',
-        data: averageValues,
-        borderColor: '#c77700',
-        backgroundColor: 'rgba(199, 119, 0, 0.08)',
-        borderDash: [7, 6],
-        borderWidth: 1.75,
-        fill: false,
-        pointRadius: 0,
-        pointHoverRadius: 0,
-        tension: 0,
-        yAxisID: 'y'
       }
     ]
   }
@@ -148,7 +129,6 @@ const chartOptions = computed<ChartOptions<'line'>>(() => ({
       borderColor: 'rgba(255, 255, 255, 0.08)',
       borderWidth: 1,
       displayColors: true,
-      footerColor: '#f8fafc',
       padding: 10,
       titleColor: '#ffffff',
       titleFont: {
@@ -163,19 +143,6 @@ const chartOptions = computed<ChartOptions<'line'>>(() => ({
             return `${label}: ${formatQuantity(value)} 件`
           }
           return `${label}: ${formatMoney(value)}`
-        },
-        footer(items) {
-          const first = items[0]
-          if (!first) return ''
-          const point = props.points[first.dataIndex]
-          if (!point) return ''
-
-          const revenue = Number(point.revenue) || 0
-          const delta = revenue - averageRevenue.value
-          if (Math.abs(delta) < 0.01) return '持平日均'
-          return delta > 0
-            ? `高于日均 ${formatMoney(Math.abs(delta))}`
-            : `低于日均 ${formatMoney(Math.abs(delta))}`
         }
       }
     }
