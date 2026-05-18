@@ -65,12 +65,18 @@ const inputId = computed(() => props.id || `input-${props.label.replace(/\s+/g, 
 
 .app-input__control {
   width: 100%;
+  min-width: 0;
   min-height: var(--control-height);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-2);
   padding: 0 var(--space-3);
   background: var(--color-surface);
   color: var(--color-text);
+}
+
+.app-input__control[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .app-input__control::placeholder {

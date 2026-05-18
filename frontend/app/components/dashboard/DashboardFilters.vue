@@ -85,12 +85,18 @@ function updateField(key: keyof DashboardFilters, event: Event) {
 
 .dashboard-filters__control {
   width: 100%;
+  min-width: 0;
   min-height: var(--control-height);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-2);
   padding: 0 var(--space-3);
   background: var(--color-surface);
   color: var(--color-text);
+}
+
+.dashboard-filters__control[type="month"] {
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 @media (max-width: 900px) {

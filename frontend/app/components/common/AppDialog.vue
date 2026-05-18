@@ -92,6 +92,7 @@ function closeDialog() {
 
 .app-dialog__header,
 .app-dialog__footer {
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -118,7 +119,12 @@ function closeDialog() {
   line-height: 1.6;
 }
 
+.app-dialog__header > div {
+  min-width: 0;
+}
+
 .app-dialog__close {
+  flex: 0 0 auto;
   width: 40px;
   height: 40px;
   border: 1px solid var(--color-border);
@@ -152,7 +158,16 @@ function closeDialog() {
   }
 
   .app-dialog__panel {
+    width: 100%;
     max-height: calc(100vh - 24px);
+  }
+
+  .app-dialog__header {
+    gap: var(--space-3);
+  }
+
+  .app-dialog__description {
+    overflow-wrap: anywhere;
   }
 }
 </style>
