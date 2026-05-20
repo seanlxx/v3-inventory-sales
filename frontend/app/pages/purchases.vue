@@ -19,6 +19,7 @@ const {
   saving,
   voiding,
   recognizing,
+  aiProgress,
   error,
   aiError,
   updateFilters,
@@ -121,6 +122,7 @@ onMounted(async () => {
       :submitting="saving"
       :image-file-name="receiptImage?.fileName"
       :metadata="aiMetadata"
+      :progress-message="aiProgress"
       :error-message="aiError?.message"
       @image-selected="saveReceiptImage"
       @recognize="recognizeReceipt"

@@ -13,6 +13,7 @@ const props = defineProps<{
   submitting?: boolean
   imageFileName?: string
   metadata?: PurchaseAiMetadata | null
+  progressMessage?: string
   errorMessage?: string
 }>()
 
@@ -55,19 +56,30 @@ function productName(productId: string) {
   return props.products.find(product => product.id === productId)?.name || ''
 }
 
+function productById(productId: string) {
+  return props.products.find(product => product.id === productId)
+}
+
 function updateCandidate(index: number, patch: Partial<PurchaseAiCandidate>) {
   const nextCandidates = props.candidates.map((candidate, candidateIndex) => {
     if (candidateIndex !== index) return candidate
     const next = { ...candidate, ...patch }
     if (patch.productId) {
-      next.productName = productName(patch.productId)
+      const product = productById(patch.productId)
+      next.productName = product?.name || productName(patch.productId)
+      next.sellPrice = Number(product?.sellPrice) || next.sellPrice
+      next.machineId = product?.machineId
+      next.isNewProduct = false
       next.issue = ''
       next.confidence = next.confidence === 'low' ? 'medium' : next.confidence
     }
     if ('quantity' in patch || 'unitPrice' in patch) {
       next.totalPrice = Math.round((Number(next.quantity) || 0) * (Number(next.unitPrice) || 0) * 100) / 100
     }
-    if (!next.productId) next.issue = '未匹配商品'
+    if (!next.productId) {
+      next.isNewProduct = true
+      next.issue = Number(next.sellPrice) > 0 ? '将创建新商品' : '新商品，需填写售价'
+    }
     return next
   })
   emit('updateCandidates', nextCandidates)
@@ -88,7 +100,10 @@ function addManualCandidate() {
     quantity: 1,
     unitPrice: 0,
     totalPrice: 0,
-    issue: '未匹配商品'
+    sellPrice: 0,
+    category: '其他',
+    isNewProduct: true,
+    issue: '新商品，需填写售价'
   }
   emit('updateCandidates', [...props.candidates, newCandidate])
 }
@@ -106,10 +121,12 @@ useClipboardImagePaste({
 
 function confirmOrder() {
   const invalid = props.candidates.find(candidate =>
-    !candidate.productId || Number(candidate.quantity) <= 0 || Number(candidate.totalPrice) <= 0
+    Number(candidate.quantity) <= 0 ||
+    Number(candidate.totalPrice) <= 0 ||
+    (!candidate.productId && (!candidate.productName.trim() || Number(candidate.sellPrice) <= 0))
   )
   if (invalid) {
-    formError.value = '请先确认每一行的商品、数量和金额'
+    formError.value = '请先确认每一行的商品、数量、金额；新商品还要填写售价'
     return
   }
   const items: PurchaseItem[] = props.candidates.map(candidate => ({
@@ -117,7 +134,10 @@ function confirmOrder() {
     productName: candidate.productName,
     quantity: candidate.quantity,
     unitPrice: candidate.unitPrice,
-    totalPrice: candidate.totalPrice
+    totalPrice: candidate.totalPrice,
+    sellPrice: candidate.sellPrice,
+    category: candidate.category,
+    machineId: candidate.machineId
   }))
   formError.value = ''
   emit('confirm', {
@@ -147,6 +167,10 @@ function confirmOrder() {
           开始识别
         </AppButton>
       </div>
+
+      <p v-if="props.recognizing || props.progressMessage" class="ai-review__progress">
+        {{ props.progressMessage || 'AI 正在识别图片...' }}
+      </p>
 
       <div class="ai-review__grid">
         <AppInput v-model="date" label="进货日期" type="date" />
@@ -188,7 +212,7 @@ function confirmOrder() {
               <td data-label="识别名称" class="ai-review__name-cell">{{ candidate.rawName }}</td>
               <td data-label="匹配商品" class="ai-review__product-cell">
                 <span class="ai-review__matched-name">
-                  {{ candidate.productName || '未匹配商品' }}
+                  {{ candidate.productId ? candidate.productName : '新商品' }}
                 </span>
                 <ProductSearchSelect
                   :model-value="candidate.productId"
@@ -196,6 +220,24 @@ function confirmOrder() {
                   placeholder="选择商品"
                   @update:model-value="(value: string) => updateCandidate(index, { productId: value })"
                 />
+                <div v-if="!candidate.productId" class="ai-review__new-product">
+                  <input
+                    class="ai-review__input ai-review__input--name"
+                    type="text"
+                    placeholder="新商品名称"
+                    :value="candidate.productName"
+                    @input="updateCandidate(index, { productName: ($event.target as HTMLInputElement).value })"
+                  >
+                  <input
+                    class="ai-review__input"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="售价"
+                    :value="candidate.sellPrice || ''"
+                    @input="updateCandidate(index, { sellPrice: Number(($event.target as HTMLInputElement).value) })"
+                  >
+                </div>
               </td>
               <td data-label="置信度">
                 <StatusBadge :label="confidenceLabel(candidate.confidence)" :tone="confidenceTone(candidate.confidence)" />
@@ -378,6 +420,18 @@ function confirmOrder() {
   text-align: right;
 }
 
+.ai-review__input--name {
+  max-width: none;
+  text-align: left;
+}
+
+.ai-review__new-product {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 82px;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
 .ai-review__empty {
   color: var(--color-text-muted);
   text-align: center;
@@ -402,6 +456,17 @@ function confirmOrder() {
 .ai-review__error {
   margin: 0;
   color: var(--color-danger);
+  font-weight: 700;
+}
+
+.ai-review__progress {
+  margin: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-subtle);
+  color: var(--color-text-muted);
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -553,6 +618,10 @@ tbody tr:last-child td {
 
   .ai-review__input {
     max-width: none;
+  }
+
+  .ai-review__new-product {
+    grid-template-columns: 1fr;
   }
 
   .ai-review__footer {

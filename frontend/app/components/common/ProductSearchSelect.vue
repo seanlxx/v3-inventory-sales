@@ -15,6 +15,9 @@ const emit = defineEmits<{
 const searchQuery = shallowRef('')
 const isOpen = shallowRef(false)
 const selectRef = shallowRef<HTMLDivElement | null>(null)
+const dropdownTop = shallowRef(0)
+const dropdownLeft = shallowRef(0)
+const dropdownWidth = shallowRef(0)
 
 const filteredProducts = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
@@ -37,6 +40,21 @@ const selectedProduct = computed(() =>
   props.products.find(p => p.id === props.modelValue)
 )
 
+const dropdownStyle = computed(() => ({
+  top: `${dropdownTop.value}px`,
+  left: `${dropdownLeft.value}px`,
+  width: `${dropdownWidth.value}px`
+}))
+
+function updateDropdownPosition() {
+  if (!isOpen.value) return
+  const rect = selectRef.value?.getBoundingClientRect()
+  if (!rect) return
+  dropdownTop.value = rect.bottom + 4
+  dropdownLeft.value = rect.left
+  dropdownWidth.value = rect.width
+}
+
 function selectProduct(productId: string) {
   emit('update:modelValue', productId)
   emit('change', productId)
@@ -48,6 +66,7 @@ function toggleDropdown() {
   isOpen.value = !isOpen.value
   if (isOpen.value) {
     nextTick(() => {
+      updateDropdownPosition()
       const input = selectRef.value?.querySelector('input')
       input?.focus()
     })
@@ -63,10 +82,14 @@ function handleClickOutside(event: MouseEvent) {
 
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
+  window.addEventListener('resize', updateDropdownPosition)
+  window.addEventListener('scroll', updateDropdownPosition, true)
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
+  window.removeEventListener('resize', updateDropdownPosition)
+  window.removeEventListener('scroll', updateDropdownPosition, true)
 })
 </script>
 
@@ -93,7 +116,7 @@ onUnmounted(() => {
       </svg>
     </button>
 
-    <div v-if="isOpen" class="product-search-select__dropdown">
+    <div v-if="isOpen" class="product-search-select__dropdown" :style="dropdownStyle">
       <div class="product-search-select__search">
         <input
           v-model="searchQuery"
@@ -106,7 +129,7 @@ onUnmounted(() => {
       <div v-if="hasNoSearchResults" class="product-search-select__empty">
         未找到匹配商品，可从全部商品中选择
       </div>
-      <div class="product-search-select__list">
+      <div v-if="visibleProducts.length > 0" class="product-search-select__list">
         <button
           v-for="product in visibleProducts"
           :key="product.id"
@@ -117,6 +140,9 @@ onUnmounted(() => {
         >
           {{ product.name }}
         </button>
+      </div>
+      <div v-else class="product-search-select__empty">
+        商品库暂无可选商品
       </div>
     </div>
   </div>
@@ -170,11 +196,8 @@ onUnmounted(() => {
 }
 
 .product-search-select__dropdown {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
-  z-index: 100;
+  position: fixed;
+  z-index: 1000;
   display: grid;
   gap: 0;
   border: 1px solid var(--color-border);

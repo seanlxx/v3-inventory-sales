@@ -8,10 +8,11 @@ const root = dirname(scriptDir);
 
 const purchasesComposable = readFileSync(join(root, 'frontend', 'app', 'composables', 'usePurchases.ts'), 'utf8');
 const reviewDialog = readFileSync(join(root, 'frontend', 'app', 'components', 'purchases', 'PurchaseAiReviewDialog.vue'), 'utf8');
+const productSearchSelect = readFileSync(join(root, 'frontend', 'app', 'components', 'common', 'ProductSearchSelect.vue'), 'utf8');
 
 assert.ok(
-  purchasesComposable.includes("('/ai-proxy'"),
-  'purchase AI recognition should call the server-side AI proxy'
+  purchasesComposable.includes('/ai-proxy?stream=1'),
+  'purchase AI recognition should call the server-side AI proxy stream'
 );
 
 assert.match(
@@ -46,6 +47,24 @@ assert.match(
 
 assert.match(
   purchasesComposable,
+  /requestAiStream/,
+  'purchase AI recognition should use streaming progress like sales recognition'
+);
+
+assert.match(
+  purchasesComposable,
+  /mergeAiCandidates/,
+  'purchase AI recognition should merge duplicate products into one candidate'
+);
+
+assert.match(
+  purchasesComposable,
+  /isNewProduct/,
+  'purchase AI recognition should keep unmatched items as new product drafts'
+);
+
+assert.match(
+  purchasesComposable,
   /aiMetadata\.value = normalizeAiMetadata\(parsed\)/,
   'purchase AI metadata should be normalized from the recognition result'
 );
@@ -60,6 +79,24 @@ assert.match(
   reviewDialog,
   /watch\(\(\) => props\.metadata/,
   'purchase AI review dialog should apply recognized metadata to the confirmation form'
+);
+
+assert.match(
+  reviewDialog,
+  /progressMessage/,
+  'purchase AI review dialog should display recognition progress'
+);
+
+assert.match(
+  reviewDialog,
+  /新商品，需填写售价/,
+  'purchase AI review dialog should require manual pricing for new products'
+);
+
+assert.match(
+  productSearchSelect,
+  /position: fixed/,
+  'product search dropdown should escape table overflow clipping'
 );
 
 console.log('AI purchase recognition contract tests passed');

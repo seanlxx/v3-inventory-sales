@@ -7,6 +7,9 @@ export type PurchaseItem = {
   quantity: number
   unitPrice: number
   totalPrice: number
+  sellPrice?: number
+  category?: string
+  machineId?: string
 }
 
 export type PurchaseOrder = {
@@ -52,6 +55,10 @@ export type PurchaseAiCandidate = {
   quantity: number
   unitPrice: number
   totalPrice: number
+  sellPrice?: number
+  category?: string
+  machineId?: string
+  isNewProduct?: boolean
   issue?: string
 }
 
