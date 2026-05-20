@@ -45,6 +45,7 @@ const compactChart = shallowRef(false)
 const customDaysDraft = shallowRef(String(clampTrendDays(props.days)))
 let chart: Chart<'line'> | null = null
 let compactMediaQuery: MediaQueryList | null = null
+let renderFrame: number | null = null
 
 const normalizedDays = computed(() => clampTrendDays(props.days))
 const trendRangeLabel = computed(() => `${normalizedDays.value} 天`)
@@ -226,11 +227,12 @@ onMounted(() => {
   compactMediaQuery = window.matchMedia('(max-width: 760px)')
   syncCompactChart(compactMediaQuery)
   compactMediaQuery.addEventListener('change', syncCompactChart)
-  renderChart()
+  scheduleRenderChart()
 })
 
 onBeforeUnmount(() => {
   compactMediaQuery?.removeEventListener('change', syncCompactChart)
+  if (renderFrame !== null) window.cancelAnimationFrame(renderFrame)
   chart?.destroy()
   chart = null
 })
@@ -239,9 +241,19 @@ watch(() => props.days, days => {
   customDaysDraft.value = String(clampTrendDays(days))
 })
 
-watch([chartData, chartOptions], () => {
-  renderChart()
+watch([() => props.loading, hasTrendData, chartData, chartOptions], () => {
+  scheduleRenderChart()
 }, { deep: true, flush: 'post' })
+
+async function scheduleRenderChart() {
+  if (typeof window === 'undefined') return
+  await nextTick()
+  if (renderFrame !== null) window.cancelAnimationFrame(renderFrame)
+  renderFrame = window.requestAnimationFrame(() => {
+    renderFrame = null
+    renderChart()
+  })
+}
 
 function renderChart() {
   if (!chartCanvas.value || !hasTrendData.value) {
