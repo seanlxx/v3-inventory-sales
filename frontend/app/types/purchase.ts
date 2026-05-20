@@ -54,3 +54,9 @@ export type PurchaseAiCandidate = {
   totalPrice: number
   issue?: string
 }
+
+export type PurchaseAiMetadata = {
+  date?: string
+  source?: string
+  note?: string
+}

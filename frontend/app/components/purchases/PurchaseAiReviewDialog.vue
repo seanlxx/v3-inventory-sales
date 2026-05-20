@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Product } from '~/types/product'
-import type { PurchaseAiCandidate, PurchaseItem, PurchaseOrderPayload } from '~/types/purchase'
+import type { PurchaseAiCandidate, PurchaseAiMetadata, PurchaseItem, PurchaseOrderPayload } from '~/types/purchase'
 import { useClipboardImagePaste } from '~/composables/useClipboardImagePaste'
 import { formatMoney } from '~/utils/format'
 
@@ -12,6 +12,7 @@ const props = defineProps<{
   recognizing?: boolean
   submitting?: boolean
   imageFileName?: string
+  metadata?: PurchaseAiMetadata | null
   errorMessage?: string
 }>()
 
@@ -30,6 +31,13 @@ const formError = shallowRef('')
 const totalCost = computed(() =>
   props.candidates.reduce((sum, item) => sum + Number(item.totalPrice || 0), 0)
 )
+
+watch(() => props.metadata, (metadata) => {
+  if (!metadata) return
+  if (metadata.date) date.value = metadata.date
+  if (metadata.source) source.value = metadata.source
+  if (metadata.note) note.value = metadata.note
+}, { immediate: true })
 
 function confidenceLabel(confidence: PurchaseAiCandidate['confidence']) {
   if (confidence === 'high') return '高'

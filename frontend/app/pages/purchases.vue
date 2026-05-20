@@ -12,6 +12,7 @@ const {
   summary,
   selectedOrder,
   aiCandidates,
+  aiMetadata,
   receiptImage,
   machineOptions,
   loading,
@@ -119,6 +120,7 @@ onMounted(async () => {
       :recognizing="recognizing"
       :submitting="saving"
       :image-file-name="receiptImage?.fileName"
+      :metadata="aiMetadata"
       :error-message="aiError?.message"
       @image-selected="saveReceiptImage"
       @recognize="recognizeReceipt"
