@@ -12,13 +12,16 @@ const props = defineProps<{
   recognizing?: boolean
   submitting?: boolean
   imageFileName?: string
+  images?: readonly { id: string; fileName: string; previewUrl: string }[]
   metadata?: PurchaseAiMetadata | null
   progressMessage?: string
   errorMessage?: string
 }>()
 
 const emit = defineEmits<{
-  imageSelected: [file: File]
+  imageSelected: [files: File[]]
+  imageRemoved: [id: string]
+  clearImages: []
   recognize: []
   updateCandidates: [candidates: PurchaseAiCandidate[]]
   confirm: [payload: PurchaseOrderPayload]
@@ -86,8 +89,10 @@ function updateCandidate(index: number, patch: Partial<PurchaseAiCandidate>) {
 }
 
 function handleFileChange(event: Event) {
-  const file = (event.target as HTMLInputElement).files?.[0]
-  if (file) emit('imageSelected', file)
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files || [])
+  if (files.length > 0) emit('imageSelected', files)
+  input.value = ''
 }
 
 function addManualCandidate() {
@@ -116,7 +121,7 @@ function removeCandidate(index: number) {
 useClipboardImagePaste({
   enabled: open,
   fileNamePrefix: 'purchase-screenshot',
-  onImage: (file: File) => emit('imageSelected', file)
+  onImage: (file: File) => emit('imageSelected', [file])
 })
 
 function confirmOrder() {
@@ -160,10 +165,28 @@ function confirmOrder() {
       <div class="ai-review__top">
         <label class="ai-review__upload">
           <span>上传截图 / 直接粘贴</span>
-          <input type="file" accept="image/*" @change="handleFileChange">
-          <strong>{{ props.imageFileName || '选择进货截图，或复制图片后按 Ctrl+V' }}</strong>
+          <input type="file" accept="image/*" multiple @change="handleFileChange">
+          <strong>
+            {{ props.images?.length ? `已选择 ${props.images.length} 张图片，可继续多选或 Ctrl+V 粘贴` : props.imageFileName || '可一次多选进货截图，或复制图片后按 Ctrl+V 直接粘贴' }}
+          </strong>
+          <div v-if="props.images?.length" class="ai-review__previews" aria-label="待识别图片">
+            <article v-for="image in props.images" :key="image.id" class="ai-review__preview">
+              <img :src="image.previewUrl" :alt="image.fileName">
+              <div>
+                <strong>{{ image.fileName }}</strong>
+                <button type="button" :disabled="props.recognizing" @click.prevent="emit('imageRemoved', image.id)">
+                  移除
+                </button>
+              </div>
+            </article>
+          </div>
         </label>
-        <AppButton variant="secondary" :loading="props.recognizing" @click="emit('recognize')">
+        <AppButton
+          variant="secondary"
+          :loading="props.recognizing"
+          :disabled="!props.images?.length"
+          @click="emit('recognize')"
+        >
           开始识别
         </AppButton>
       </div>
@@ -185,6 +208,13 @@ function confirmOrder() {
       <div class="ai-review__toolbar">
         <AppButton variant="secondary" @click="addManualCandidate">
           + 手动添加商品
+        </AppButton>
+        <AppButton
+          variant="secondary"
+          :disabled="props.recognizing || (!props.images?.length && props.candidates.length === 0)"
+          @click="emit('clearImages')"
+        >
+          清空图片
         </AppButton>
       </div>
 
@@ -344,6 +374,54 @@ function confirmOrder() {
   font-size: 13px;
 }
 
+.ai-review__previews {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-2);
+}
+
+.ai-review__preview {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2);
+  padding: var(--space-2);
+  background: var(--color-surface);
+}
+
+.ai-review__preview img {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-2);
+  object-fit: cover;
+}
+
+.ai-review__preview div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.ai-review__preview strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-review__preview button {
+  justify-self: start;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--color-danger);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 .ai-review__grid {
   min-width: 0;
   display: grid;
@@ -472,6 +550,8 @@ function confirmOrder() {
 
 .ai-review__toolbar {
   display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
   justify-content: flex-start;
 }
 

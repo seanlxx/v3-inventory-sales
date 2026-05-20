@@ -3,6 +3,14 @@ import type { PurchaseAiCandidate, PurchaseAiMetadata, PurchaseListFilters, Purc
 import type { Product } from '~/types/product'
 import { buildProductCatalogPrompt, matchProductByName, normalizeProductName } from '~/utils/product-match'
 
+type PurchaseAiImage = {
+  id: string
+  imageBase64: string
+  mimeType: string
+  fileName: string
+  previewUrl: string
+}
+
 const defaultFilters: PurchaseListFilters = {
   month: new Date().toISOString().slice(0, 7),
   status: 'active',
@@ -17,13 +25,14 @@ function matchesPurchaseSearch(order: PurchaseOrder, search: string) {
 }
 
 function readFileAsBase64(file: File) {
-  return new Promise<{ imageBase64: string; mimeType: string }>((resolve, reject) => {
+  return new Promise<{ imageBase64: string; mimeType: string; previewUrl: string }>((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => {
       const value = String(reader.result || '')
       resolve({
         imageBase64: value.includes(',') ? value.split(',').pop() || '' : value,
-        mimeType: file.type || 'image/jpeg'
+        mimeType: file.type || 'image/jpeg',
+        previewUrl: value
       })
     }
     reader.onerror = () => reject(reader.error || new Error('读取图片失败'))
@@ -177,7 +186,8 @@ export function usePurchases() {
   const selectedOrder = shallowRef<PurchaseOrder | null>(null)
   const aiCandidates = shallowRef<PurchaseAiCandidate[]>([])
   const aiMetadata = shallowRef<PurchaseAiMetadata | null>(null)
-  const receiptImage = shallowRef<{ imageBase64: string; mimeType: string; fileName: string } | null>(null)
+  const purchaseImages = shallowRef<PurchaseAiImage[]>([])
+  const receiptImage = computed(() => purchaseImages.value[0] || null)
   const loading = shallowRef(false)
   const productsLoading = shallowRef(false)
   const saving = shallowRef(false)
@@ -248,17 +258,39 @@ export function usePurchases() {
     }
   }
 
-  async function saveReceiptImage(file: File) {
-    const image = await readFileAsBase64(file)
-    receiptImage.value = {
-      ...image,
-      fileName: file.name
-    }
+  async function saveReceiptImage(files: File[] | File) {
+    const nextFiles = Array.isArray(files) ? files : [files]
+    if (nextFiles.length === 0) return purchaseImages.value
+    const images = await Promise.all(nextFiles.map(async (file, index) => {
+      const image = await readFileAsBase64(file)
+      return {
+        ...image,
+        id: `${Date.now()}-${index}-${file.name}`,
+        fileName: file.name
+      }
+    }))
+    purchaseImages.value = [...purchaseImages.value, ...images]
     aiCandidates.value = []
     aiMetadata.value = null
     aiError.value = null
     aiProgress.value = ''
-    return receiptImage.value
+    return purchaseImages.value
+  }
+
+  function removeReceiptImage(id: string) {
+    purchaseImages.value = purchaseImages.value.filter(image => image.id !== id)
+    aiCandidates.value = []
+    aiMetadata.value = null
+    aiError.value = null
+    aiProgress.value = ''
+  }
+
+  function clearReceiptImages() {
+    purchaseImages.value = []
+    aiCandidates.value = []
+    aiMetadata.value = null
+    aiError.value = null
+    aiProgress.value = ''
   }
 
   async function createOrder(payload: PurchaseOrderPayload) {
@@ -275,7 +307,7 @@ export function usePurchases() {
         body
       })
       toastStore.show('进货单已创建，库存已入库', 'success')
-      receiptImage.value = null
+      purchaseImages.value = []
       aiCandidates.value = []
       aiMetadata.value = null
       aiProgress.value = ''
@@ -361,7 +393,7 @@ export function usePurchases() {
   }
 
   async function recognizeReceipt() {
-    if (!receiptImage.value) {
+    if (purchaseImages.value.length === 0) {
       aiError.value = {
         code: 'BAD_REQUEST',
         message: '请先上传进货截图'
@@ -370,11 +402,11 @@ export function usePurchases() {
     }
     recognizing.value = true
     aiError.value = null
-    aiProgress.value = '正在连接 AI，准备上传图片...'
+    aiProgress.value = `正在连接 AI，准备上传 ${purchaseImages.value.length} 张图片...`
     try {
       const catalog = buildProductCatalogPrompt(products.value)
       const userPrompt = [
-        '从截图中识别进货日期、来源和商品明细，返回 {"date":"YYYY-MM-DD 或空字符串","source":"拼多多/线下进货单/识别到的供应商","note":"关键依据简述","items":[{"rawName":"截图原文","productId":"匹配到的商品 id 或空字符串","productName":"匹配到的商品名","quantity":入库数量,"unitPrice":单个库存单位进货价,"totalPrice":该行实际进货总金额,"sellPrice":新商品建议售价或 0}]}。',
+        `从 ${purchaseImages.value.length} 张截图中识别进货日期、来源和商品明细，返回 {"date":"YYYY-MM-DD 或空字符串","source":"拼多多/线下进货单/识别到的供应商","note":"关键依据简述","items":[{"rawName":"截图原文","productId":"匹配到的商品 id 或空字符串","productName":"匹配到的商品名","quantity":入库数量,"unitPrice":单个库存单位进货价,"totalPrice":该行实际进货总金额,"sellPrice":新商品建议售价或 0}]}。`,
         '通用规则：quantity 是入库库存数量，不是订单件数；unitPrice 是单个库存单位进货价；totalPrice 是该行实际进货总金额。金额单位是人民币元，只返回数字。',
         '线下纸质进货单规则：优先读取表格右上方或表头的“下单时间”，date 取其日期；每行按条形码/货名/货号/件数/件价/换价/金额读取；若货号类似 1X12、1×24，件数为 N件，则 quantity=N*箱规后面的数量；unitPrice 优先用“换价/元”（如 3.25/瓶）；totalPrice 用“金额/元”。不要把底部合计当商品行。',
         '拼多多订单截图规则：source 返回“拼多多”；date 优先用“发货时间”，没有发货时间再用下单时间/拼单时间；真实进货总价优先取“自动确认收货并付款¥...”或“实付/应付款”里的实际付款金额，不能用商品标价、合计拼单价、优惠前金额；例如“自动确认收货并付款¥106.5”应作为 totalPrice。',
@@ -390,9 +422,11 @@ export function usePurchases() {
       ].join('\n')
       let receivedLength = 0
       const text = await requestAiStream({
-        imageBase64: receiptImage.value.imageBase64,
-        mimeType: receiptImage.value.mimeType,
-        maxTokens: 2600,
+        images: purchaseImages.value.map(image => ({
+          imageBase64: image.imageBase64,
+          mimeType: image.mimeType
+        })),
+        maxTokens: 3200,
         stream: true,
         systemPrompt: '你是进货截图识别助手。只返回合法 JSON，不要 Markdown，不要解释。日期格式必须是 YYYY-MM-DD，金额单位为人民币元。',
         userPrompt
@@ -433,6 +467,7 @@ export function usePurchases() {
     selectedOrder,
     aiCandidates,
     aiMetadata,
+    purchaseImages,
     receiptImage,
     machineOptions,
     loading,
@@ -448,6 +483,8 @@ export function usePurchases() {
     loadProducts,
     loadOrders,
     saveReceiptImage,
+    removeReceiptImage,
+    clearReceiptImages,
     createOrder,
     voidOrder,
     recognizeReceipt,

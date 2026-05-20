@@ -13,6 +13,7 @@ const {
   selectedOrder,
   aiCandidates,
   aiMetadata,
+  purchaseImages,
   receiptImage,
   machineOptions,
   loading,
@@ -26,6 +27,8 @@ const {
   loadProducts,
   loadOrders,
   saveReceiptImage,
+  removeReceiptImage,
+  clearReceiptImages,
   createOrder,
   voidOrder,
   recognizeReceipt,
@@ -121,10 +124,13 @@ onMounted(async () => {
       :recognizing="recognizing"
       :submitting="saving"
       :image-file-name="receiptImage?.fileName"
+      :images="purchaseImages"
       :metadata="aiMetadata"
       :progress-message="aiProgress"
       :error-message="aiError?.message"
       @image-selected="saveReceiptImage"
+      @image-removed="removeReceiptImage"
+      @clear-images="clearReceiptImages"
       @recognize="recognizeReceipt"
       @update-candidates="setAiCandidates"
       @confirm="submitOrder"

@@ -53,6 +53,24 @@ assert.match(
 
 assert.match(
   purchasesComposable,
+  /images: purchaseImages\.value\.map/,
+  'purchase AI recognition should send multiple selected images to the AI proxy'
+);
+
+assert.match(
+  reviewDialog,
+  /multiple @change="handleFileChange"/,
+  'purchase AI review dialog should support selecting multiple images at once'
+);
+
+assert.match(
+  reviewDialog,
+  /onImage: \(file: File\) => emit\('imageSelected', \[file\]\)/,
+  'purchase AI review dialog should append pasted images to the recognition draft'
+);
+
+assert.match(
+  purchasesComposable,
   /mergeAiCandidates/,
   'purchase AI recognition should merge duplicate products into one candidate'
 );
