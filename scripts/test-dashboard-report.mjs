@@ -59,12 +59,14 @@ const testTimestamp = `${testDate}T00:00:00.000Z`;
 
 await seedDashboardRows();
 
+const trendDays = 45;
 const response = await onRequestGet({
-  request: new Request(`https://example.test/api/reports/dashboard?month=${testMonth}&days=7&machineId=machine-a`),
+  request: new Request(`https://example.test/api/reports/dashboard?month=${testMonth}&days=${trendDays}&machineId=machine-a`),
   env
 });
 const report = await response.json();
 
+assert.equal(report.salesTrend.length, trendDays, 'dashboard trend should honor custom day range');
 const trendPoint = report.salesTrend.find(point => point.date === testDate);
 assert.ok(trendPoint, 'dashboard trend should include the seeded date');
 assert.equal(trendPoint.revenue, 120, 'trend revenue should count the order total once');

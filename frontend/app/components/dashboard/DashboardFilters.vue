@@ -12,10 +12,11 @@ const emit = defineEmits<{
   refresh: []
 }>()
 
-function updateField(key: keyof DashboardFilters, event: Event) {
+type DashboardFilterField = 'month' | 'machineId'
+
+function updateField(key: DashboardFilterField, event: Event) {
   const target = event.target as HTMLInputElement | HTMLSelectElement
-  const value = key === 'days' ? Number(target.value) : target.value
-  emit('updateFilters', { [key]: value })
+  emit('updateFilters', { [key]: target.value })
 }
 </script>
 
@@ -29,18 +30,6 @@ function updateField(key: keyof DashboardFilters, event: Event) {
         :value="props.filters.month"
         @input="updateField('month', $event)"
       >
-    </label>
-    <label class="dashboard-filters__field">
-      <span>趋势天数</span>
-      <select
-        class="dashboard-filters__control"
-        :value="props.filters.days"
-        @change="updateField('days', $event)"
-      >
-        <option :value="7">近 7 天</option>
-        <option :value="14">近 14 天</option>
-        <option :value="30">近 30 天</option>
-      </select>
     </label>
     <label class="dashboard-filters__field">
       <span>售货机</span>
@@ -65,7 +54,7 @@ function updateField(key: keyof DashboardFilters, event: Event) {
 .dashboard-filters {
   min-width: 0;
   display: grid;
-  grid-template-columns: repeat(3, minmax(150px, 1fr)) auto;
+  grid-template-columns: repeat(2, minmax(150px, 1fr)) auto;
   gap: var(--space-3);
   align-items: end;
   padding: var(--space-4);

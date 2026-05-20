@@ -50,7 +50,9 @@ onMounted(() => {
       <div class="dashboard-page__column">
         <SalesTrendPanel
           :points="report?.salesTrend ?? []"
+          :days="filters.days"
           :loading="loading"
+          @update-days="updateFilters({ days: $event })"
         />
         <ExceptionsPanel
           :items="report?.recentExceptions ?? []"

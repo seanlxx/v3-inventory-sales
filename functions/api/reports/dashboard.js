@@ -10,6 +10,8 @@ function todayDate() {
   return new Date().toISOString().slice(0, 10);
 }
 
+const MAX_TREND_DAYS = 90;
+
 function addDays(date, days) {
   const next = new Date(date);
   next.setUTCDate(next.getUTCDate() + days);
@@ -27,7 +29,7 @@ function normalizeMonth(value) {
 
 function normalizeDays(value) {
   const days = Math.round(Number(value) || 7);
-  return Math.min(Math.max(days, 1), 30);
+  return Math.min(Math.max(days, 1), MAX_TREND_DAYS);
 }
 
 function normalizeThreshold(value) {
