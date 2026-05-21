@@ -479,7 +479,7 @@ function formatMoneyTick(value: number) {
   background: transparent;
   color: var(--color-text);
   font: inherit;
-  text-align: right;
+  text-align: center;
 }
 
 .sales-trend__custom-input:focus {
@@ -514,14 +514,39 @@ function formatMoneyTick(value: number) {
     padding: var(--space-3);
   }
 
-  .sales-trend__header,
-  .sales-trend__range,
-  .sales-trend__preset-group {
+  .sales-trend__header {
     width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
   }
 
   .sales-trend__range {
-    justify-content: flex-start;
+    width: 100%;
+    display: flex;
+    align-items: stretch;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .sales-trend__preset-group {
+    display: flex;
+    flex: 5;
+    gap: 6px;
+  }
+
+  .sales-trend__range-button {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    text-align: center;
+  }
+
+  .sales-trend__custom-range {
+    flex: 4;
+    min-width: 0;
+    grid-template-columns: auto 1fr auto;
+    padding: 0 var(--space-2);
   }
 
   .sales-trend__canvas-wrap {
