@@ -80,7 +80,6 @@ function stockTone(product: Product) {
             <td class="product-table__center">
               <button class="product-table__stock-button" type="button" @click="emit('movements', product)">
                 <StatusBadge :label="`${formatQuantity(product.currentStock)} 件`" :tone="stockTone(product)" />
-                <span>只读</span>
               </button>
             </td>
             <td class="product-table__center">
