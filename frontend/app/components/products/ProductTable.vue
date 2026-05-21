@@ -29,6 +29,15 @@ function stockTone(product: Product) {
   <section class="product-table" aria-label="商品列表">
     <div class="product-table__scroll">
       <table class="product-table__table">
+        <colgroup>
+          <col class="product-table__col--product">
+          <col class="product-table__col--category">
+          <col class="product-table__col--machine">
+          <col class="product-table__col--price">
+          <col class="product-table__col--stock">
+          <col class="product-table__col--status">
+          <col class="product-table__col--actions">
+        </colgroup>
         <thead>
           <tr>
             <th scope="col">商品</th>
@@ -135,6 +144,35 @@ function stockTone(product: Product) {
   width: 100%;
   min-width: 900px;
   border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.product-table__col--product {
+  width: 170px;
+}
+
+.product-table__col--category {
+  width: 80px;
+}
+
+.product-table__col--machine {
+  width: 90px;
+}
+
+.product-table__col--price {
+  width: 90px;
+}
+
+.product-table__col--stock {
+  width: 120px;
+}
+
+.product-table__col--status {
+  width: 90px;
+}
+
+.product-table__col--actions {
+  width: 260px;
 }
 
 .product-table__table th,
