@@ -51,12 +51,12 @@ async function submitLogin() {
 
 <template>
   <div class="login-page">
-    <!-- 动态科技霓虹背景 -->
-    <div class="cyber-bg" aria-hidden="true">
-      <div class="cyber-bg__glow cyber-bg__glow--1"></div>
-      <div class="cyber-bg__glow cyber-bg__glow--2"></div>
-      <div class="cyber-bg__glow cyber-bg__glow--3"></div>
-      <div class="cyber-bg__grid"></div>
+    <!-- 动态浅色水晶背景 -->
+    <div class="login-bg" aria-hidden="true">
+      <div class="login-bg__glow login-bg__glow--1"></div>
+      <div class="login-bg__glow login-bg__glow--2"></div>
+      <div class="login-bg__glow login-bg__glow--3"></div>
+      <div class="login-bg__grid"></div>
     </div>
 
     <!-- 登录主体 -->
@@ -238,10 +238,88 @@ async function submitLogin() {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  background-color: #080b11;
+  background: linear-gradient(135deg, #f6f8fb 0%, #eef3f8 100%);
   font-family: var(--font-sans);
-  color: #f3f4f6;
+  color: #172033;
   padding: var(--space-6) var(--space-4);
+}
+
+/* 动态浅色水晶背景 */
+.login-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.login-bg__glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.85;
+  mix-blend-mode: normal;
+}
+
+.login-bg__glow--1 {
+  top: -10%;
+  left: 10%;
+  width: 50vw;
+  height: 50vw;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.08) 0%, rgba(59, 130, 246, 0) 70%);
+  animation: float-glow-1 25s infinite alternate ease-in-out;
+}
+
+.login-bg__glow--2 {
+  bottom: -20%;
+  right: 5%;
+  width: 60vw;
+  height: 60vw;
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.07) 0%, rgba(168, 85, 247, 0) 70%);
+  animation: float-glow-2 30s infinite alternate ease-in-out;
+}
+
+.login-bg__glow--3 {
+  top: 30%;
+  right: 25%;
+  width: 35vw;
+  height: 35vw;
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.06) 0%, rgba(16, 185, 129, 0) 70%);
+  animation: float-glow-3 20s infinite alternate ease-in-out;
+}
+
+.login-bg__grid {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: 
+    linear-gradient(rgba(23, 32, 51, 0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(23, 32, 51, 0.015) 1px, transparent 1px);
+  background-size: 40px 40px;
+  background-position: center;
+  mask-image: radial-gradient(ellipse 60% 60% at 50% 50%, #000 70%, transparent 100%);
+}
+
+@keyframes float-glow-1 {
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(8%, 12%) scale(1.08); }
+}
+
+@keyframes float-glow-2 {
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(-8%, -10%) scale(1.05); }
+}
+
+@keyframes float-glow-3 {
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(6%, -8%) scale(1.1); }
 }
 
 /* 登录内容容器 */
@@ -256,25 +334,25 @@ async function submitLogin() {
 .login-card {
   position: relative;
   width: 100%;
-  background: rgba(17, 25, 40, 0.75);
+  background: rgba(255, 255, 255, 0.78);
   backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.65);
   border-radius: var(--radius-4);
   box-shadow: 
-    0 24px 50px rgba(0, 0, 0, 0.4),
-    0 0 40px rgba(37, 99, 235, 0.08),
-    inset 0 1px 1px rgba(255, 255, 255, 0.1);
+    0 24px 50px rgba(23, 32, 51, 0.06),
+    0 0 40px rgba(37, 99, 235, 0.03),
+    inset 0 1px 1px #ffffff;
   padding: 40px;
   overflow: hidden;
   transition: transform var(--transition-bounce), border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .login-card:hover {
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.85);
   box-shadow: 
-    0 28px 60px rgba(0, 0, 0, 0.45),
-    0 0 50px rgba(124, 58, 237, 0.12),
-    inset 0 1px 1px rgba(255, 255, 255, 0.12);
+    0 28px 60px rgba(23, 32, 51, 0.08),
+    0 0 50px rgba(124, 58, 237, 0.05),
+    inset 0 1px 1px #ffffff;
 }
 
 .login-card__top-bar {
@@ -315,7 +393,7 @@ async function submitLogin() {
   width: 90%;
   height: 90%;
   border-radius: 50%;
-  border: 1px solid rgba(124, 58, 237, 0.4);
+  border: 1px solid rgba(124, 58, 237, 0.2);
   filter: blur(1px);
   pointer-events: none;
   animation: pulse-ring 3s infinite ease-out;
@@ -336,17 +414,17 @@ async function submitLogin() {
   font-size: 22px;
   font-weight: 800;
   letter-spacing: 0.5px;
-  background: linear-gradient(135deg, #ffffff 60%, #a5b4fc 100%);
+  background: linear-gradient(135deg, #172033 60%, #4f46e5 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  text-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+  text-shadow: 0 4px 10px rgba(23, 32, 51, 0.05);
 }
 
 .login-card__subtitle {
   margin: var(--space-2) 0 0;
   font-size: 12px;
-  color: var(--color-text-soft);
+  color: #6b7280;
   font-family: var(--font-mono);
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -373,19 +451,19 @@ async function submitLogin() {
 .form-label__text {
   font-size: 13px;
   font-weight: 700;
-  color: #d1d5db;
+  color: #374151;
 }
 
 .form-label__tag {
   font-size: 9px;
   font-family: var(--font-mono);
-  color: var(--color-text-soft);
+  color: #6b7280;
   letter-spacing: 0.5px;
   opacity: 0.8;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(23, 32, 51, 0.08);
   padding: 1px 5px;
   border-radius: 3px;
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(23, 32, 51, 0.03);
 }
 
 .input-wrapper {
@@ -397,7 +475,7 @@ async function submitLogin() {
 .input-icon {
   position: absolute;
   left: var(--space-4);
-  color: var(--color-text-soft);
+  color: #9ca3af;
   pointer-events: none;
   display: inline-flex;
   transition: color var(--transition-fast);
@@ -406,11 +484,11 @@ async function submitLogin() {
 .form-input {
   width: 100%;
   min-height: 48px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(23, 32, 51, 0.12);
   border-radius: var(--radius-2);
   padding: 0 var(--space-4) 0 46px;
-  color: #ffffff;
+  color: #172033;
   font-size: 14px;
   outline: none;
   transition: 
@@ -420,20 +498,20 @@ async function submitLogin() {
 }
 
 .form-input::placeholder {
-  color: #4b5563;
+  color: #9ca3af;
 }
 
 .form-input:focus {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(37, 99, 235, 0.8);
+  background: rgba(255, 255, 255, 0.9);
+  border-color: #2563eb;
   box-shadow: 
-    0 0 0 3px rgba(37, 99, 235, 0.15),
-    0 0 16px rgba(37, 99, 235, 0.2);
+    0 0 0 3px rgba(37, 99, 235, 0.1),
+    0 0 12px rgba(37, 99, 235, 0.15);
 }
 
 .form-input:focus + .input-icon,
 .input-wrapper:focus-within .input-icon {
-  color: #a5b4fc;
+  color: #2563eb;
 }
 
 .password-toggle {
@@ -441,7 +519,7 @@ async function submitLogin() {
   right: var(--space-4);
   background: none;
   border: none;
-  color: var(--color-text-soft);
+  color: #9ca3af;
   cursor: pointer;
   padding: 4px;
   display: inline-flex;
@@ -449,7 +527,7 @@ async function submitLogin() {
 }
 
 .password-toggle:hover {
-  color: #ffffff;
+  color: #172033;
 }
 
 /* 错误提示 */
@@ -457,14 +535,14 @@ async function submitLogin() {
   display: flex;
   align-items: flex-start;
   gap: var(--space-2);
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  background: #fef2f2;
+  border: 1px solid rgba(239, 68, 68, 0.15);
   border-radius: var(--radius-2);
   padding: 12px var(--space-4);
 }
 
 .feedback-icon {
-  color: #f87171;
+  color: #ef4444;
   flex-shrink: 0;
   margin-top: 1px;
 }
@@ -472,7 +550,7 @@ async function submitLogin() {
 .feedback-text {
   font-size: 12.5px;
   font-weight: 600;
-  color: #fca5a5;
+  color: #991b1b;
   line-height: 1.4;
 }
 
@@ -485,7 +563,7 @@ async function submitLogin() {
   position: relative;
   width: 100%;
   min-height: 48px;
-  background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+  background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
   border: none;
   border-radius: var(--radius-2);
   color: #ffffff;
@@ -494,7 +572,7 @@ async function submitLogin() {
   letter-spacing: 0.5px;
   cursor: pointer;
   overflow: hidden;
-  box-shadow: 0 4px 20px rgba(124, 58, 237, 0.25);
+  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.2);
   transition: 
     transform var(--transition-bounce), 
     box-shadow var(--transition-fast), 
@@ -504,8 +582,8 @@ async function submitLogin() {
 .login-btn:hover:not(:disabled) {
   transform: translateY(-2px);
   box-shadow: 
-    0 8px 24px rgba(124, 58, 237, 0.35),
-    0 0 16px rgba(37, 99, 235, 0.25);
+    0 8px 24px rgba(139, 92, 246, 0.3),
+    0 0 16px rgba(59, 130, 246, 0.2);
 }
 
 .login-btn:active:not(:disabled) {
@@ -551,7 +629,8 @@ async function submitLogin() {
 
 /* 各种状态效果 */
 .login-btn--pending {
-  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+  background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
+  color: #64748b;
   box-shadow: none;
 }
 
@@ -572,8 +651,8 @@ async function submitLogin() {
 .btn-spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  border-right-color: #ffffff;
+  border: 2px solid rgba(100, 116, 139, 0.2);
+  border-right-color: #64748b;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -589,14 +668,14 @@ async function submitLogin() {
   flex-direction: column;
   align-items: center;
   gap: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 1px solid rgba(23, 32, 51, 0.06);
   padding-top: 24px;
 }
 
 .login-card__footer p {
   margin: 0;
   font-size: 11px;
-  color: var(--color-text-soft);
+  color: #8c93a0;
   font-family: var(--font-mono);
   letter-spacing: 0.2px;
 }
@@ -605,8 +684,8 @@ async function submitLogin() {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(23, 32, 51, 0.02);
+  border: 1px solid rgba(23, 32, 51, 0.04);
   padding: 3px 8px;
   border-radius: 99px;
 }
