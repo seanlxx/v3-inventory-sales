@@ -64,9 +64,6 @@ function stockTone(product: Product) {
           <tr v-for="product in props.products" v-else :key="product.id">
             <td>
               <div class="product-table__name-cell">
-                <div class="product-table__image" aria-hidden="true">
-                  {{ product.name.slice(0, 1) || '商' }}
-                </div>
                 <div class="product-table__name-copy">
                   <strong>{{ product.name }}</strong>
                   <span>{{ product.id }}</span>
@@ -171,26 +168,18 @@ function stockTone(product: Product) {
 .product-table__name-cell {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-}
-
-.product-table__image {
-  width: 38px;
-  height: 38px;
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-2);
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
-  font-weight: 800;
 }
 
 .product-table__name-copy {
   min-width: 0;
-  display: grid;
-  gap: 4px;
+  display: inline-grid;
+  gap: 2px;
+  padding: 5px var(--space-3);
+  border-radius: var(--radius-2);
+  background: var(--color-primary-soft);
+  border: 1px solid rgba(37, 99, 235, 0.08);
+  width: fit-content;
+  box-shadow: var(--shadow-inset);
 }
 
 .product-table__name-copy strong,
@@ -203,7 +192,7 @@ function stockTone(product: Product) {
 .product-table__name-copy span {
   color: var(--color-text-soft);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .product-table__stock-button {

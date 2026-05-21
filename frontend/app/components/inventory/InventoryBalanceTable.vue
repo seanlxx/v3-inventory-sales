@@ -74,9 +74,6 @@ function stockTone(balance: InventoryBalance) {
           <tr v-for="balance in props.balances" v-else :key="`${balance.productId}:${balance.machineId}`">
             <td>
               <div class="inventory-table__name-cell">
-                <div class="inventory-table__image" aria-hidden="true">
-                  {{ balance.productName.slice(0, 1) || '库' }}
-                </div>
                 <div class="inventory-table__name-copy">
                   <strong>{{ balance.productName }}</strong>
                   <span>{{ balance.productId }}</span>
@@ -142,10 +139,7 @@ function stockTone(balance: InventoryBalance) {
       >
         <header class="inventory-table__card-header">
           <div class="inventory-table__card-title">
-            <div class="inventory-table__image" aria-hidden="true">
-              {{ balance.productName.slice(0, 1) || '库' }}
-            </div>
-            <div>
+            <div class="inventory-table__name-copy">
               <strong>{{ balance.productName }}</strong>
               <span>{{ balance.productId }}</span>
             </div>
@@ -292,26 +286,18 @@ function stockTone(balance: InventoryBalance) {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-}
-
-.inventory-table__image {
-  width: 38px;
-  height: 38px;
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-2);
-  background: var(--color-info-soft);
-  color: var(--color-info);
-  font-weight: 800;
 }
 
 .inventory-table__name-copy {
   min-width: 0;
-  display: grid;
-  gap: 4px;
+  display: inline-grid;
+  gap: 2px;
+  padding: 5px var(--space-3);
+  border-radius: var(--radius-2);
+  background: var(--color-info-soft);
+  border: 1px solid rgba(15, 118, 110, 0.08);
+  width: fit-content;
+  box-shadow: var(--shadow-inset);
 }
 
 .inventory-table__name-copy strong,
@@ -319,12 +305,13 @@ function stockTone(balance: InventoryBalance) {
   max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .inventory-table__name-copy span {
   color: var(--color-text-soft);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .inventory-table__stock-button {
@@ -429,31 +416,11 @@ tbody tr:last-child td {
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: var(--space-3);
   }
 
-  .inventory-table__card-title > div:last-child {
-    min-width: 0;
-    display: grid;
-    gap: 4px;
-  }
-
-  .inventory-table__card-title strong,
-  .inventory-table__card-title span {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .inventory-table__card-title strong {
-    font-size: 16px;
-    line-height: 1.3;
-  }
-
-  .inventory-table__card-title span {
-    color: var(--color-text-soft);
-    font-family: var(--font-mono);
-    font-size: 12px;
+  .inventory-table__name-copy strong,
+  .inventory-table__name-copy span {
+    max-width: 180px;
   }
 
   .inventory-table__card-grid {
