@@ -29,24 +29,15 @@ function stockTone(product: Product) {
   <section class="product-table" aria-label="商品列表">
     <div class="product-table__scroll">
       <table class="product-table__table">
-        <colgroup>
-          <col class="product-table__col--product">
-          <col class="product-table__col--category">
-          <col class="product-table__col--machine">
-          <col class="product-table__col--price">
-          <col class="product-table__col--stock">
-          <col class="product-table__col--status">
-          <col class="product-table__col--actions">
-        </colgroup>
         <thead>
           <tr>
-            <th scope="col">商品</th>
-            <th scope="col" class="product-table__center">分类</th>
-            <th scope="col" class="product-table__center">售货机</th>
-            <th scope="col" class="product-table__center">售价</th>
-            <th scope="col" class="product-table__center">库存</th>
-            <th scope="col" class="product-table__center">状态</th>
-            <th scope="col" class="product-table__center">操作</th>
+            <th scope="col" class="product-table__th--product">商品</th>
+            <th scope="col" class="product-table__th--category product-table__center">分类</th>
+            <th scope="col" class="product-table__th--machine product-table__center">售货机</th>
+            <th scope="col" class="product-table__th--price product-table__center">售价</th>
+            <th scope="col" class="product-table__th--stock product-table__center">库存</th>
+            <th scope="col" class="product-table__th--status product-table__center">状态</th>
+            <th scope="col" class="product-table__th--actions product-table__center">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -147,32 +138,33 @@ function stockTone(product: Product) {
   table-layout: fixed;
 }
 
-.product-table__col--product {
+.product-table__th--product {
   width: 170px;
+  padding-left: calc(var(--space-4) + var(--space-3)) !important;
 }
 
-.product-table__col--category {
+.product-table__th--category {
   width: 80px;
 }
 
-.product-table__col--machine {
+.product-table__th--machine {
   width: 90px;
 }
 
-.product-table__col--price {
+.product-table__th--price {
   width: 90px;
 }
 
-.product-table__col--stock {
+.product-table__th--stock {
   width: 120px;
 }
 
-.product-table__col--status {
+.product-table__th--status {
   width: 90px;
 }
 
-.product-table__col--actions {
-  width: 260px;
+.product-table__th--actions {
+  /* Flexible column to absorb extra space, squeezing all previous columns tightly to the left */
 }
 
 .product-table__table th,
@@ -297,6 +289,10 @@ tbody tr:hover {
   .product-table__table td {
     height: 52px;
     padding: 0 var(--space-3);
+  }
+
+  .product-table__th--product {
+    padding-left: calc(var(--space-3) + var(--space-3)) !important;
   }
 
   .product-table__name-copy {
