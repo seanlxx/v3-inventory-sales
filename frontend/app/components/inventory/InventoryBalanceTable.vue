@@ -42,12 +42,12 @@ function stockTone(balance: InventoryBalance) {
             <th scope="col">商品</th>
             <th scope="col" class="inventory-table__center">分类</th>
             <th scope="col" class="inventory-table__center">售货机</th>
-            <th scope="col" class="inventory-table__number">现存</th>
-            <th scope="col" class="inventory-table__number">均价</th>
-            <th scope="col" class="inventory-table__number">库存金额</th>
+            <th scope="col" class="inventory-table__center">现存</th>
+            <th scope="col" class="inventory-table__center">均价</th>
+            <th scope="col" class="inventory-table__center">库存金额</th>
             <th scope="col" class="inventory-table__center">状态</th>
-            <th scope="col">更新时间</th>
-            <th scope="col" class="inventory-table__actions-heading">操作</th>
+            <th scope="col" class="inventory-table__center">更新时间</th>
+            <th scope="col" class="inventory-table__center">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -84,16 +84,16 @@ function stockTone(balance: InventoryBalance) {
               <StatusBadge :label="balance.category || '其他'" tone="neutral" />
             </td>
             <td class="inventory-table__center">{{ balance.machineId }}</td>
-            <td class="inventory-table__number">
+            <td class="inventory-table__center">
               <button class="inventory-table__stock-button" type="button" @click="emit('movements', balance)">
                 <StatusBadge :label="`${formatQuantity(balance.quantityOnHand)} 件`" :tone="stockTone(balance)" />
                 <span>查流水</span>
               </button>
             </td>
-            <td class="inventory-table__number">
+            <td class="inventory-table__center">
               {{ formatMoney(balance.avgCost) }}
             </td>
-            <td class="inventory-table__number">
+            <td class="inventory-table__center">
               {{ formatMoney(balance.inventoryValue) }}
             </td>
             <td class="inventory-table__center">
@@ -102,8 +102,8 @@ function stockTone(balance: InventoryBalance) {
                 :tone="balance.isLowStock ? 'warning' : 'success'"
               />
             </td>
-            <td>{{ formatDateTime(balance.updatedAt) }}</td>
-            <td class="inventory-table__actions-cell">
+            <td class="inventory-table__center">{{ formatDateTime(balance.updatedAt) }}</td>
+            <td class="inventory-table__center">
               <div class="inventory-table__actions">
                 <AppButton size="sm" variant="secondary" @click="emit('movements', balance)">
                   流水
@@ -256,8 +256,14 @@ function stockTone(balance: InventoryBalance) {
   height: 54px;
   padding: 0 var(--space-4);
   border-bottom: 1px solid var(--color-border);
+  border-right: 1px solid var(--color-border);
   text-align: left;
   white-space: nowrap;
+}
+
+.inventory-table__table th:last-child,
+.inventory-table__table td:last-child {
+  border-right: 0;
 }
 
 .inventory-table__table th {
@@ -275,14 +281,8 @@ function stockTone(balance: InventoryBalance) {
   font-variant-numeric: tabular-nums;
 }
 
-.inventory-table__center {
-  text-align: center;
-}
-
-.inventory-table__table .inventory-table__actions-heading,
-.inventory-table__table .inventory-table__actions-cell {
-  padding-right: var(--space-2);
-  padding-left: var(--space-2);
+.inventory-table__table th.inventory-table__center,
+.inventory-table__table td.inventory-table__center {
   text-align: center;
 }
 
@@ -322,7 +322,7 @@ function stockTone(balance: InventoryBalance) {
 .inventory-table__stock-button {
   display: inline-flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
   gap: var(--space-2);
   border: 0;
   padding: 0;

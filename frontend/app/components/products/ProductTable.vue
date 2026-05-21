@@ -34,10 +34,10 @@ function stockTone(product: Product) {
             <th scope="col">商品</th>
             <th scope="col" class="product-table__center">分类</th>
             <th scope="col" class="product-table__center">售货机</th>
-            <th scope="col" class="product-table__number">售价</th>
-            <th scope="col" class="product-table__number">库存</th>
+            <th scope="col" class="product-table__center">售价</th>
+            <th scope="col" class="product-table__center">库存</th>
             <th scope="col" class="product-table__center">状态</th>
-            <th scope="col" class="product-table__actions-heading">操作</th>
+            <th scope="col" class="product-table__center">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -74,10 +74,10 @@ function stockTone(product: Product) {
               <StatusBadge :label="product.category || '其他'" tone="neutral" />
             </td>
             <td class="product-table__center">{{ product.machineId }}</td>
-            <td class="product-table__number">
+            <td class="product-table__center">
               {{ formatMoney(product.sellPrice) }}
             </td>
-            <td class="product-table__number">
+            <td class="product-table__center">
               <button class="product-table__stock-button" type="button" @click="emit('movements', product)">
                 <StatusBadge :label="`${formatQuantity(product.currentStock)} 件`" :tone="stockTone(product)" />
                 <span>只读</span>
@@ -89,7 +89,7 @@ function stockTone(product: Product) {
                 :tone="product.status === 'archived' ? 'warning' : 'success'"
               />
             </td>
-            <td>
+            <td class="product-table__center">
               <div class="product-table__actions">
                 <AppButton size="sm" variant="secondary" :disabled="product.status === 'archived'" @click="emit('edit', product)">
                   编辑
@@ -142,8 +142,14 @@ function stockTone(product: Product) {
   height: 54px;
   padding: 0 var(--space-4);
   border-bottom: 1px solid var(--color-border);
+  border-right: 1px solid var(--color-border);
   text-align: left;
   white-space: nowrap;
+}
+
+.product-table__table th:last-child,
+.product-table__table td:last-child {
+  border-right: 0;
 }
 
 .product-table__table th {
@@ -165,7 +171,8 @@ function stockTone(product: Product) {
   text-align: right;
 }
 
-.product-table__center {
+.product-table__table th.product-table__center,
+.product-table__table td.product-table__center {
   text-align: center;
 }
 
@@ -204,7 +211,7 @@ function stockTone(product: Product) {
 .product-table__stock-button {
   display: inline-flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
   gap: var(--space-2);
   border: 0;
   padding: 0;
@@ -216,7 +223,7 @@ function stockTone(product: Product) {
 
 .product-table__actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: center;
   gap: var(--space-2);
 }
 
