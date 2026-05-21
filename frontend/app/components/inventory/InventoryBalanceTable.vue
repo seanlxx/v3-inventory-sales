@@ -140,7 +140,7 @@ function stockTone(balance: InventoryBalance) {
         <header class="inventory-table__card-header">
           <div class="inventory-table__card-title">
             <div class="inventory-table__name-copy">
-              <strong :title="balance.productName">{{ balance.productName.slice(0, 6) + (balance.productName.length > 6 ? '...' : '') }}</strong>
+              <strong :title="balance.productName">{{ balance.productName.slice(0, 10) + (balance.productName.length > 10 ? '...' : '') }}</strong>
               <span>{{ balance.productId }}</span>
             </div>
           </div>
@@ -418,7 +418,7 @@ tbody tr:last-child td {
   }
 
   .inventory-table__name-copy {
-    width: 115px;
+    width: 200px;
   }
 
   .inventory-table__card-grid {
