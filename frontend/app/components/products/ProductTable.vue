@@ -178,15 +178,17 @@ function stockTone(product: Product) {
   border-radius: var(--radius-2);
   background: var(--color-primary-soft);
   border: 1px solid rgba(37, 99, 235, 0.08);
-  width: fit-content;
+  width: 220px;
   box-shadow: var(--shadow-inset);
 }
 
 .product-table__name-copy strong,
 .product-table__name-copy span {
-  max-width: 260px;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
 }
 
 .product-table__name-copy span {
@@ -254,9 +256,8 @@ tbody tr:hover {
     padding: 0 var(--space-3);
   }
 
-  .product-table__name-copy strong,
-  .product-table__name-copy span {
-    max-width: 190px;
+  .product-table__name-copy {
+    width: 180px;
   }
 }
 </style>

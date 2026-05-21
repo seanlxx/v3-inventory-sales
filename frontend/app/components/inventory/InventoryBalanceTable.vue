@@ -296,16 +296,17 @@ function stockTone(balance: InventoryBalance) {
   border-radius: var(--radius-2);
   background: var(--color-info-soft);
   border: 1px solid rgba(15, 118, 110, 0.08);
-  width: fit-content;
+  width: 220px;
   box-shadow: var(--shadow-inset);
 }
 
 .inventory-table__name-copy strong,
 .inventory-table__name-copy span {
-  max-width: 260px;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  display: block;
 }
 
 .inventory-table__name-copy span {
@@ -418,9 +419,8 @@ tbody tr:last-child td {
     align-items: center;
   }
 
-  .inventory-table__name-copy strong,
-  .inventory-table__name-copy span {
-    max-width: 180px;
+  .inventory-table__name-copy {
+    width: 180px;
   }
 
   .inventory-table__card-grid {
