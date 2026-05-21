@@ -119,6 +119,11 @@ const buttonClasses = computed(() => [
 @media (max-width: 760px) {
   .app-button {
     min-height: var(--control-height-mobile);
+    border-radius: var(--mobile-button-radius);
+  }
+
+  .app-button--primary {
+    box-shadow: 0 4px 9px rgb(37 99 235 / 16%);
   }
 }
 </style>

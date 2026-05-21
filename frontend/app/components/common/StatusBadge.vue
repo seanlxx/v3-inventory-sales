@@ -57,4 +57,13 @@ const props = withDefaults(defineProps<{
   background: var(--color-info-soft);
   color: var(--color-info);
 }
+
+@media (max-width: 760px) {
+  .status-badge {
+    min-height: 22px;
+    border-radius: 999px;
+    padding: 0 8px;
+    font-size: 11px;
+  }
+}
 </style>

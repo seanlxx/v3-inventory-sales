@@ -189,7 +189,6 @@ onMounted(() => {
         active-class="app-shell__bottom-link--active"
         :to="item.to"
       >
-        <span class="app-shell__bottom-symbol" aria-hidden="true">{{ item.symbol }}</span>
         <span>{{ item.shortLabel }}</span>
       </NuxtLink>
     </nav>
@@ -477,6 +476,7 @@ onMounted(() => {
   .app-shell {
     display: block;
     min-width: 0;
+    background: var(--mobile-bg);
     padding-bottom: calc(var(--layout-mobile-nav-height) + env(safe-area-inset-bottom));
   }
 
@@ -486,29 +486,63 @@ onMounted(() => {
 
   .app-shell__topbar {
     min-height: var(--layout-mobile-topbar-height);
-    padding: 8px var(--space-4);
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    gap: 0;
+    padding: env(safe-area-inset-top) var(--mobile-page-padding) 0;
+    border-bottom-color: var(--mobile-divider);
+    background: var(--mobile-card-bg);
+    box-shadow: none;
+    backdrop-filter: none;
   }
 
   .app-shell__eyebrow {
     display: none;
   }
 
+  .app-shell__topbar-main {
+    grid-column: 2;
+    min-width: 0;
+    text-align: center;
+  }
+
   .app-shell__title {
-    font-size: 18px;
+    overflow: hidden;
+    color: var(--mobile-text);
+    font-size: 17px;
+    font-weight: 800;
+    line-height: 44px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .app-shell__topbar-actions {
-    gap: var(--space-2);
+    grid-column: 3;
+    min-width: 0;
+    justify-content: end;
+    gap: 0;
+  }
+
+  .app-shell__topbar-actions :deep(.status-badge),
+  .app-shell__topbar-actions :deep(.app-button),
+  .app-shell__topbar-actions > :not(.app-shell__settings-link) {
+    display: none;
   }
 
   .app-shell__settings-link {
+    width: 44px;
     min-width: 44px;
     min-height: 44px;
-    padding: 0 var(--space-3);
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--mobile-primary);
+    font-size: 13px;
+    font-weight: 800;
   }
 
   .app-shell__content {
-    padding: var(--space-4);
+    padding: var(--mobile-section-gap) var(--mobile-page-padding) 0;
   }
 
   .app-shell__toast {
@@ -525,24 +559,24 @@ onMounted(() => {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     padding: 0 6px env(safe-area-inset-bottom);
-    border-top: 1px solid var(--color-border);
-    background: rgb(255 255 255 / 85%);
-    box-shadow: 0 -8px 28px rgb(23 32 51 / 6%);
-    backdrop-filter: blur(20px) saturate(190%);
+    border-top: 1px solid var(--mobile-border);
+    background: var(--mobile-card-bg);
+    box-shadow: 0 -4px 14px rgb(23 32 51 / 6%);
+    backdrop-filter: none;
     transition: background-color var(--transition-fast);
   }
 
   .app-shell__bottom-link {
     min-width: 0;
     min-height: 56px;
-    display: grid;
-    place-items: center;
-    align-content: center;
-    gap: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     padding: 4px 2px;
-    color: var(--color-text-muted);
+    color: var(--mobile-muted);
     text-decoration: none;
     font-size: 12px;
+    font-weight: 700;
     transition: color var(--transition-fast), transform var(--transition-bounce);
   }
 
@@ -553,22 +587,6 @@ onMounted(() => {
   .app-shell__bottom-link--active {
     color: var(--color-primary);
     font-weight: 800;
-  }
-
-  .app-shell__bottom-symbol {
-    width: 24px;
-    height: 24px;
-    display: inline-grid;
-    place-items: center;
-    border: 1px solid currentColor;
-    border-radius: var(--radius-1);
-    font-family: var(--font-mono);
-    font-size: 10px;
-    transition: transform var(--transition-bounce), border-color var(--transition-fast);
-  }
-
-  .app-shell__bottom-link--active .app-shell__bottom-symbol {
-    transform: scale(1.1);
   }
 }
 </style>

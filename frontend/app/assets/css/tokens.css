@@ -26,6 +26,19 @@
   --color-focus: #80a7ff;
   --font-sans: "HarmonyOS Sans SC", "Noto Sans SC", "Microsoft YaHei UI", system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  --mobile-bg: #f6f8fb;
+  --mobile-text: #172033;
+  --mobile-muted: #6b7280;
+  --mobile-primary: #2563eb;
+  --mobile-border: #d9e0ea;
+  --mobile-card-bg: #ffffff;
+  --mobile-card-radius: 8px;
+  --mobile-button-radius: 6px;
+  --mobile-page-padding: 14px;
+  --mobile-section-gap: 14px;
+  --mobile-card-padding: 12px;
+  --mobile-card-shadow: 0 6px 14px rgb(23 32 51 / 4%);
+  --mobile-divider: #edf1f7;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -51,4 +64,3 @@
   --transition-fast: 140ms ease;
   --transition-bounce: 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
-

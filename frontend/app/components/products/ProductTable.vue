@@ -113,6 +113,73 @@ function stockTone(product: Product) {
         </tbody>
       </table>
     </div>
+
+    <div class="product-table__cards" aria-label="商品移动列表">
+      <MobileStateCard
+        v-if="props.loading"
+        title="正在加载商品"
+      />
+      <MobileStateCard
+        v-else-if="props.error"
+        :title="props.error.message"
+        tone="danger"
+      >
+        <AppButton variant="secondary" size="sm" @click="emit('retry')">
+          重试
+        </AppButton>
+      </MobileStateCard>
+      <MobileStateCard
+        v-else-if="props.products.length === 0"
+        title="没有商品"
+        description="当前筛选条件下没有结果"
+      />
+      <template v-else>
+        <MobileCard
+          v-for="product in props.products"
+          :key="product.id"
+          class="product-table__card"
+          :accent="product.status === 'archived' ? 'neutral' : 'primary'"
+        >
+          <header class="product-table__card-header">
+            <div class="product-table__card-main">
+              <strong class="product-table__card-name">{{ product.name }}</strong>
+              <span class="product-table__card-meta">{{ product.machineId }} · {{ product.category || '其他' }}</span>
+            </div>
+            <StatusBadge
+              :label="product.status === 'archived' ? '停用' : '启用'"
+              :tone="product.status === 'archived' ? 'neutral' : 'success'"
+            />
+          </header>
+
+          <div class="product-table__card-footer">
+            <span>售价 {{ formatMoney(product.sellPrice) }}</span>
+            <button class="product-table__card-stock" type="button" @click="emit('movements', product)">
+              库存 {{ formatQuantity(product.currentStock) }}
+            </button>
+          </div>
+
+          <div class="product-table__card-actions">
+            <AppButton size="sm" variant="secondary" :disabled="product.status === 'archived'" @click="emit('edit', product)">
+              编辑
+            </AppButton>
+            <AppButton size="sm" variant="secondary" @click="emit('movements', product)">
+              流水
+            </AppButton>
+            <AppButton
+              v-if="product.status === 'archived'"
+              size="sm"
+              variant="secondary"
+              @click="emit('restore', product)"
+            >
+              上架
+            </AppButton>
+            <AppButton v-else size="sm" variant="danger" @click="emit('archive', product)">
+              下架
+            </AppButton>
+          </div>
+        </MobileCard>
+      </template>
+    </div>
   </section>
 </template>
 
@@ -265,6 +332,10 @@ function stockTone(product: Product) {
   gap: var(--space-3);
 }
 
+.product-table__cards {
+  display: none;
+}
+
 tbody tr:last-child td {
   border-bottom: 0;
 }
@@ -279,22 +350,92 @@ tbody tr:hover {
 
 
 @media (max-width: 760px) {
-  .product-table__table {
-    min-width: 820px;
+  .product-table {
+    border: 0;
+    background: transparent;
   }
 
-  .product-table__table th,
-  .product-table__table td {
-    height: 52px;
-    padding: 0 var(--space-3);
+  .product-table__scroll {
+    display: none;
   }
 
-  .product-table__th--product {
-    width: 160px;
+  .product-table__cards {
+    display: grid;
+    gap: var(--mobile-section-gap);
   }
 
-  .product-table__name-copy {
-    width: min(100%, 180px);
+  .product-table__card {
+    display: grid;
+    gap: 9px;
+    padding: var(--mobile-card-padding);
+  }
+
+  .product-table__card-header {
+    min-width: 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .product-table__card-main {
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+  }
+
+  .product-table__card-name {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--mobile-text);
+    font-size: 14px;
+    font-weight: 800;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .product-table__card-meta {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--mobile-muted);
+    font-size: 12px;
+    line-height: 1.45;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .product-table__card-footer {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding-top: 9px;
+    border-top: 1px solid var(--mobile-divider);
+    color: var(--mobile-muted);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .product-table__card-stock {
+    min-height: 22px;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--mobile-muted);
+    font: inherit;
+    font-weight: 700;
+  }
+
+  .product-table__card-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-2);
+    padding-top: 2px;
+  }
+
+  .product-table__card-actions :deep(.app-button) {
+    width: 100%;
+    min-width: 0;
   }
 }
 </style>
