@@ -38,11 +38,38 @@ a {
 }
 
 :focus-visible {
-  outline: 3px solid var(--color-focus);
+  outline: 2px solid var(--color-primary);
   outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--color-primary-soft);
 }
 
 ::selection {
   background: var(--color-primary-soft);
   color: var(--color-text);
 }
+
+/* Custom scrollbars for Webkit browsers */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: var(--radius-2);
+  border: 2px solid var(--color-bg);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-strong);
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+

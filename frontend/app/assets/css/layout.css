@@ -10,7 +10,15 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-3);
   background: var(--color-surface);
+  transition: transform var(--transition-bounce), box-shadow var(--transition-bounce), border-color var(--transition-fast);
 }
+
+.surface-panel:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover);
+  border-color: var(--color-border-strong);
+}
+
 
 .table-scroll {
   max-width: 100%;

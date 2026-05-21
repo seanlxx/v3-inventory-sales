@@ -291,6 +291,7 @@ onMounted(() => {
 }
 
 .app-shell__nav-link {
+  position: relative;
   min-height: 44px;
   display: flex;
   align-items: center;
@@ -300,18 +301,34 @@ onMounted(() => {
   color: var(--color-text-muted);
   text-decoration: none;
   font-size: 14px;
-  transition: background-color var(--transition-fast), color var(--transition-fast);
+  transition: background-color var(--transition-fast), color var(--transition-fast), transform var(--transition-bounce), box-shadow var(--transition-fast);
 }
 
 .app-shell__nav-link:hover {
   background: var(--color-surface-muted);
   color: var(--color-text);
+  transform: translateX(4px);
+}
+
+.app-shell__nav-link:active {
+  transform: translateX(2px) scale(0.98);
 }
 
 .app-shell__nav-link--active {
   background: var(--color-primary-soft);
   color: var(--color-primary);
   font-weight: 800;
+}
+
+.app-shell__nav-link--active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 4px;
+  border-radius: 0 var(--radius-1) var(--radius-1) 0;
+  background: var(--color-primary);
 }
 
 .app-shell__nav-symbol {
@@ -343,9 +360,10 @@ onMounted(() => {
   gap: var(--space-5);
   padding: 10px var(--space-6);
   border-bottom: 1px solid var(--color-border);
-  background: rgb(255 255 255 / 94%);
+  background: rgb(255 255 255 / 82%);
   box-shadow: var(--shadow-topbar);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(20px) saturate(190%);
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
 }
 
 .app-shell__topbar-main {
@@ -500,9 +518,10 @@ onMounted(() => {
     grid-template-columns: repeat(5, minmax(0, 1fr));
     padding: 0 6px env(safe-area-inset-bottom);
     border-top: 1px solid var(--color-border);
-    background: rgb(255 255 255 / 96%);
-    box-shadow: 0 -8px 24px rgb(23 32 51 / 8%);
-    backdrop-filter: blur(12px);
+    background: rgb(255 255 255 / 85%);
+    box-shadow: 0 -8px 28px rgb(23 32 51 / 6%);
+    backdrop-filter: blur(20px) saturate(190%);
+    transition: background-color var(--transition-fast);
   }
 
   .app-shell__bottom-link {
@@ -516,6 +535,11 @@ onMounted(() => {
     color: var(--color-text-muted);
     text-decoration: none;
     font-size: 12px;
+    transition: color var(--transition-fast), transform var(--transition-bounce);
+  }
+
+  .app-shell__bottom-link:active {
+    transform: scale(0.92);
   }
 
   .app-shell__bottom-link--active {
@@ -532,6 +556,11 @@ onMounted(() => {
     border-radius: var(--radius-1);
     font-family: var(--font-mono);
     font-size: 10px;
+    transition: transform var(--transition-bounce), border-color var(--transition-fast);
+  }
+
+  .app-shell__bottom-link--active .app-shell__bottom-symbol {
+    transform: scale(1.1);
   }
 }
 </style>

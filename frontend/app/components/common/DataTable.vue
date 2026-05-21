@@ -129,4 +129,13 @@ th.data-table__cell {
 tbody tr:last-child .data-table__cell {
   border-bottom: 0;
 }
+
+tbody tr {
+  transition: background-color var(--transition-fast);
+}
+
+tbody tr:hover {
+  background-color: var(--color-surface-subtle);
+}
 </style>
+

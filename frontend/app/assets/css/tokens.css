@@ -40,6 +40,8 @@
   --radius-4: 10px;
   --shadow-popover: 0 18px 40px rgb(23 32 51 / 14%);
   --shadow-topbar: 0 1px 0 rgb(23 32 51 / 8%);
+  --shadow-card-hover: 0 12px 28px rgb(23 32 51 / 6%), 0 4px 10px rgb(23 32 51 / 2%);
+  --shadow-inset: inset 0 1px 2px rgb(23 32 51 / 4%);
   --layout-sidebar-width: 220px;
   --layout-topbar-height: 64px;
   --layout-mobile-topbar-height: 56px;
@@ -47,4 +49,6 @@
   --control-height: 40px;
   --control-height-mobile: 44px;
   --transition-fast: 140ms ease;
+  --transition-bounce: 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
+

@@ -245,6 +245,15 @@ tbody tr:last-child td {
   border-bottom: 0;
 }
 
+tbody tr {
+  transition: background-color var(--transition-fast);
+}
+
+tbody tr:hover {
+  background-color: var(--color-surface-subtle);
+}
+
+
 @media (max-width: 760px) {
   .product-table__table {
     min-width: 820px;
