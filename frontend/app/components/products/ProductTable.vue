@@ -65,7 +65,7 @@ function stockTone(product: Product) {
             <td>
               <div class="product-table__name-cell">
                 <div class="product-table__name-copy">
-                  <strong>{{ product.name }}</strong>
+                  <strong :title="product.name">{{ product.name.slice(0, 6) + (product.name.length > 6 ? '...' : '') }}</strong>
                   <span>{{ product.id }}</span>
                 </div>
               </div>
@@ -178,7 +178,7 @@ function stockTone(product: Product) {
   border-radius: var(--radius-2);
   background: var(--color-primary-soft);
   border: 1px solid rgba(37, 99, 235, 0.08);
-  width: 220px;
+  width: 130px;
   box-shadow: var(--shadow-inset);
 }
 
@@ -257,7 +257,7 @@ tbody tr:hover {
   }
 
   .product-table__name-copy {
-    width: 180px;
+    width: 115px;
   }
 }
 </style>

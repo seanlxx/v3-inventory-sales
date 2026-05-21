@@ -75,7 +75,7 @@ function stockTone(balance: InventoryBalance) {
             <td>
               <div class="inventory-table__name-cell">
                 <div class="inventory-table__name-copy">
-                  <strong>{{ balance.productName }}</strong>
+                  <strong :title="balance.productName">{{ balance.productName.slice(0, 6) + (balance.productName.length > 6 ? '...' : '') }}</strong>
                   <span>{{ balance.productId }}</span>
                 </div>
               </div>
@@ -140,7 +140,7 @@ function stockTone(balance: InventoryBalance) {
         <header class="inventory-table__card-header">
           <div class="inventory-table__card-title">
             <div class="inventory-table__name-copy">
-              <strong>{{ balance.productName }}</strong>
+              <strong :title="balance.productName">{{ balance.productName.slice(0, 6) + (balance.productName.length > 6 ? '...' : '') }}</strong>
               <span>{{ balance.productId }}</span>
             </div>
           </div>
@@ -210,13 +210,13 @@ function stockTone(balance: InventoryBalance) {
 
 .inventory-table__table {
   width: 100%;
-  min-width: 1088px;
+  min-width: 958px;
   border-collapse: collapse;
   table-layout: fixed;
 }
 
 .inventory-table__col--product {
-  width: 300px;
+  width: 170px;
 }
 
 .inventory-table__col--category {
@@ -296,7 +296,7 @@ function stockTone(balance: InventoryBalance) {
   border-radius: var(--radius-2);
   background: var(--color-info-soft);
   border: 1px solid rgba(15, 118, 110, 0.08);
-  width: 220px;
+  width: 130px;
   box-shadow: var(--shadow-inset);
 }
 
@@ -420,7 +420,7 @@ tbody tr:last-child td {
   }
 
   .inventory-table__name-copy {
-    width: 180px;
+    width: 115px;
   }
 
   .inventory-table__card-grid {
