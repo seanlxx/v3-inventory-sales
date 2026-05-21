@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { useSettings } from '~/composables/useSettings'
+import { useTheme } from '~/composables/useTheme'
 import type { AiClientConfigs, AiProviderId, BusinessSettings } from '~/types/settings'
 import type { UpdateAuthPayload } from '~/types/auth'
 
 definePageMeta({
   title: '设置'
 })
+
+const { theme, setTheme } = useTheme()
 
 type AiProviderDraft = {
   baseUrl: string
@@ -179,6 +182,42 @@ onMounted(async () => {
         重试
       </AppButton>
     </section>
+
+    <SettingsSection title="界面皮肤" description="选择您喜爱的控制台皮肤风格。">
+      <div class="theme-selector-grid">
+        <button 
+          type="button"
+          class="theme-card theme-card--light" 
+          :class="{ 'theme-card--active': theme === 'default' }"
+          @click="setTheme('default')"
+        >
+          <div class="theme-preview theme-preview--light">
+            <div class="preview-sidebar"></div>
+            <div class="preview-content">
+              <div class="preview-line header"></div>
+              <div class="preview-card"></div>
+            </div>
+          </div>
+          <span class="theme-name">经典浅色 (Light Mode)</span>
+        </button>
+        <button 
+          type="button"
+          class="theme-card theme-card--cyber" 
+          :class="{ 'theme-card--active': theme === 'cyber' }"
+          @click="setTheme('cyber')"
+        >
+          <div class="theme-preview theme-preview--cyber">
+            <div class="preview-glow"></div>
+            <div class="preview-sidebar"></div>
+            <div class="preview-content">
+              <div class="preview-line header"></div>
+              <div class="preview-card"></div>
+            </div>
+          </div>
+          <span class="theme-name">赛博霓虹 (Cyber Glow)</span>
+        </button>
+      </div>
+    </SettingsSection>
 
     <SettingsSection title="账号安全" description="修改登录账号或密码。">
       <template #aside>
@@ -487,6 +526,150 @@ onMounted(async () => {
 
   .settings-page__select-field select {
     min-height: var(--control-height-mobile);
+  }
+}
+
+/* 主题选择卡片设计 */
+.theme-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+}
+
+.theme-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-3);
+  cursor: pointer;
+  outline: none;
+  transition: transform var(--transition-bounce), box-shadow var(--transition-fast), border-color var(--transition-fast);
+}
+
+.theme-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.theme-card--active {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft), var(--shadow-card-hover);
+}
+
+.theme-preview {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16/9;
+  border-radius: var(--radius-2);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+  display: flex;
+  transition: border-color var(--transition-fast);
+}
+
+/* 经典浅色微缩图 */
+.theme-preview--light {
+  background: #f6f8fb;
+}
+
+.theme-preview--light .preview-sidebar {
+  width: 25%;
+  background: #ffffff;
+  border-right: 1px solid #d9e0ea;
+}
+
+.theme-preview--light .preview-content {
+  flex: 1;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.theme-preview--light .preview-line {
+  height: 4px;
+  background: #d9e0ea;
+  border-radius: 2px;
+  width: 40%;
+}
+
+.theme-preview--light .preview-card {
+  flex: 1;
+  background: #ffffff;
+  border: 1px solid #d9e0ea;
+  border-radius: 4px;
+}
+
+/* 赛博霓虹微缩图 */
+.theme-preview--cyber {
+  background: #080b11;
+}
+
+.theme-preview--cyber .preview-glow {
+  position: absolute;
+  top: -10%;
+  left: 20%;
+  width: 80%;
+  height: 80%;
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.4) 0%, rgba(37, 99, 235, 0) 70%);
+  filter: blur(8px);
+}
+
+.theme-preview--cyber .preview-sidebar {
+  position: relative;
+  z-index: 1;
+  width: 25%;
+  background: rgba(17, 25, 40, 0.75);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(2px);
+}
+
+.theme-preview--cyber .preview-content {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.theme-preview--cyber .preview-line {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+  width: 40%;
+}
+
+.theme-preview--cyber .preview-card {
+  flex: 1;
+  background: rgba(17, 25, 40, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+}
+
+.theme-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text);
+  transition: color var(--transition-fast);
+}
+
+.theme-card--active .theme-name {
+  color: var(--color-primary);
+}
+
+@media (max-width: 760px) {
+  .theme-selector-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-3);
   }
 }
 </style>

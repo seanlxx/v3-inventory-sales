@@ -52,11 +52,11 @@ async function submitLogin() {
 <template>
   <div class="login-page">
     <!-- 动态科技霓虹背景 -->
-    <div class="login-bg">
-      <div class="login-bg__glow login-bg__glow--1"></div>
-      <div class="login-bg__glow login-bg__glow--2"></div>
-      <div class="login-bg__glow login-bg__glow--3"></div>
-      <div class="login-bg__grid"></div>
+    <div class="cyber-bg" aria-hidden="true">
+      <div class="cyber-bg__glow cyber-bg__glow--1"></div>
+      <div class="cyber-bg__glow cyber-bg__glow--2"></div>
+      <div class="cyber-bg__glow cyber-bg__glow--3"></div>
+      <div class="cyber-bg__grid"></div>
     </div>
 
     <!-- 登录主体 -->
@@ -242,85 +242,6 @@ async function submitLogin() {
   font-family: var(--font-sans);
   color: #f3f4f6;
   padding: var(--space-6) var(--space-4);
-}
-
-/* 炫酷背景渐变和网格 */
-.login-bg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 1;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-.login-bg__glow {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(80px);
-  opacity: 0.15;
-  mix-blend-mode: screen;
-}
-
-/* 霓虹发光球 */
-.login-bg__glow--1 {
-  top: -10%;
-  left: 10%;
-  width: 50vw;
-  height: 50vw;
-  background: radial-gradient(circle, rgba(37, 99, 235, 0.8) 0%, rgba(124, 58, 237, 0) 70%);
-  animation: float-glow-1 25s infinite alternate ease-in-out;
-}
-
-.login-bg__glow--2 {
-  bottom: -20%;
-  right: 5%;
-  width: 60vw;
-  height: 60vw;
-  background: radial-gradient(circle, rgba(124, 58, 237, 0.7) 0%, rgba(15, 118, 110, 0) 70%);
-  animation: float-glow-2 30s infinite alternate ease-in-out;
-}
-
-.login-bg__glow--3 {
-  top: 30%;
-  right: 25%;
-  width: 35vw;
-  height: 35vw;
-  background: radial-gradient(circle, rgba(15, 118, 110, 0.6) 0%, rgba(37, 99, 235, 0) 70%);
-  animation: float-glow-3 20s infinite alternate ease-in-out;
-}
-
-.login-bg__grid {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-image: 
-    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
-  background-size: 40px 40px;
-  background-position: center;
-  mask-image: radial-gradient(ellipse 60% 60% at 50% 50%, #000 70%, transparent 100%);
-}
-
-@keyframes float-glow-1 {
-  0% { transform: translate(0, 0) scale(1); }
-  100% { transform: translate(10%, 15%) scale(1.1); }
-}
-
-@keyframes float-glow-2 {
-  0% { transform: translate(0, 0) scale(1); }
-  100% { transform: translate(-10%, -10%) scale(1.15); }
-}
-
-@keyframes float-glow-3 {
-  0% { transform: translate(0, 0) scale(1); }
-  100% { transform: translate(15%, -15%) scale(0.9); }
 }
 
 /* 登录内容容器 */

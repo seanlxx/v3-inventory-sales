@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useTheme } from '~/composables/useTheme'
+
+const { theme } = useTheme()
+
 type NavigationItem = {
   label: string
   shortLabel: string
@@ -59,7 +63,15 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="app-shell">
+  <div class="app-shell" :class="'theme-' + theme">
+    <!-- 动态科技霓虹背景 -->
+    <div v-if="theme === 'cyber'" class="cyber-bg" aria-hidden="true">
+      <div class="cyber-bg__glow cyber-bg__glow--1"></div>
+      <div class="cyber-bg__glow cyber-bg__glow--2"></div>
+      <div class="cyber-bg__glow cyber-bg__glow--3"></div>
+      <div class="cyber-bg__grid"></div>
+    </div>
+
     <aside class="app-shell__sidebar" aria-label="桌面主导航">
       <NuxtLink class="app-shell__brand" to="/dashboard">
         <span class="app-shell__brand-mark">V3</span>
@@ -496,5 +508,48 @@ onMounted(() => {
     color: var(--color-primary);
     font-weight: 800;
   }
+}
+
+/* 赛博霓虹外壳样式微调 */
+.app-shell.theme-cyber {
+  position: relative;
+  background-color: #080b11;
+}
+
+.app-shell.theme-cyber :deep(.cyber-bg) {
+  position: absolute;
+  z-index: 1;
+}
+
+.app-shell.theme-cyber .app-shell__sidebar {
+  background: rgba(17, 25, 40, 0.65);
+  backdrop-filter: blur(24px) saturate(180%);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  z-index: 2;
+}
+
+.app-shell.theme-cyber .app-shell__workspace {
+  position: relative;
+  z-index: 2;
+  min-width: 0;
+}
+
+.app-shell.theme-cyber .app-shell__topbar {
+  background: rgba(17, 25, 40, 0.65);
+  backdrop-filter: blur(24px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+  z-index: 10;
+}
+
+.app-shell.theme-cyber .app-shell__settings-link {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.app-shell.theme-cyber .app-shell__bottom-nav {
+  background: rgba(17, 25, 40, 0.85);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 </style>
