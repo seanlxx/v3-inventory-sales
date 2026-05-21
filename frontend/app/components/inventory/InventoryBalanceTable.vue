@@ -40,12 +40,12 @@ function stockTone(balance: InventoryBalance) {
         <thead>
           <tr>
             <th scope="col">商品</th>
-            <th scope="col">分类</th>
-            <th scope="col">售货机</th>
+            <th scope="col" class="inventory-table__center">分类</th>
+            <th scope="col" class="inventory-table__center">售货机</th>
             <th scope="col" class="inventory-table__number">现存</th>
             <th scope="col" class="inventory-table__number">均价</th>
             <th scope="col" class="inventory-table__number">库存金额</th>
-            <th scope="col">状态</th>
+            <th scope="col" class="inventory-table__center">状态</th>
             <th scope="col">更新时间</th>
             <th scope="col" class="inventory-table__actions-heading">操作</th>
           </tr>
@@ -80,10 +80,10 @@ function stockTone(balance: InventoryBalance) {
                 </div>
               </div>
             </td>
-            <td>
+            <td class="inventory-table__center">
               <StatusBadge :label="balance.category || '其他'" tone="neutral" />
             </td>
-            <td>{{ balance.machineId }}</td>
+            <td class="inventory-table__center">{{ balance.machineId }}</td>
             <td class="inventory-table__number">
               <button class="inventory-table__stock-button" type="button" @click="emit('movements', balance)">
                 <StatusBadge :label="`${formatQuantity(balance.quantityOnHand)} 件`" :tone="stockTone(balance)" />
@@ -96,7 +96,7 @@ function stockTone(balance: InventoryBalance) {
             <td class="inventory-table__number">
               {{ formatMoney(balance.inventoryValue) }}
             </td>
-            <td>
+            <td class="inventory-table__center">
               <StatusBadge
                 :label="balance.isLowStock ? `低于 ${formatQuantity(balance.lowStockThreshold)} 件` : '正常'"
                 :tone="balance.isLowStock ? 'warning' : 'success'"
@@ -273,6 +273,10 @@ function stockTone(balance: InventoryBalance) {
 .inventory-table__table .inventory-table__number {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.inventory-table__center {
+  text-align: center;
 }
 
 .inventory-table__table .inventory-table__actions-heading,

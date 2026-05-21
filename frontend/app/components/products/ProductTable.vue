@@ -32,11 +32,11 @@ function stockTone(product: Product) {
         <thead>
           <tr>
             <th scope="col">商品</th>
-            <th scope="col">分类</th>
-            <th scope="col">售货机</th>
+            <th scope="col" class="product-table__center">分类</th>
+            <th scope="col" class="product-table__center">售货机</th>
             <th scope="col" class="product-table__number">售价</th>
             <th scope="col" class="product-table__number">库存</th>
-            <th scope="col">状态</th>
+            <th scope="col" class="product-table__center">状态</th>
             <th scope="col" class="product-table__actions-heading">操作</th>
           </tr>
         </thead>
@@ -70,10 +70,10 @@ function stockTone(product: Product) {
                 </div>
               </div>
             </td>
-            <td>
+            <td class="product-table__center">
               <StatusBadge :label="product.category || '其他'" tone="neutral" />
             </td>
-            <td>{{ product.machineId }}</td>
+            <td class="product-table__center">{{ product.machineId }}</td>
             <td class="product-table__number">
               {{ formatMoney(product.sellPrice) }}
             </td>
@@ -83,7 +83,7 @@ function stockTone(product: Product) {
                 <span>只读</span>
               </button>
             </td>
-            <td>
+            <td class="product-table__center">
               <StatusBadge
                 :label="product.status === 'archived' ? '已下架' : '在售'"
                 :tone="product.status === 'archived' ? 'warning' : 'success'"
@@ -163,6 +163,10 @@ function stockTone(product: Product) {
 
 .product-table__actions-heading {
   text-align: right;
+}
+
+.product-table__center {
+  text-align: center;
 }
 
 .product-table__name-cell {
