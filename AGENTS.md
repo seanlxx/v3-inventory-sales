@@ -197,6 +197,20 @@
 └── .gitignore
 ```
 
+### 1.2.1 微信小程序版本资料
+
+小程序项目目录（不在本仓库内）：
+
+```text
+C:\Users\Admin\WeChatProjects\minicode-1
+```
+
+小程序实施方案 Markdown：
+
+```text
+C:\Users\Admin\WeChatProjects\minicode-1\MINIPROGRAM_IMPLEMENTATION.md
+```
+
 **不手工编辑 / 不提交的目录（已在 `.gitignore`）：**
 
 | 路径 | 说明 |
