@@ -109,21 +109,21 @@
 
 [data-theme="crystal"] {
   color-scheme: light;
-  --color-bg: #f3f6f9;
-  --color-bg-elevated: #e9eff5;
+  --color-bg: #eef2f7;
+  --color-bg-elevated: #dfe6ed;
   
   /* Glassmorphism surface styling for components */
-  --color-surface: rgba(255, 255, 255, 0.72);
-  --color-surface-muted: rgba(241, 245, 249, 0.65);
-  --color-surface-subtle: rgba(255, 255, 255, 0.45);
+  --color-surface: rgba(255, 255, 255, 0.85);
+  --color-surface-muted: rgba(255, 255, 255, 0.55);
+  --color-surface-subtle: rgba(255, 255, 255, 0.35);
   
-  /* White crystal thin borders */
-  --color-border: rgba(255, 255, 255, 0.7);
-  --color-border-strong: rgba(255, 255, 255, 0.9);
+  /* White crystal thin borders with soft sapphire-slate tint for high clarity */
+  --color-border: rgba(94, 107, 132, 0.14);
+  --color-border-strong: rgba(94, 107, 132, 0.24);
   
   --color-text: #1a2238;
-  --color-text-muted: #5e6b84;
-  --color-text-soft: #8ba2bd;
+  --color-text-muted: #4e5a70;
+  --color-text-soft: #7a8fa9;
   
   /* Sapphire / Amethyst Primary accent colors (crystal vibes) */
   --color-primary: #3b82f6;
@@ -142,16 +142,16 @@
   --color-danger-soft: rgba(249, 115, 22, 0.1);
   --color-focus: #3b82f6;
   
-  --mobile-bg: #f3f6f9;
+  --mobile-bg: #eef2f7;
   --mobile-text: #1a2238;
-  --mobile-muted: #5e6b84;
+  --mobile-muted: #4e5a70;
   --mobile-primary: #3b82f6;
-  --mobile-border: rgba(255, 255, 255, 0.7);
-  --mobile-card-bg: rgba(255, 255, 255, 0.72);
-  --mobile-divider: rgba(23, 32, 51, 0.05);
-  --mobile-card-shadow: 0 10px 30px rgba(23, 32, 51, 0.04);
+  --mobile-border: rgba(94, 107, 132, 0.14);
+  --mobile-card-bg: rgba(255, 255, 255, 0.85);
+  --mobile-divider: rgba(94, 107, 132, 0.08);
+  --mobile-card-shadow: 0 10px 30px rgba(94, 107, 132, 0.05);
 
-  --shadow-topbar: 0 4px 30px rgba(23, 32, 51, 0.02);
-  --shadow-card-hover: 0 16px 36px rgba(59, 130, 246, 0.08), 0 4px 12px rgba(23, 32, 51, 0.02);
+  --shadow-topbar: 0 4px 20px rgba(94, 107, 132, 0.03);
+  --shadow-card-hover: 0 16px 36px rgba(94, 107, 132, 0.08), 0 4px 12px rgba(94, 107, 132, 0.02);
 }
 
