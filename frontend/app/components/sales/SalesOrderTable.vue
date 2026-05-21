@@ -38,14 +38,14 @@ function orderQuantity(order: SalesOrder) {
       <table class="sales-table__table">
         <thead>
           <tr>
-            <th scope="col">类型</th>
-            <th scope="col">日期</th>
-            <th scope="col">售货机</th>
-            <th scope="col" class="sales-table__number">明细</th>
-            <th scope="col" class="sales-table__number">数量</th>
-            <th scope="col" class="sales-table__number">金额</th>
-            <th scope="col">状态</th>
-            <th scope="col" class="sales-table__actions-heading">操作</th>
+            <th scope="col" class="sales-table__center">类型</th>
+            <th scope="col" class="sales-table__center">日期</th>
+            <th scope="col" class="sales-table__center">售货机</th>
+            <th scope="col" class="sales-table__center">明细</th>
+            <th scope="col" class="sales-table__center">数量</th>
+            <th scope="col" class="sales-table__center">金额</th>
+            <th scope="col" class="sales-table__center">状态</th>
+            <th scope="col" class="sales-table__center sales-table__actions-cell">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -70,21 +70,21 @@ function orderQuantity(order: SalesOrder) {
             </td>
           </tr>
           <tr v-for="order in props.orders" v-else :key="order.id">
-            <td>
+            <td class="sales-table__center">
               <StatusBadge :label="typeLabel(order.type)" :tone="typeTone(order.type)" />
             </td>
-            <td>{{ order.date }}</td>
-            <td>{{ order.machineId || '-' }}</td>
-            <td class="sales-table__number">
+            <td class="sales-table__center">{{ order.date }}</td>
+            <td class="sales-table__center">{{ order.machineId || '-' }}</td>
+            <td class="sales-table__center">
               {{ order.items.length }} 项
             </td>
-            <td class="sales-table__number">
+            <td class="sales-table__center">
               {{ formatQuantity(orderQuantity(order)) }}
             </td>
-            <td class="sales-table__number">
+            <td class="sales-table__center">
               {{ formatMoney(order.totalAmount) }}
             </td>
-            <td>
+            <td class="sales-table__center">
               <div class="sales-table__status">
                 <StatusBadge
                   :label="order.status === 'voided' ? '已作废' : '正常'"
@@ -97,7 +97,7 @@ function orderQuantity(order: SalesOrder) {
                 />
               </div>
             </td>
-            <td class="sales-table__actions-cell">
+            <td class="sales-table__center sales-table__actions-cell">
               <div class="sales-table__actions">
                 <AppButton size="sm" variant="secondary" @click="emit('view', order)">
                   查看
@@ -225,26 +225,26 @@ function orderQuantity(order: SalesOrder) {
   font-weight: 800;
 }
 
-.sales-table__table .sales-table__number {
-  text-align: right;
+.sales-table__table th.sales-table__center,
+.sales-table__table td.sales-table__center {
+  text-align: center;
   font-variant-numeric: tabular-nums;
 }
 
-.sales-table__table .sales-table__actions-heading,
 .sales-table__table .sales-table__actions-cell {
-  text-align: right;
   width: 148px;
 }
 
 .sales-table__actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: center;
   gap: var(--space-2);
 }
 
 .sales-table__status {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: var(--space-1);
 }
 
