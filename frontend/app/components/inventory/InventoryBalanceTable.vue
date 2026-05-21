@@ -294,7 +294,7 @@ function stockTone(balance: InventoryBalance) {
   border-radius: var(--radius-2);
   background: var(--color-info-soft);
   border: 1px solid rgba(15, 118, 110, 0.08);
-  width: 130px;
+  width: min(100%, 160px);
   box-shadow: var(--shadow-inset);
 }
 
@@ -418,7 +418,7 @@ tbody tr:last-child td {
   }
 
   .inventory-table__name-copy {
-    width: 200px;
+    width: min(100%, 200px);
   }
 
   .inventory-table__card-grid {

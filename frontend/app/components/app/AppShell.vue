@@ -357,6 +357,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: var(--space-5);
   padding: 10px var(--space-6);
   border-bottom: 1px solid var(--color-border);
@@ -368,6 +369,7 @@ onMounted(() => {
 
 .app-shell__topbar-main {
   min-width: 0;
+  flex: 1 1 220px;
 }
 
 .app-shell__eyebrow {
@@ -384,14 +386,20 @@ onMounted(() => {
 }
 
 .app-shell__topbar-actions {
+  min-width: 0;
+  flex: 1 1 auto;
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: var(--space-3);
 }
 
 .app-shell__search {
-  width: 240px;
+  width: auto;
+  min-width: 180px;
+  max-width: 280px;
+  flex: 1 1 220px;
 }
 
 .app-shell__settings-link {

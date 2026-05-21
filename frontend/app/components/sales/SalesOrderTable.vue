@@ -320,6 +320,7 @@ tbody tr:last-child td {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
     gap: var(--space-2);
   }
 
@@ -365,7 +366,7 @@ tbody tr:last-child td {
 
   .sales-table__card-grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--space-2);
     margin: 0;
   }
@@ -386,6 +387,10 @@ tbody tr:last-child td {
     color: var(--color-text);
     font-weight: 700;
     font-variant-numeric: tabular-nums;
+  }
+
+  .sales-table__card-grid div:last-child {
+    grid-column: 1 / -1;
   }
 
   .sales-table__card-actions {

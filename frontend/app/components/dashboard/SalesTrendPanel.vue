@@ -387,7 +387,7 @@ function formatMoneyTick(value: number) {
 
 .sales-trend__header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
   flex-wrap: wrap;

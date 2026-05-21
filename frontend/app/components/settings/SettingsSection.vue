@@ -30,8 +30,9 @@ const props = defineProps<{
 
 .settings-section__header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: var(--space-4);
   padding: var(--space-4);
   border-bottom: 1px solid var(--color-border);

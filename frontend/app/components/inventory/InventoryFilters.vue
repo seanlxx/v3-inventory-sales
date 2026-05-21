@@ -145,6 +145,10 @@ function updateFilter(key: keyof InventoryListFilters, event: Event) {
   .inventory-filters__actions {
     grid-column: 1 / -1;
   }
+
+  .inventory-filters__toggle {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 760px) {

@@ -135,6 +135,10 @@ function updateFilter(key: keyof SalesListFilters, event: Event) {
   .sales-filters__actions {
     grid-column: 1 / -1;
   }
+
+  .sales-filters__field:nth-of-type(4) {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 760px) {

@@ -140,7 +140,6 @@ function stockTone(product: Product) {
 
 .product-table__th--product {
   width: 170px;
-  padding-left: calc(var(--space-4) + var(--space-3)) !important;
 }
 
 .product-table__th--category {
@@ -213,7 +212,7 @@ function stockTone(product: Product) {
   border-radius: var(--radius-2);
   background: var(--color-primary-soft);
   border: 1px solid rgba(37, 99, 235, 0.08);
-  width: 130px;
+  width: min(100%, 160px);
   box-shadow: var(--shadow-inset);
 }
 
@@ -292,11 +291,11 @@ tbody tr:hover {
   }
 
   .product-table__th--product {
-    padding-left: calc(var(--space-3) + var(--space-3)) !important;
+    width: 160px;
   }
 
   .product-table__name-copy {
-    width: 115px;
+    width: min(100%, 180px);
   }
 }
 </style>

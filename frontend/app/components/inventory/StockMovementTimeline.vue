@@ -102,10 +102,11 @@ function quantityDeltaLabel(movement: StockMovement) {
 
 .movement-timeline__header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
   margin-bottom: var(--space-4);
+  flex-wrap: wrap;
 }
 
 .movement-timeline__title {

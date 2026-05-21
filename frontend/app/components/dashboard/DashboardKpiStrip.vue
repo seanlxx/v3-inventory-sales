@@ -132,6 +132,7 @@ const kpiItems = computed(() => [
   color: var(--color-text);
   font-size: 20px;
   line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 1240px) {

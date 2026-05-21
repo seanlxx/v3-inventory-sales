@@ -74,6 +74,7 @@ function closeDrawer() {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: var(--space-4);
   padding: var(--space-4);
   border-bottom: 1px solid var(--color-border);
@@ -126,6 +127,11 @@ function closeDrawer() {
     width: 100%;
     height: min(82vh, 680px);
     border-radius: var(--radius-3) var(--radius-3) 0 0;
+  }
+
+  .app-drawer__header {
+    align-items: flex-start;
+    gap: var(--space-3);
   }
 }
 </style>

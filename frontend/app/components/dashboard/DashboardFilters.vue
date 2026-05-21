@@ -54,7 +54,7 @@ function updateField(key: DashboardFilterField, event: Event) {
 .dashboard-filters {
   min-width: 0;
   display: grid;
-  grid-template-columns: repeat(2, minmax(150px, 1fr)) auto;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(150px, 1fr) auto;
   gap: var(--space-3);
   align-items: end;
   padding: var(--space-4);
@@ -92,6 +92,15 @@ function updateField(key: DashboardFilterField, event: Event) {
   .dashboard-filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .dashboard-filters__field:first-of-type,
+  .dashboard-filters :deep(.app-button) {
+    grid-column: 1 / -1;
+  }
+
+  .dashboard-filters :deep(.app-button) {
+    justify-self: end;
+  }
 }
 
 @media (max-width: 560px) {
@@ -102,6 +111,10 @@ function updateField(key: DashboardFilterField, event: Event) {
 
   .dashboard-filters__control {
     min-height: var(--control-height-mobile);
+  }
+
+  .dashboard-filters :deep(.app-button) {
+    width: 100%;
   }
 }
 </style>
