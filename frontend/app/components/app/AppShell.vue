@@ -72,6 +72,14 @@ onMounted(() => {
       <div class="cyber-bg__grid"></div>
     </div>
 
+    <!-- 白水晶流光背景 -->
+    <div v-else-if="theme === 'crystal'" class="crystal-bg" aria-hidden="true">
+      <div class="crystal-bg__glow crystal-bg__glow--1"></div>
+      <div class="crystal-bg__glow crystal-bg__glow--2"></div>
+      <div class="crystal-bg__glow crystal-bg__glow--3"></div>
+      <div class="crystal-bg__grid"></div>
+    </div>
+
     <aside class="app-shell__sidebar" aria-label="桌面主导航">
       <NuxtLink class="app-shell__brand" to="/dashboard">
         <span class="app-shell__brand-mark">V3</span>
@@ -551,5 +559,50 @@ onMounted(() => {
   background: rgba(17, 25, 40, 0.85);
   backdrop-filter: blur(20px);
   border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* 白水晶玻璃态外壳样式微调 */
+.app-shell.theme-crystal {
+  position: relative;
+  background-color: #f6f8fb;
+}
+
+.app-shell.theme-crystal :deep(.crystal-bg) {
+  position: absolute;
+  z-index: 1;
+}
+
+.app-shell.theme-crystal .app-shell__sidebar {
+  background: rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(20px) saturate(180%);
+  border-right: 1px solid rgba(255, 255, 255, 0.6);
+  z-index: 2;
+}
+
+.app-shell.theme-crystal .app-shell__workspace {
+  position: relative;
+  z-index: 2;
+  min-width: 0;
+}
+
+.app-shell.theme-crystal .app-shell__topbar {
+  background: rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 8px 32px rgba(31, 38, 135, 0.03);
+  z-index: 10;
+}
+
+.app-shell.theme-crystal .app-shell__settings-link {
+  background: rgba(255, 255, 255, 0.5);
+  border-color: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(5px);
+  box-shadow: var(--shadow-sm);
+}
+
+.app-shell.theme-crystal .app-shell__bottom-nav {
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(20px) saturate(180%);
+  border-top: 1px solid rgba(255, 255, 255, 0.6);
 }
 </style>

@@ -216,6 +216,22 @@ onMounted(async () => {
           </div>
           <span class="theme-name">赛博霓虹 (Cyber Glow)</span>
         </button>
+        <button 
+          type="button"
+          class="theme-card theme-card--crystal" 
+          :class="{ 'theme-card--active': theme === 'crystal' }"
+          @click="setTheme('crystal')"
+        >
+          <div class="theme-preview theme-preview--crystal">
+            <div class="preview-prism"></div>
+            <div class="preview-sidebar"></div>
+            <div class="preview-content">
+              <div class="preview-line header"></div>
+              <div class="preview-card"></div>
+            </div>
+          </div>
+          <span class="theme-name">白水晶玻璃 (Crystal Morphism)</span>
+        </button>
       </div>
     </SettingsSection>
 
@@ -532,7 +548,7 @@ onMounted(async () => {
 /* 主题选择卡片设计 */
 .theme-selector-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-4);
   margin-top: var(--space-2);
 }
@@ -653,6 +669,61 @@ onMounted(async () => {
   background: rgba(17, 25, 40, 0.75);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 4px;
+}
+
+/* 白水晶微缩图 */
+.theme-preview--crystal {
+  background: linear-gradient(135deg, #f6f8fb 0%, #eef3f8 100%);
+}
+
+.theme-preview--crystal .preview-prism {
+  position: absolute;
+  top: -20%;
+  left: 10%;
+  width: 90%;
+  height: 90%;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.12) 0%, rgba(168, 85, 247, 0.08) 40%, rgba(255, 255, 255, 0) 70%);
+  filter: blur(6px);
+  animation: preview-prism-spin 8s infinite linear alternate;
+}
+
+@keyframes preview-prism-spin {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  100% { transform: translate(10px, 5px) rotate(15deg); }
+}
+
+.theme-preview--crystal .preview-sidebar {
+  position: relative;
+  z-index: 1;
+  width: 25%;
+  background: rgba(255, 255, 255, 0.4);
+  border-right: 1px solid rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(2px);
+}
+
+.theme-preview--crystal .preview-content {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.theme-preview--crystal .preview-line {
+  height: 4px;
+  background: rgba(94, 107, 132, 0.25);
+  border-radius: 2px;
+  width: 40%;
+}
+
+.theme-preview--crystal .preview-card {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(23, 32, 51, 0.02);
 }
 
 .theme-name {

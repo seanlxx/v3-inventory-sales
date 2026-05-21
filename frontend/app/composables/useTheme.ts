@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 
-export type ThemeType = 'default' | 'cyber'
+export type ThemeType = 'default' | 'cyber' | 'crystal'
 
 const currentTheme = ref<ThemeType>('default')
 
@@ -10,6 +10,8 @@ export function useTheme() {
     const saved = localStorage.getItem('theme') as ThemeType
     if (saved === 'cyber') {
       setTheme('cyber')
+    } else if (saved === 'crystal') {
+      setTheme('crystal')
     } else {
       setTheme('default')
     }
