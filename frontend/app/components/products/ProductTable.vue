@@ -142,14 +142,8 @@ function stockTone(product: Product) {
   height: 54px;
   padding: 0 var(--space-4);
   border-bottom: 1px solid var(--color-border);
-  border-right: 1px solid var(--color-border);
   text-align: left;
   white-space: nowrap;
-}
-
-.product-table__table th:last-child,
-.product-table__table td:last-child {
-  border-right: 0;
 }
 
 .product-table__table th {
