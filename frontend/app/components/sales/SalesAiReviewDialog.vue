@@ -4,6 +4,12 @@ import type { SalesAiCandidate, SalesItem, SalesOrderPayload } from '~/types/sal
 import { useClipboardImagePaste } from '~/composables/useClipboardImagePaste'
 import { formatMoney, formatQuantity } from '~/utils/format'
 
+type ReviewImage = {
+  id: string
+  fileName: string
+  previewUrl: string
+}
+
 const open = defineModel<boolean>('open', { default: false })
 
 const props = defineProps<{
@@ -12,7 +18,7 @@ const props = defineProps<{
   machines: readonly string[]
   recognizing?: boolean
   submitting?: boolean
-  images?: readonly { id: string; fileName: string; previewUrl: string }[]
+  images?: readonly ReviewImage[]
   progressMessage?: string
   errorMessage?: string
   inventoryError?: string | null
@@ -31,6 +37,7 @@ const date = shallowRef(new Date().toISOString().slice(0, 10))
 const machineId = shallowRef('')
 const note = shallowRef('')
 const formError = shallowRef('')
+const previewImage = shallowRef<ReviewImage | null>(null)
 
 const totalAmount = computed(() =>
   props.candidates.reduce((sum, item) => sum + Number(item.itemRevenue || 0), 0)
@@ -101,6 +108,18 @@ function removeCandidate(index: number) {
   emit('updateCandidates', next)
 }
 
+function openImagePreview(image: ReviewImage) {
+  previewImage.value = image
+}
+
+function closeImagePreview() {
+  previewImage.value = null
+}
+
+watch(open, (isOpen) => {
+  if (!isOpen) closeImagePreview()
+})
+
 useClipboardImagePaste({
   enabled: open,
   fileNamePrefix: 'sales-screenshot',
@@ -146,11 +165,21 @@ function confirmOrder() {
           <input type="file" accept="image/*" multiple @change="handleFileChange">
           <strong>{{ props.images?.length ? `已选择 ${props.images.length} 张图片，可继续添加` : '选择一张或多张销售截图，或复制图片后按 Ctrl+V' }}</strong>
           <div v-if="props.images?.length" class="sales-ai__previews" aria-label="待识别图片">
-            <article v-for="image in props.images" :key="image.id" class="sales-ai__preview">
+            <article
+              v-for="image in props.images"
+              :key="image.id"
+              class="sales-ai__preview"
+              role="button"
+              tabindex="0"
+              :aria-label="`放大预览 ${image.fileName}`"
+              @click.prevent="openImagePreview(image)"
+              @keydown.enter.prevent="openImagePreview(image)"
+              @keydown.space.prevent="openImagePreview(image)"
+            >
               <img :src="image.previewUrl" :alt="image.fileName">
               <div>
                 <strong>{{ image.fileName }}</strong>
-                <button type="button" :disabled="props.recognizing" @click.prevent="emit('imageRemoved', image.id)">
+                <button type="button" :disabled="props.recognizing" @click.stop.prevent="emit('imageRemoved', image.id)">
                   移除
                 </button>
               </div>
@@ -283,6 +312,25 @@ function confirmOrder() {
           </AppButton>
         </div>
       </footer>
+
+      <div
+        v-if="previewImage"
+        class="sales-ai__image-lightbox"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="`预览 ${previewImage.fileName}`"
+        @click.self="closeImagePreview"
+      >
+        <div class="sales-ai__image-panel">
+          <header class="sales-ai__image-header">
+            <strong>{{ previewImage.fileName }}</strong>
+            <button type="button" aria-label="关闭预览" @click="closeImagePreview">
+              关闭
+            </button>
+          </header>
+          <img :src="previewImage.previewUrl" :alt="previewImage.fileName">
+        </div>
+      </div>
     </div>
   </AppDialog>
 </template>
@@ -349,6 +397,13 @@ function confirmOrder() {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-2);
   background: var(--color-surface);
+  cursor: zoom-in;
+}
+
+.sales-ai__preview:hover,
+.sales-ai__preview:focus-visible {
+  border-color: var(--color-primary);
+  outline: none;
 }
 
 .sales-ai__preview img {
@@ -561,6 +616,65 @@ function confirmOrder() {
   background: var(--color-danger-soft, #fef2f2);
 }
 
+.sales-ai__image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.sales-ai__image-panel {
+  width: min(920px, 100%);
+  max-height: min(82vh, 920px);
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border-radius: var(--radius-3);
+  background: var(--color-surface);
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.32);
+}
+
+.sales-ai__image-header {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.sales-ai__image-header strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sales-ai__image-header button {
+  min-height: 36px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2);
+  padding: 0 var(--space-3);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.sales-ai__image-panel img {
+  width: 100%;
+  max-height: calc(min(82vh, 920px) - 62px);
+  display: block;
+  object-fit: contain;
+  background: var(--color-surface-subtle);
+}
+
 tbody tr:last-child td {
   border-bottom: 0;
 }
@@ -701,6 +815,18 @@ tbody tr:last-child td {
 
   .sales-ai__footer p {
     text-align: left;
+  }
+
+  .sales-ai__image-lightbox {
+    padding: var(--space-3);
+  }
+
+  .sales-ai__image-panel {
+    max-height: 86vh;
+  }
+
+  .sales-ai__image-panel img {
+    max-height: calc(86vh - 58px);
   }
 }
 </style>
