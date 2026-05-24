@@ -102,7 +102,8 @@ function streamError(message: string): ApiError {
 
 function mergeCandidateKey(candidate: PurchaseAiCandidate) {
   if (candidate.productId) return `product:${candidate.productId}`
-  const normalizedName = normalizeProductName(candidate.productName || candidate.rawName)
+  const fallbackName = candidate.rawName === '手动添加' ? '' : candidate.rawName
+  const normalizedName = normalizeProductName(candidate.productName || fallbackName)
   return normalizedName ? `new:${normalizedName}` : candidate.id
 }
 
@@ -455,7 +456,7 @@ export function usePurchases() {
   }
 
   function setAiCandidates(nextCandidates: PurchaseAiCandidate[]) {
-    aiCandidates.value = nextCandidates
+    aiCandidates.value = mergeAiCandidates(nextCandidates)
   }
 
   return {

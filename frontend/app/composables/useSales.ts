@@ -8,7 +8,7 @@ import type {
   SalesOrderPayload,
   SalesOrderType
 } from '~/types/sale'
-import { buildProductCatalogPrompt, matchProductByName } from '~/utils/product-match'
+import { buildProductCatalogPrompt, matchProductByName, normalizeProductName } from '~/utils/product-match'
 
 type SalesAiImage = {
   id: string
@@ -89,8 +89,58 @@ function streamError(message: string): ApiError {
   }
 }
 
+function roundMoney(value: number) {
+  return Math.round((Number(value) || 0) * 100) / 100
+}
+
+function candidateRevenue(candidate: SalesAiCandidate) {
+  const explicitRevenue = Math.abs(Number(candidate.itemRevenue) || 0)
+  if (explicitRevenue > 0) return explicitRevenue
+  return Math.abs(Number(candidate.sellPrice) || 0) * Math.abs(Number(candidate.quantity) || 0)
+}
+
+function mergeCandidateKey(candidate: SalesAiCandidate) {
+  if (candidate.productId) return `product:${candidate.productId}`
+  const fallbackName = candidate.rawName === '手动添加' ? '' : candidate.rawName
+  const normalizedName = normalizeProductName(candidate.productName || fallbackName)
+  return normalizedName ? `new:${normalizedName}` : candidate.id
+}
+
+function mergeAiCandidates(candidates: SalesAiCandidate[]) {
+  const byKey = new Map<string, SalesAiCandidate>()
+  for (const candidate of candidates) {
+    const key = mergeCandidateKey(candidate)
+    const existing = byKey.get(key)
+    if (!existing) {
+      const quantity = Math.abs(Number(candidate.quantity) || 0)
+      const itemRevenue = roundMoney(candidateRevenue(candidate))
+      byKey.set(key, {
+        ...candidate,
+        quantity,
+        sellPrice: roundMoney(itemRevenue / Math.max(quantity, 1)),
+        itemRevenue
+      })
+      continue
+    }
+
+    const quantity = Math.abs(Number(existing.quantity) || 0) + Math.abs(Number(candidate.quantity) || 0)
+    const itemRevenue = roundMoney(candidateRevenue(existing) + candidateRevenue(candidate))
+    const rawNames = new Set(existing.rawName.split(' / ').concat(candidate.rawName).filter(Boolean))
+    byKey.set(key, {
+      ...existing,
+      rawName: Array.from(rawNames).join(' / '),
+      quantity,
+      sellPrice: roundMoney(itemRevenue / Math.max(quantity, 1)),
+      itemRevenue,
+      confidence: existing.confidence === 'high' && candidate.confidence === 'high' ? 'high' : 'medium',
+      issue: existing.issue || candidate.issue
+    })
+  }
+  return Array.from(byKey.values())
+}
+
 function normalizeAiCandidates(rawItems: Array<Record<string, unknown>>, products: readonly Product[]): SalesAiCandidate[] {
-  return rawItems.map((item, index) => {
+  const candidates = rawItems.map((item, index) => {
     const rawName = String(item.rawName || item.name || item.productName || '').trim()
     const aiProductId = String(item.productId || '').trim()
 
@@ -124,11 +174,12 @@ function normalizeAiCandidates(rawItems: Array<Record<string, unknown>>, product
       productName: matchedProduct?.name || rawName || '',
       confidence,
       quantity,
-      sellPrice,
-      itemRevenue: itemRevenue || sellPrice * quantity,
+      sellPrice: roundMoney(sellPrice),
+      itemRevenue: roundMoney(itemRevenue || sellPrice * quantity),
       issue: matchedProduct ? '' : '未匹配商品'
     }
   })
+  return mergeAiCandidates(candidates)
 }
 
 function activeProducts(products: readonly Product[]) {
@@ -471,7 +522,7 @@ export function useSales() {
   }
 
   function setAiCandidates(nextCandidates: SalesAiCandidate[]) {
-    aiCandidates.value = nextCandidates
+    aiCandidates.value = mergeAiCandidates(nextCandidates)
   }
 
   return {
