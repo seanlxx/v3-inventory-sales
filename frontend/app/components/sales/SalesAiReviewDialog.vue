@@ -161,29 +161,33 @@ function confirmOrder() {
     <div class="sales-ai">
       <div class="sales-ai__top">
         <label class="sales-ai__upload">
-          <span>上传销售截图 / 直接粘贴</span>
-          <input type="file" accept="image/*" multiple @change="handleFileChange">
-          <strong>{{ props.images?.length ? `已选择 ${props.images.length} 张图片，可继续添加` : '选择一张或多张销售截图，或复制图片后按 Ctrl+V' }}</strong>
-          <div v-if="props.images?.length" class="sales-ai__previews" aria-label="待识别图片">
-            <article
-              v-for="image in props.images"
-              :key="image.id"
-              class="sales-ai__preview"
-              role="button"
-              tabindex="0"
-              :aria-label="`放大预览 ${image.fileName}`"
-              @click.prevent="openImagePreview(image)"
-              @keydown.enter.prevent="openImagePreview(image)"
-              @keydown.space.prevent="openImagePreview(image)"
-            >
-              <img :src="image.previewUrl" :alt="image.fileName">
-              <div>
-                <strong>{{ image.fileName }}</strong>
-                <button type="button" :disabled="props.recognizing" @click.stop.prevent="emit('imageRemoved', image.id)">
-                  移除
-                </button>
-              </div>
-            </article>
+          <div class="sales-ai__upload-main">
+            <span>上传销售截图 / 直接粘贴</span>
+            <input type="file" accept="image/*" multiple @change="handleFileChange">
+            <strong>{{ props.images?.length ? `已选择 ${props.images.length} 张图片，可继续添加` : '选择一张或多张销售截图，或复制图片后按 Ctrl+V' }}</strong>
+          </div>
+          <div class="sales-ai__preview-area">
+            <div v-if="props.images?.length" class="sales-ai__previews" aria-label="待识别图片">
+              <article
+                v-for="image in props.images"
+                :key="image.id"
+                class="sales-ai__preview"
+                role="button"
+                tabindex="0"
+                :aria-label="`放大预览 ${image.fileName}`"
+                @click.prevent="openImagePreview(image)"
+                @keydown.enter.prevent="openImagePreview(image)"
+                @keydown.space.prevent="openImagePreview(image)"
+              >
+                <img :src="image.previewUrl" :alt="image.fileName">
+                <div>
+                  <strong>{{ image.fileName }}</strong>
+                  <button type="button" :disabled="props.recognizing" @click.stop.prevent="emit('imageRemoved', image.id)">
+                    移除
+                  </button>
+                </div>
+              </article>
+            </div>
           </div>
         </label>
         <AppButton variant="secondary" :loading="props.recognizing" :disabled="!props.images?.length" @click="emit('recognize')">
@@ -290,13 +294,6 @@ function confirmOrder() {
         <AppButton variant="secondary" @click="addManualCandidate">
           + 手动添加商品
         </AppButton>
-        <AppButton
-          variant="secondary"
-          :disabled="props.recognizing || (props.candidates.length === 0 && !props.images?.length)"
-          @click="emit('clear')"
-        >
-          一键清空
-        </AppButton>
       </div>
 
       <footer class="sales-ai__footer">
@@ -304,8 +301,12 @@ function confirmOrder() {
           合计 <strong>{{ formatMoney(totalAmount) }}</strong>
         </p>
         <div class="sales-ai__actions">
-          <AppButton variant="secondary" @click="open = false">
-            取消
+          <AppButton
+            variant="secondary"
+            :disabled="props.recognizing || (props.candidates.length === 0 && !props.images?.length)"
+            @click="emit('clear')"
+          >
+            一键清空
           </AppButton>
           <AppButton :loading="props.submitting" :disabled="props.candidates.length === 0" @click="confirmOrder">
             人工确认并创建销售单
@@ -355,11 +356,20 @@ function confirmOrder() {
   min-width: 0;
   flex: 1 1 auto;
   display: grid;
-  gap: var(--space-2);
+  grid-template-columns: minmax(220px, 1fr) minmax(360px, 0.95fr);
+  align-items: start;
+  gap: var(--space-3);
   border: 1px dashed var(--color-border);
   border-radius: var(--radius-2);
   padding: var(--space-3);
   background: var(--color-surface-subtle);
+}
+
+.sales-ai__upload-main,
+.sales-ai__preview-area {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-2);
 }
 
 .sales-ai__upload span,
@@ -383,8 +393,8 @@ function confirmOrder() {
 .sales-ai__previews {
   min-width: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: var(--space-3);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
 }
 
 .sales-ai__preview {
@@ -693,6 +703,10 @@ tbody tr:last-child td {
   .sales-ai__top :deep(.app-button),
   .sales-ai__actions :deep(.app-button) {
     width: 100%;
+  }
+
+  .sales-ai__upload {
+    grid-template-columns: 1fr;
   }
 
   .sales-ai__grid {
