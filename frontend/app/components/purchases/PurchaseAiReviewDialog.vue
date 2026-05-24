@@ -473,6 +473,16 @@ function confirmOrder() {
   width: 27%;
 }
 
+.ai-review__table td.ai-review__product-cell {
+  overflow: visible;
+  position: relative;
+  z-index: 1;
+}
+
+.ai-review__table td.ai-review__product-cell:focus-within {
+  z-index: 20;
+}
+
 .ai-review__badge-col {
   width: 72px;
 }
