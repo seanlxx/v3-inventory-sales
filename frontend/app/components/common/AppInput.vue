@@ -4,7 +4,7 @@ const model = defineModel<string | number>({ default: '' })
 const props = withDefaults(defineProps<{
   id?: string
   label: string
-  type?: 'text' | 'search' | 'number' | 'password' | 'date'
+  type?: 'text' | 'search' | 'number' | 'password' | 'date' | 'time'
   placeholder?: string
   hint?: string
   error?: string

@@ -38,6 +38,31 @@ export type VendorSyncStatus = {
     vendorMachineId: string
   }
   lastRun: VendorSyncRun | null
+  schedule: VendorSyncSchedule
+}
+
+export type VendorSyncScheduleMode = 'daily' | 'interval'
+
+export type VendorSyncSchedule = {
+  enabled: boolean
+  mode: VendorSyncScheduleMode
+  dailyTime: string
+  intervalMinutes: number
+  scope: VendorSyncScope[]
+  windowDays: number
+  timezoneOffsetMinutes: number
+  lastTriggerAt: number | null
+  nextRunAt: number | null
+}
+
+export type VendorSyncSchedulePayload = {
+  enabled: boolean
+  mode: VendorSyncScheduleMode
+  dailyTime: string
+  intervalMinutes: number
+  scope: VendorSyncScope[]
+  windowDays: number
+  timezoneOffsetMinutes?: number
 }
 
 export type VendorSyncPayload = {

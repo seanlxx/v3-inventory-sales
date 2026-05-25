@@ -88,7 +88,9 @@ function randomToken(bytes = 32) {
 export function isPublicApiRequest(request) {
   if (request.method === 'OPTIONS') return true;
   const path = new URL(request.url).pathname;
-  return path === '/api/auth/login';
+  if (path === '/api/auth/login') return true;
+  if (path === '/api/integrations/shengma/auto-trigger') return true;
+  return false;
 }
 
 export async function ensureAuthRow(db) {

@@ -1,4 +1,5 @@
 import { first, run } from '../d1.js';
+import { getSettingValue, saveSettingValue } from './settings.js';
 import {
   SHENGMA_INTEGRATION,
   SHENGMA_LOCAL_MACHINE_NAME,
@@ -13,6 +14,87 @@ import { importShengmaData, summarizeDryRun } from './importer.js';
 const MAX_RANGE_DAYS = 31;
 const MAX_SALES_PAGES = 200;
 const RUN_LOCK_TIMEOUT_MS = 5 * 60 * 1000;
+
+const SCHEDULE_SETTING_KEY = 'shengmaSchedule';
+const DEFAULT_SCHEDULE = {
+  enabled: false,
+  mode: 'daily',
+  dailyTime: '09:00',
+  intervalMinutes: 60,
+  scope: ['inventory', 'sales'],
+  windowDays: 1,
+  timezoneOffsetMinutes: 480,
+  lastTriggerAt: 0
+};
+
+function clampInt(value, min, max, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.floor(n)));
+}
+
+function normalizeDailyTime(value) {
+  const text = String(value || '').trim();
+  const match = /^([0-1]?\d|2[0-3]):([0-5]\d)$/.exec(text);
+  if (!match) return '09:00';
+  return `${match[1].padStart(2, '0')}:${match[2]}`;
+}
+
+function normalizeSchedule(raw) {
+  const base = { ...DEFAULT_SCHEDULE, ...(raw && typeof raw === 'object' ? raw : {}) };
+  const mode = base.mode === 'interval' ? 'interval' : 'daily';
+  return {
+    enabled: !!base.enabled,
+    mode,
+    dailyTime: normalizeDailyTime(base.dailyTime),
+    intervalMinutes: clampInt(base.intervalMinutes, 5, 1440, 60),
+    scope: normalizeScope(base.scope),
+    windowDays: clampInt(base.windowDays, 1, MAX_RANGE_DAYS, 1),
+    timezoneOffsetMinutes: clampInt(base.timezoneOffsetMinutes, -720, 840, 480),
+    lastTriggerAt: Number(base.lastTriggerAt) || 0
+  };
+}
+
+function computeNextRunAt(schedule, now = Date.now()) {
+  if (!schedule.enabled) return null;
+  if (schedule.mode === 'interval') {
+    const intervalMs = schedule.intervalMinutes * 60 * 1000;
+    if (!schedule.lastTriggerAt) return now;
+    return schedule.lastTriggerAt + intervalMs;
+  }
+  // daily mode: next occurrence of dailyTime in the configured timezone
+  const offsetMs = schedule.timezoneOffsetMinutes * 60 * 1000;
+  const [h, m] = schedule.dailyTime.split(':').map(Number);
+  const localNow = new Date(now + offsetMs);
+  const localY = localNow.getUTCFullYear();
+  const localMo = localNow.getUTCMonth();
+  const localD = localNow.getUTCDate();
+  let nextLocal = Date.UTC(localY, localMo, localD, h, m, 0) - offsetMs;
+  if (nextLocal <= now || (schedule.lastTriggerAt && schedule.lastTriggerAt >= nextLocal - 60000)) {
+    nextLocal += 24 * 60 * 60 * 1000;
+  }
+  return nextLocal;
+}
+
+export async function getShengmaSchedule(db) {
+  const raw = await getSettingValue(db, SCHEDULE_SETTING_KEY);
+  return normalizeSchedule(raw);
+}
+
+export async function saveShengmaSchedule(db, payload) {
+  const next = normalizeSchedule(payload);
+  // preserve lastTriggerAt from existing record (do not let UI overwrite it)
+  const existing = await getShengmaSchedule(db);
+  next.lastTriggerAt = existing.lastTriggerAt;
+  await saveSettingValue(db, SCHEDULE_SETTING_KEY, next);
+  return next;
+}
+
+async function markScheduleTriggered(db, schedule, triggeredAt) {
+  const next = { ...schedule, lastTriggerAt: triggeredAt };
+  await saveSettingValue(db, SCHEDULE_SETTING_KEY, next);
+  return next;
+}
 
 function toDateOnly(value) {
   const text = String(value || '').trim();
@@ -66,6 +148,8 @@ export async function getShengmaStatus(env) {
     LIMIT 1
   `, [SHENGMA_INTEGRATION]);
 
+  const schedule = await getShengmaSchedule(env.DB);
+
   return {
     credentials: { configured: hasShengmaCredentials(env) },
     mapping: {
@@ -73,7 +157,18 @@ export async function getShengmaStatus(env) {
       vendorDeviceCode: SHENGMA_VENDOR_DEVICE_CODE,
       vendorMachineId: SHENGMA_VENDOR_MACHINE_ID
     },
-    lastRun: mapRun(lastRun)
+    lastRun: mapRun(lastRun),
+    schedule: {
+      enabled: schedule.enabled,
+      mode: schedule.mode,
+      dailyTime: schedule.dailyTime,
+      intervalMinutes: schedule.intervalMinutes,
+      scope: schedule.scope,
+      windowDays: schedule.windowDays,
+      timezoneOffsetMinutes: schedule.timezoneOffsetMinutes,
+      lastTriggerAt: schedule.lastTriggerAt || null,
+      nextRunAt: computeNextRunAt(schedule)
+    }
   };
 }
 
@@ -116,6 +211,7 @@ async function createRun(db, payload) {
   if (running) throw new Error('已有盛码同步正在运行，请稍后再试');
 
   const startedAt = Date.now();
+  const triggerSource = payload.triggerSource || (payload.dryRun ? 'preview' : 'manual');
   const result = await db.prepare(`
     INSERT INTO external_sync_runs (
       integration, started_at, status, dry_run, date_start, date_end, trigger_source
@@ -126,7 +222,7 @@ async function createRun(db, payload) {
     payload.dryRun ? 1 : 0,
     payload.startDate,
     payload.endDate,
-    payload.dryRun ? 'preview' : 'manual'
+    triggerSource
   ).run();
   return result.meta?.last_row_id || result.meta?.lastRowId || startedAt;
 }
@@ -205,5 +301,85 @@ export async function runShengmaSync(env, body) {
       errorMessage: message
     });
     throw Object.assign(new Error(message), { run: failedRun });
+  }
+}
+
+function localDateString(timestamp, offsetMinutes) {
+  const local = new Date(timestamp + offsetMinutes * 60 * 1000);
+  const y = local.getUTCFullYear();
+  const m = String(local.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(local.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+export async function runShengmaAutoSync(env, options = {}) {
+  const force = !!options.force;
+  const schedule = await getShengmaSchedule(env.DB);
+  const now = Date.now();
+
+  if (!schedule.enabled && !force) {
+    return { skipped: true, reason: 'disabled', schedule, nextRunAt: null };
+  }
+  if (!hasShengmaCredentials(env)) {
+    return { skipped: true, reason: 'no-credentials', schedule, nextRunAt: computeNextRunAt(schedule, now) };
+  }
+
+  const nextRunAt = computeNextRunAt(schedule, now);
+  if (!force && nextRunAt && nextRunAt > now) {
+    return { skipped: true, reason: 'not-due', schedule, nextRunAt };
+  }
+
+  const offsetMinutes = schedule.timezoneOffsetMinutes;
+  const endDate = localDateString(now, offsetMinutes);
+  const startDate = localDateString(now - (schedule.windowDays - 1) * 86400000, offsetMinutes);
+
+  const triggeredAt = now;
+  await markScheduleTriggered(env.DB, schedule, triggeredAt);
+
+  const payload = {
+    startDate,
+    endDate,
+    dryRun: false,
+    scope: schedule.scope,
+    triggerSource: force ? 'auto-force' : 'auto'
+  };
+
+  let runId;
+  try {
+    runId = await createRun(env.DB, payload);
+  } catch (error) {
+    return {
+      skipped: true,
+      reason: 'lock',
+      message: error instanceof Error ? error.message : 'lock',
+      schedule,
+      nextRunAt: computeNextRunAt({ ...schedule, lastTriggerAt: triggeredAt }, now)
+    };
+  }
+
+  try {
+    const vendorData = await collectVendorData(env, payload);
+    const result = await importShengmaData(env, runId, { ...payload, ...vendorData });
+    const finished = await finishRun(env.DB, runId, 'success', result);
+    return {
+      skipped: false,
+      run: finished,
+      schedule: { ...schedule, lastTriggerAt: triggeredAt },
+      nextRunAt: computeNextRunAt({ ...schedule, lastTriggerAt: triggeredAt }, now)
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '盛码同步失败';
+    const failed = await finishRun(env.DB, runId, 'failed', {
+      summary: null,
+      warnings: [],
+      errorMessage: message
+    });
+    return {
+      skipped: false,
+      run: failed,
+      schedule: { ...schedule, lastTriggerAt: triggeredAt },
+      nextRunAt: computeNextRunAt({ ...schedule, lastTriggerAt: triggeredAt }, now),
+      error: message
+    };
   }
 }
