@@ -124,7 +124,7 @@ function normalizeAiCandidates(rawItems: Array<Record<string, unknown>>, product
         || (itemRevenue > 0 ? itemRevenue / quantity : matchedProduct?.sellPrice || 0)
     )
     return {
-      id: `ai-${index}-${rawName || 'item'}`,
+      id: `ai-${index}-${Math.random().toString(36).slice(2, 8)}-${rawName || 'item'}`,
       rawName: rawName || '未命名商品',
       productId: matchedProduct?.id || '',
       productName: matchedProduct?.name || rawName || '',
@@ -165,8 +165,8 @@ export function useSales() {
   const products = shallowRef<Product[]>([])
   const filters = reactive<SalesListFilters>({ ...defaultFilters })
   const selectedOrder = shallowRef<SalesOrder | null>(null)
-  const aiCandidates = useState<SalesAiCandidate[]>('sales:ai-candidates', () => [])
-  const salesImages = useState<SalesAiImage[]>('sales:ai-images', () => [])
+  const aiCandidates = shallowRef<SalesAiCandidate[]>([])
+  const salesImages = shallowRef<SalesAiImage[]>([])
   const salesImage = computed(() => salesImages.value[0] || null)
   const loading = shallowRef(false)
   const productsLoading = shallowRef(false)
@@ -177,6 +177,14 @@ export function useSales() {
   const error = shallowRef<ApiError | null>(null)
   const productsError = shallowRef<ApiError | null>(null)
   const aiError = shallowRef<ApiError | null>(null)
+  let aiAbortController: AbortController | null = null
+
+  function abortRecognition() {
+    if (aiAbortController) {
+      aiAbortController.abort()
+      aiAbortController = null
+    }
+  }
 
   const filteredOrders = computed(() =>
     orders.value.filter(order => matchesSearch(order, filters.search))
@@ -274,18 +282,25 @@ export function useSales() {
     const nextFiles = Array.isArray(files) ? files : [files]
     const images = await aiRecognition.readImageFiles(nextFiles)
     salesImages.value = [...salesImages.value, ...images]
+    aiCandidates.value = []
+    aiError.value = null
+    aiProgress.value = ''
     return salesImages.value
   }
 
   function removeSalesImage(id: string) {
+    const target = salesImages.value.find(image => image.id === id)
+    if (target) aiRecognition.releaseImagePreview(target)
     salesImages.value = salesImages.value.filter(image => image.id !== id)
   }
 
   function clearSalesImages() {
+    for (const image of salesImages.value) aiRecognition.releaseImagePreview(image)
     salesImages.value = []
   }
 
   function clearSalesAiDraft() {
+    abortRecognition()
     clearSalesImages()
     aiCandidates.value = []
     aiError.value = null
@@ -394,14 +409,17 @@ export function useSales() {
     recognizing.value = true
     aiError.value = null
     aiProgress.value = `正在连接 AI，准备上传 ${salesImages.value.length} 张图片...`
+    aiAbortController?.abort()
+    aiAbortController = new AbortController()
+    const controller = aiAbortController
     try {
       const matchableProducts = activeProducts(products.value)
       const catalog = buildProductCatalogPrompt(matchableProducts)
       const recognizedCandidates: SalesAiCandidate[] = []
       const { warnings } = await aiRecognition.recognizeImageBatches<{ items?: Array<Record<string, unknown>> }>({
         images: salesImages.value,
-        batchSize: salesImages.value.length,
         maxTokens: AI_RECOGNITION_MAX_TOKENS,
+        signal: controller.signal,
         systemPrompt: '你是销售截图识别助手。只返回合法 JSON，不要 Markdown，不要解释。',
         buildUserPrompt: (promptOptions: AiRecognitionPromptOptions) => buildSalesRecognitionPrompt({
           ...promptOptions,
@@ -442,6 +460,7 @@ export function useSales() {
       return []
     } finally {
       recognizing.value = false
+      if (aiAbortController === controller) aiAbortController = null
       if (!aiError.value) aiProgress.value = ''
     }
   }

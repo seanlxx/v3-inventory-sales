@@ -151,7 +151,9 @@ function normalizeAiCandidates(rawItems: Array<Record<string, unknown>>, product
       }
     }
 
-    const quantity = Math.max(1, Math.round(Number(item.quantity ?? item.qty) || 1))
+    const quantity = Math.max(1, Math.round(Number(item.quantity ?? item.qty) || 0))
+    const rawQuantityNumber = Number(item.quantity ?? item.qty)
+    const quantitySuspect = Number.isFinite(rawQuantityNumber) && rawQuantityNumber <= 0
     const totalPrice = moneyValue(item.totalPrice, item.amount, item.lineTotal, item.paidAmount)
     const unitPrice = moneyValue(item.unitPrice, item.price, item.costPrice) || (totalPrice > 0 ? totalPrice / quantity : 0)
     const sellPrice = moneyValue(item.sellPrice, item.salePrice, item.retailPrice)
@@ -169,7 +171,9 @@ function normalizeAiCandidates(rawItems: Array<Record<string, unknown>>, product
       category: isNewProduct ? '其他' : undefined,
       machineId: matchedProduct?.machineId,
       isNewProduct,
-      issue: matchedProduct ? '' : '新商品，需填写售价'
+      issue: quantitySuspect
+        ? 'AI 数量不可信，请人工确认'
+        : matchedProduct ? '' : '新商品，需填写售价'
     }
   })
   return sortAiCandidates(candidates)
@@ -197,6 +201,14 @@ export function usePurchases() {
   const error = shallowRef<ApiError | null>(null)
   const productsError = shallowRef<ApiError | null>(null)
   const aiError = shallowRef<ApiError | null>(null)
+  let aiAbortController: AbortController | null = null
+
+  function abortRecognition() {
+    if (aiAbortController) {
+      aiAbortController.abort()
+      aiAbortController = null
+    }
+  }
 
   const filteredOrders = computed(() =>
     orders.value.filter(order => matchesPurchaseSearch(order, filters.search))
@@ -271,6 +283,8 @@ export function usePurchases() {
   }
 
   function removeReceiptImage(id: string) {
+    const target = purchaseImages.value.find(image => image.id === id)
+    if (target) aiRecognition.releaseImagePreview(target)
     purchaseImages.value = purchaseImages.value.filter(image => image.id !== id)
     aiCandidates.value = []
     aiMetadata.value = null
@@ -279,6 +293,8 @@ export function usePurchases() {
   }
 
   function clearReceiptImages() {
+    abortRecognition()
+    for (const image of purchaseImages.value) aiRecognition.releaseImagePreview(image)
     purchaseImages.value = []
     aiCandidates.value = []
     aiMetadata.value = null
@@ -300,6 +316,7 @@ export function usePurchases() {
         body
       })
       toastStore.show('进货单已创建，库存已入库', 'success')
+      for (const image of purchaseImages.value) aiRecognition.releaseImagePreview(image)
       purchaseImages.value = []
       aiCandidates.value = []
       aiMetadata.value = null
@@ -343,6 +360,9 @@ export function usePurchases() {
     recognizing.value = true
     aiError.value = null
     aiProgress.value = `正在连接 AI，准备上传 ${purchaseImages.value.length} 张图片...`
+    aiAbortController?.abort()
+    aiAbortController = new AbortController()
+    const controller = aiAbortController
     try {
       const matchableProducts = activeProducts(products.value)
       const catalog = buildProductCatalogPrompt(matchableProducts)
@@ -352,6 +372,7 @@ export function usePurchases() {
       const { warnings } = await aiRecognition.recognizeImageBatches<PurchaseAiRecognitionResult>({
         images: purchaseImages.value,
         maxTokens: AI_RECOGNITION_MAX_TOKENS,
+        signal: controller.signal,
         systemPrompt: '你是进货截图识别助手。只返回合法 JSON，不要 Markdown，不要解释。日期格式必须是 YYYY-MM-DD，金额单位为人民币元。',
         buildUserPrompt: (promptOptions: AiRecognitionPromptOptions) => buildPurchaseRecognitionPrompt({
           ...promptOptions,
@@ -400,6 +421,7 @@ export function usePurchases() {
       return []
     } finally {
       recognizing.value = false
+      if (aiAbortController === controller) aiAbortController = null
       if (!aiError.value) aiProgress.value = ''
     }
   }

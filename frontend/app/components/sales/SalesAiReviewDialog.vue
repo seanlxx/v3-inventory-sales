@@ -59,19 +59,22 @@ function updateCandidate(index: number, patch: Partial<SalesAiCandidate>) {
   const nextCandidates = props.candidates.map((candidate, candidateIndex) => {
     if (candidateIndex !== index) return candidate
     const next = { ...candidate, ...patch }
-    if (patch.productId) {
-      const product = productById(patch.productId)
-      next.productName = product?.name || ''
-      next.sellPrice = Number(product?.sellPrice) || next.sellPrice
-      next.issue = ''
-      next.confidence = next.confidence === 'low' ? 'medium' : next.confidence
+    if ('productId' in patch) {
+      if (patch.productId) {
+        const product = productById(patch.productId)
+        next.productName = product?.name || ''
+        next.issue = ''
+        next.confidence = 'high'
+      } else {
+        next.productName = ''
+        next.issue = '未匹配商品'
+      }
     }
-    if ('quantity' in patch || 'sellPrice' in patch || 'productId' in patch) {
+    if ('quantity' in patch || 'sellPrice' in patch) {
       next.quantity = Math.abs(Number(next.quantity) || 0)
       next.sellPrice = Math.abs(Number(next.sellPrice) || 0)
       next.itemRevenue = Math.round(next.quantity * next.sellPrice * 100) / 100
     }
-    if (!next.productId) next.issue = '未匹配商品'
     return next
   })
   emit('updateCandidates', nextCandidates)
@@ -131,7 +134,7 @@ function confirmOrder() {
     upload-hint="选择一张或多张销售截图，或复制图片后按 Ctrl+V"
     empty-message="上传截图并识别后，在这里人工确认销售明细；也可以点击上方“+ 手动添加商品”直接录入"
     paste-file-name-prefix="sales-screenshot"
-    clear-label="一键清空"
+    clear-label="清空图片"
     confirm-label="人工确认并创建销售单"
     :columns="columns"
     :candidates-count="props.candidates.length"

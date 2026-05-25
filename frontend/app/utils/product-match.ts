@@ -226,8 +226,8 @@ export function matchProductByName(
     const aInB = productN.length >= 2 && target.includes(productN)
     const bInA = target.length >= 2 && productN.includes(target)
     if (aInB || bInA) {
-      // 取双方较短一边的长度作为权重，名字越长越有信息量
-      const length = Math.min(productN.length, target.length)
+      // 取较长一边的长度作为权重，名字越长越有信息量
+      const length = Math.max(productN.length, target.length)
       if (length > bestIncludeLen) {
         bestInclude = product
         bestIncludeLen = length
@@ -262,7 +262,11 @@ export function matchProductByName(
  */
 export function buildProductCatalogPrompt(products: readonly Product[]): string {
   if (products.length === 0) return ''
-  const lines = products.slice(0, 200).map(product => {
+  const MAX_CATALOG = 200
+  if (products.length > MAX_CATALOG && typeof console !== 'undefined') {
+    console.warn(`[ai-catalog] 商品数 ${products.length} 超过 ${MAX_CATALOG}，超出部分将无法被 AI 直接匹配 productId`)
+  }
+  const lines = products.slice(0, MAX_CATALOG).map(product => {
     const machine = product.machineId ? `[${product.machineId}]` : ''
     return `- ${product.id} | ${product.name}${machine ? ' ' + machine : ''}`
   })

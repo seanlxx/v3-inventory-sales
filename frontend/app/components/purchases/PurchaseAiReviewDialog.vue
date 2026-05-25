@@ -67,14 +67,22 @@ function updateCandidate(index: number, patch: Partial<PurchaseAiCandidate>) {
   const nextCandidates = props.candidates.map((candidate, candidateIndex) => {
     if (candidateIndex !== index) return candidate
     const next = { ...candidate, ...patch }
-    if (patch.productId) {
-      const product = productById(patch.productId)
-      next.productName = product?.name || productName(patch.productId)
-      next.sellPrice = Number(product?.sellPrice) || next.sellPrice
-      next.machineId = product?.machineId
-      next.isNewProduct = false
-      next.issue = ''
-      next.confidence = next.confidence === 'low' ? 'medium' : next.confidence
+    if ('productId' in patch) {
+      if (patch.productId) {
+        const product = productById(patch.productId)
+        next.productName = product?.name || productName(patch.productId)
+        next.sellPrice = Number(product?.sellPrice) || next.sellPrice
+        next.machineId = product?.machineId
+        next.isNewProduct = false
+        next.issue = ''
+        next.confidence = 'high'
+      } else {
+        next.productName = ''
+        next.sellPrice = 0
+        next.machineId = undefined
+        next.isNewProduct = true
+        next.issue = '新商品，需填写售价'
+      }
     }
     if ('quantity' in patch || 'unitPrice' in patch) {
       next.totalPrice = Math.round((Number(next.quantity) || 0) * (Number(next.unitPrice) || 0) * 100) / 100

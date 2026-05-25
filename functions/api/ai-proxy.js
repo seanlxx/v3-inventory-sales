@@ -252,7 +252,7 @@ function buildOpenAIPayload({ platform, body, stream }) {
       image_url: { url: `data:${image.mimeType};base64,${image.imageBase64}` }
     });
   }
-  messages.push({ role: 'user', content: images.length > 0 ? userContent : userPrompt });
+  messages.push({ role: 'user', content: userContent.length > 0 ? userContent : userPrompt });
 
   const payload = {
     model: body.modelId,
@@ -387,6 +387,7 @@ async function streamOpenAICompatible({ platform, config, body, timeoutMs }) {
     let buffered = '';
     let accumulated = '';
 
+    let streamErrored = false;
     try {
       while (true) {
         const { value, done } = await reader.read();
@@ -425,11 +426,14 @@ async function streamOpenAICompatible({ platform, config, body, timeoutMs }) {
         }
       }
     } catch (err) {
+      streamErrored = true;
       await sseWrite('error', { error: err?.message || 'stream interrupted' }).catch(() => {});
     } finally {
       stopHeartbeat();
       clearTimeout(timer);
-      await sseWrite('done', { text: accumulated }).catch(() => {});
+      if (!streamErrored) {
+        await sseWrite('done', { text: accumulated }).catch(() => {});
+      }
       try { await writer.close(); } catch {}
     }
   })();

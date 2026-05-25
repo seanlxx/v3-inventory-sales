@@ -26,6 +26,7 @@ type RecognizeImageBatchOptions<TParsed> = {
   parseResult?: (text: string) => TParsed | null
   onProgress?: (message: string) => void
   onBatchResult?: (parsed: TParsed, batchIndex: number) => boolean | void
+  signal?: AbortSignal
 }
 
 type RecognizeImageBatchResult<TParsed> = {
@@ -152,14 +153,24 @@ export function useAiRecognition() {
     const optimizedDataUrl = await optimizeImageForAi(file, originalDataUrl)
     const originalImage = splitDataUrl(originalDataUrl, file.type || 'image/jpeg')
     const aiImage = splitDataUrl(optimizedDataUrl, file.type || 'image/jpeg')
+    const previewUrl = typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
+      ? URL.createObjectURL(file)
+      : originalDataUrl
     return {
       imageBase64: originalImage.imageBase64,
       mimeType: originalImage.mimeType,
       aiImageBase64: aiImage.imageBase64,
       aiMimeType: aiImage.mimeType,
-      previewUrl: originalDataUrl,
-      id: `${Date.now()}-${index}-${file.name}`,
+      previewUrl,
+      id: `${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}-${file.name}`,
       fileName: file.name
+    }
+  }
+
+  function releaseImagePreview(image: { previewUrl?: string } | null | undefined) {
+    if (!image?.previewUrl) return
+    if (image.previewUrl.startsWith('blob:') && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+      try { URL.revokeObjectURL(image.previewUrl) } catch {}
     }
   }
 
@@ -168,7 +179,7 @@ export function useAiRecognition() {
     return Promise.all(nextFiles.map((file, index) => readImageFile(file, index)))
   }
 
-  async function requestAiStream(body: Record<string, unknown>, onDelta: (text: string) => void) {
+  async function requestAiStream(body: Record<string, unknown>, onDelta: (text: string) => void, signal?: AbortSignal) {
     const authStore = useAuthStore()
     authStore.initialize()
     const apiBase = String(config.public.apiBase || '/api').replace(/\/$/, '')
@@ -179,7 +190,8 @@ export function useAiRecognition() {
         'Content-Type': 'application/json',
         ...(authStore.token ? { 'X-VM-Session': authStore.token } : {})
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal
     })
 
     if (!response.ok || !response.body) {
@@ -205,13 +217,20 @@ export function useAiRecognition() {
         const event = lines.find(line => line.startsWith('event:'))?.slice(6).trim() || 'message'
         const dataLine = lines.find(line => line.startsWith('data:'))
         if (dataLine) {
-          const data = JSON.parse(dataLine.slice(5).trim()) as { text?: string; error?: string }
-          if (event === 'delta' && data.text) {
-            onDelta(data.text)
-          } else if (event === 'done') {
-            finalText = data.text || finalText
-          } else if (event === 'error') {
-            throw streamError(data.error || 'AI 流式识别失败')
+          let data: { text?: string; error?: string } | null = null
+          try {
+            data = JSON.parse(dataLine.slice(5).trim()) as { text?: string; error?: string }
+          } catch {
+            data = null
+          }
+          if (data) {
+            if (event === 'delta' && data.text) {
+              onDelta(data.text)
+            } else if (event === 'done') {
+              finalText = data.text || finalText
+            } else if (event === 'error') {
+              throw streamError(data.error || 'AI 流式识别失败')
+            }
           }
         }
         index = buffered.indexOf('\n\n')
@@ -224,11 +243,18 @@ export function useAiRecognition() {
   async function recognizeImageBatches<TParsed>(
     options: RecognizeImageBatchOptions<TParsed>
   ): Promise<RecognizeImageBatchResult<TParsed>> {
-    const batches = chunkList(options.images, options.batchSize || DEFAULT_AI_IMAGE_BATCH_SIZE)
+    const batchSize = Number.isFinite(options.batchSize) && (options.batchSize || 0) > 0
+      ? options.batchSize as number
+      : DEFAULT_AI_IMAGE_BATCH_SIZE
+    const batches = chunkList(options.images, batchSize)
     const parsedResults: TParsed[] = []
     const warnings: string[] = []
 
     for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
+      if (options.signal?.aborted) {
+        warnings.push('识别已取消')
+        break
+      }
       const batch = batches[batchIndex] || []
       let receivedLength = 0
       const batchLabel = `第 ${batchIndex + 1}/${batches.length} 批`
@@ -252,7 +278,7 @@ export function useAiRecognition() {
         }, (delta) => {
           receivedLength += delta.length
           options.onProgress?.(`AI 正在识别${batchLabel}，已接收 ${receivedLength} 个字符...`)
-        })
+        }, options.signal)
 
         options.onProgress?.(`${batchLabel}识别完成，正在整理结果...`)
         const parsed = options.parseResult
@@ -271,11 +297,10 @@ export function useAiRecognition() {
         parsedResults.push(parsed)
       } catch (caught) {
         const batchError = normalizeApiError(caught)
-        if (parsedResults.length > 0) {
-          warnings.push(`${batchLabel}失败：${batchError.message}`)
-          break
+        warnings.push(`${batchLabel}失败：${batchError.message}`)
+        if (batchIndex === batches.length - 1 && parsedResults.length === 0) {
+          throw batchError
         }
-        throw batchError
       }
     }
 
@@ -286,6 +311,7 @@ export function useAiRecognition() {
     readImageFile,
     readImageFiles,
     requestAiStream,
-    recognizeImageBatches
+    recognizeImageBatches,
+    releaseImagePreview
   }
 }
