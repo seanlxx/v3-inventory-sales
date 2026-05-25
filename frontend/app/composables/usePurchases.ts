@@ -1,22 +1,12 @@
 import type { ApiError } from '~/types/api'
+import type { AiRecognitionImage, AiRecognitionPromptOptions } from '~/composables/useAiRecognition'
 import type { PurchaseAiCandidate, PurchaseAiMetadata, PurchaseListFilters, PurchaseOrder, PurchaseOrderPayload } from '~/types/purchase'
 import type { Product } from '~/types/product'
+import { AI_PRODUCT_MATCHING_RULES, extractAiJsonObject, roundAiMoney, useAiRecognition } from '~/composables/useAiRecognition'
 import { buildProductCatalogPrompt, matchProductByName, normalizeProductName } from '~/utils/product-match'
 
-type PurchaseAiImage = {
-  id: string
-  imageBase64: string
-  mimeType: string
-  aiImageBase64: string
-  aiMimeType: string
-  fileName: string
-  previewUrl: string
-}
+type PurchaseAiImage = AiRecognitionImage
 
-const AI_IMAGE_BATCH_SIZE = 4
-const AI_IMAGE_MAX_EDGE = 1600
-const AI_IMAGE_MAX_ORIGINAL_BYTES = 900 * 1024
-const AI_IMAGE_JPEG_QUALITY = 0.84
 const AI_RECOGNITION_MAX_TOKENS = 3200
 
 const defaultFilters: PurchaseListFilters = {
@@ -32,102 +22,8 @@ function matchesPurchaseSearch(order: PurchaseOrder, search: string) {
   return `${order.id} ${order.source || ''} ${order.note || ''} ${order.machineId} ${items}`.toLowerCase().includes(keyword)
 }
 
-function splitDataUrl(dataUrl: string, fallbackMimeType: string) {
-  const match = dataUrl.match(/^data:([^;,]+);base64,(.*)$/)
-  return {
-    imageBase64: match?.[2] || (dataUrl.includes(',') ? dataUrl.split(',').pop() || '' : dataUrl),
-    mimeType: match?.[1] || fallbackMimeType || 'image/jpeg'
-  }
-}
-
-function readBlobAsDataUrl(blob: Blob) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      resolve(String(reader.result || ''))
-    }
-    reader.onerror = () => reject(reader.error || new Error('读取图片失败'))
-    reader.readAsDataURL(blob)
-  })
-}
-
-function loadImage(dataUrl: string) {
-  return new Promise<HTMLImageElement>((resolve, reject) => {
-    const image = new Image()
-    image.onload = () => resolve(image)
-    image.onerror = () => reject(new Error('图片解码失败'))
-    image.src = dataUrl
-  })
-}
-
-function canvasToJpegDataUrl(canvas: HTMLCanvasElement) {
-  return new Promise<string | null>((resolve) => {
-    canvas.toBlob(async (blob) => {
-      if (!blob) {
-        resolve(null)
-        return
-      }
-      resolve(await readBlobAsDataUrl(blob))
-    }, 'image/jpeg', AI_IMAGE_JPEG_QUALITY)
-  })
-}
-
-async function optimizeImageForAi(file: File, originalDataUrl: string) {
-  try {
-    const image = await loadImage(originalDataUrl)
-    const width = image.naturalWidth || image.width
-    const height = image.naturalHeight || image.height
-    if (!width || !height) return originalDataUrl
-
-    const scale = Math.min(1, AI_IMAGE_MAX_EDGE / Math.max(width, height))
-    if (scale >= 1 && file.size <= AI_IMAGE_MAX_ORIGINAL_BYTES) return originalDataUrl
-
-    const canvas = document.createElement('canvas')
-    canvas.width = Math.max(1, Math.round(width * scale))
-    canvas.height = Math.max(1, Math.round(height * scale))
-
-    const context = canvas.getContext('2d')
-    if (!context) return originalDataUrl
-
-    context.fillStyle = '#fff'
-    context.fillRect(0, 0, canvas.width, canvas.height)
-    context.drawImage(image, 0, 0, canvas.width, canvas.height)
-
-    const optimizedDataUrl = await canvasToJpegDataUrl(canvas)
-    if (!optimizedDataUrl) return originalDataUrl
-    return optimizedDataUrl.length < originalDataUrl.length || scale < 1 ? optimizedDataUrl : originalDataUrl
-  } catch {
-    return originalDataUrl
-  }
-}
-
-async function readFileAsBase64(file: File) {
-  const originalDataUrl = await readBlobAsDataUrl(file)
-  const optimizedDataUrl = await optimizeImageForAi(file, originalDataUrl)
-  const originalImage = splitDataUrl(originalDataUrl, file.type || 'image/jpeg')
-  const aiImage = splitDataUrl(optimizedDataUrl, file.type || 'image/jpeg')
-  return {
-    imageBase64: originalImage.imageBase64,
-    mimeType: originalImage.mimeType,
-    aiImageBase64: aiImage.imageBase64,
-    aiMimeType: aiImage.mimeType,
-    previewUrl: originalDataUrl
-  }
-}
-
 type PurchaseAiRecognitionResult = PurchaseAiMetadata & {
   items?: Array<Record<string, unknown>>
-}
-
-function extractJsonObject(text: string) {
-  const start = text.indexOf('{')
-  const end = text.lastIndexOf('}')
-  if (start === -1 || end === -1 || end <= start) return null
-  try {
-    return JSON.parse(text.slice(start, end + 1)) as PurchaseAiRecognitionResult
-  } catch {
-    return null
-  }
 }
 
 function normalizeAiDate(value: unknown) {
@@ -156,14 +52,6 @@ function normalizeAiMetadata(parsed: PurchaseAiRecognitionResult | null): Purcha
   return metadata.date || metadata.source || metadata.note ? metadata : null
 }
 
-function chunkList<T>(items: readonly T[], size: number) {
-  const chunks: T[][] = []
-  for (let index = 0; index < items.length; index += size) {
-    chunks.push(items.slice(index, index + size))
-  }
-  return chunks
-}
-
 function mergeAiMetadata(current: PurchaseAiMetadata | null, next: PurchaseAiMetadata | null): PurchaseAiMetadata | null {
   if (!next) return current
   if (!current) return next
@@ -184,14 +72,7 @@ function moneyValue(...values: unknown[]) {
 }
 
 function roundMoney(value: number) {
-  return Math.round((Number(value) || 0) * 100) / 100
-}
-
-function streamError(message: string): ApiError {
-  return {
-    code: 'UNKNOWN_ERROR',
-    message
-  }
+  return roundAiMoney(value)
 }
 
 function mergeCandidateKey(candidate: PurchaseAiCandidate) {
@@ -245,10 +126,8 @@ function buildPurchaseRecognitionPrompt(options: {
     '拼多多规格规则：如果规格或标题写“430g*24罐”“24罐”“x24”，购买数量 x1，则 quantity=24；若购买 x2，则 quantity=48；unitPrice=totalPrice/quantity。',
     '只返回截图中真实存在的商品行；优惠、运费、订单号、快递号不是商品。',
     '同一个批次中如果出现多个同样商品，返回前先合并成一行：quantity 相加，totalPrice 相加，unitPrice=totalPrice/quantity。',
-    '匹配规则：尽量在下面给出的商品清单中找最接近的一项，返回它的 productId；若清单中没有相似项，productId 留空字符串，rawName 保留截图原文。',
     '如果识别到商品但库内没有同样商品，productId 必须留空，productName 返回可创建的新商品名称，sellPrice 不确定时返回 0，后续由人工填写售价。',
-    '注意名称同义：如"毫升=ml"、"克=g"、"瓶装"可省略、"1L=1000ml"。',
-    'AI 结果只用于人工确认，不能自动入账。',
+    ...AI_PRODUCT_MATCHING_RULES,
     '',
     options.catalog
   ].join('\n')
@@ -306,7 +185,7 @@ function normalizeAiCandidates(rawItems: Array<Record<string, unknown>>, product
 
 export function usePurchases() {
   const { request } = useApi()
-  const config = useRuntimeConfig()
+  const aiRecognition = useAiRecognition()
   const toastStore = useToastStore()
 
   const orders = shallowRef<PurchaseOrder[]>([])
@@ -390,14 +269,7 @@ export function usePurchases() {
   async function saveReceiptImage(files: File[] | File) {
     const nextFiles = Array.isArray(files) ? files : [files]
     if (nextFiles.length === 0) return purchaseImages.value
-    const images = await Promise.all(nextFiles.map(async (file, index) => {
-      const image = await readFileAsBase64(file)
-      return {
-        ...image,
-        id: `${Date.now()}-${index}-${file.name}`,
-        fileName: file.name
-      }
-    }))
+    const images = await aiRecognition.readImageFiles(nextFiles)
     purchaseImages.value = [...purchaseImages.value, ...images]
     aiCandidates.value = []
     aiMetadata.value = null
@@ -468,59 +340,6 @@ export function usePurchases() {
     }
   }
 
-  async function requestAiStream(body: Record<string, unknown>, onDelta: (text: string) => void) {
-    const authStore = useAuthStore()
-    authStore.initialize()
-    const apiBase = String(config.public.apiBase || '/api').replace(/\/$/, '')
-    const response = await fetch(`${apiBase}/ai-proxy?stream=1`, {
-      method: 'POST',
-      headers: {
-        Accept: 'text/event-stream',
-        'Content-Type': 'application/json',
-        ...(authStore.token ? { 'X-VM-Session': authStore.token } : {})
-      },
-      body: JSON.stringify(body)
-    })
-
-    if (!response.ok || !response.body) {
-      const data = await response.json().catch(() => null) as { error?: string; message?: string } | null
-      throw streamError(data?.message || data?.error || `AI 请求失败：${response.status}`)
-    }
-
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder('utf-8')
-    let buffered = ''
-    let finalText = ''
-
-    while (true) {
-      const { value, done } = await reader.read()
-      if (done) break
-      buffered += decoder.decode(value, { stream: true })
-
-      let index = buffered.indexOf('\n\n')
-      while (index !== -1) {
-        const rawEvent = buffered.slice(0, index)
-        buffered = buffered.slice(index + 2)
-        const lines = rawEvent.split('\n')
-        const event = lines.find(line => line.startsWith('event:'))?.slice(6).trim() || 'message'
-        const dataLine = lines.find(line => line.startsWith('data:'))
-        if (dataLine) {
-          const data = JSON.parse(dataLine.slice(5).trim()) as { text?: string; error?: string }
-          if (event === 'delta' && data.text) {
-            onDelta(data.text)
-          } else if (event === 'done') {
-            finalText = data.text || finalText
-          } else if (event === 'error') {
-            throw streamError(data.error || 'AI 流式识别失败')
-          }
-        }
-        index = buffered.indexOf('\n\n')
-      }
-    }
-
-    return finalText
-  }
-
   async function recognizeReceipt() {
     if (purchaseImages.value.length === 0) {
       aiError.value = {
@@ -534,67 +353,35 @@ export function usePurchases() {
     aiProgress.value = `正在连接 AI，准备上传 ${purchaseImages.value.length} 张图片...`
     try {
       const catalog = buildProductCatalogPrompt(products.value)
-      const imageBatches = chunkList(purchaseImages.value, AI_IMAGE_BATCH_SIZE)
       const recognizedCandidates: PurchaseAiCandidate[] = []
-      const warnings: string[] = []
       let recognizedMetadata: PurchaseAiMetadata | null = null
 
-      for (let batchIndex = 0; batchIndex < imageBatches.length; batchIndex += 1) {
-        const batch = imageBatches[batchIndex] || []
-        let receivedLength = 0
-        const batchLabel = `第 ${batchIndex + 1}/${imageBatches.length} 批`
-        aiProgress.value = `AI 正在识别${batchLabel}（${batch.length} 张图片）...`
-
-        try {
-          const text = await requestAiStream({
-            images: batch.map(image => ({
-              imageBase64: image.aiImageBase64,
-              mimeType: image.aiMimeType
-            })),
-            maxTokens: AI_RECOGNITION_MAX_TOKENS,
-            stream: true,
-            systemPrompt: '你是进货截图识别助手。只返回合法 JSON，不要 Markdown，不要解释。日期格式必须是 YYYY-MM-DD，金额单位为人民币元。',
-            userPrompt: buildPurchaseRecognitionPrompt({
-              totalImageCount: purchaseImages.value.length,
-              batchImageCount: batch.length,
-              batchIndex,
-              batchCount: imageBatches.length,
-              catalog
-            })
-          }, (delta) => {
-            receivedLength += delta.length
-            aiProgress.value = `AI 正在识别${batchLabel}，已接收 ${receivedLength} 个字符...`
-          })
-
-          aiProgress.value = `${batchLabel}识别完成，正在整理结果...`
-          const parsed = extractJsonObject(text || '')
-          if (!parsed) {
-            warnings.push(`${batchLabel}结果无法解析`)
-            continue
-          }
-
+      const { warnings } = await aiRecognition.recognizeImageBatches<PurchaseAiRecognitionResult>({
+        images: purchaseImages.value,
+        maxTokens: AI_RECOGNITION_MAX_TOKENS,
+        systemPrompt: '你是进货截图识别助手。只返回合法 JSON，不要 Markdown，不要解释。日期格式必须是 YYYY-MM-DD，金额单位为人民币元。',
+        buildUserPrompt: (promptOptions: AiRecognitionPromptOptions) => buildPurchaseRecognitionPrompt({
+          ...promptOptions,
+          catalog
+        }),
+        parseResult: text => extractAiJsonObject<PurchaseAiRecognitionResult>(text),
+        onProgress: message => {
+          aiProgress.value = message
+        },
+        onBatchResult: (parsed, batchIndex) => {
           recognizedMetadata = mergeAiMetadata(recognizedMetadata, normalizeAiMetadata(parsed))
           const batchCandidates = prefixBatchCandidateIds(
             normalizeAiCandidates(parsed.items || [], products.value),
             batchIndex
           )
-          if (batchCandidates.length === 0) {
-            warnings.push(`${batchLabel}未识别到明细`)
-            continue
-          }
+          if (batchCandidates.length === 0) return false
 
           recognizedCandidates.push(...batchCandidates)
           aiMetadata.value = recognizedMetadata
           aiCandidates.value = mergeAiCandidates(recognizedCandidates)
-        } catch (caught) {
-          const batchError = normalizeApiError(caught)
-          if (recognizedCandidates.length > 0) {
-            warnings.push(`${batchLabel}失败：${batchError.message}`)
-            break
-          }
-          throw batchError
+          return true
         }
-      }
+      })
 
       aiMetadata.value = recognizedMetadata
       aiCandidates.value = mergeAiCandidates(recognizedCandidates)

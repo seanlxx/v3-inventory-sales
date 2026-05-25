@@ -7,6 +7,7 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const root = dirname(scriptDir);
 
 const matchUtil = readFileSync(join(root, 'frontend', 'app', 'utils', 'product-match.ts'), 'utf8');
+const sharedRecognitionComposable = readFileSync(join(root, 'frontend', 'app', 'composables', 'useAiRecognition.ts'), 'utf8');
 const salesComposable = readFileSync(join(root, 'frontend', 'app', 'composables', 'useSales.ts'), 'utf8');
 const purchasesComposable = readFileSync(join(root, 'frontend', 'app', 'composables', 'usePurchases.ts'), 'utf8');
 
@@ -44,9 +45,14 @@ assert.match(
   'useSales must inject product catalog into AI prompt'
 );
 assert.match(
-  salesComposable,
+  sharedRecognitionComposable,
   /AI 结果只用于人工确认，不能自动入账/,
-  'useSales prompt must keep human-confirmation guarantee'
+  'shared AI recognition rules must keep human-confirmation guarantee'
+);
+assert.match(
+  salesComposable,
+  /AI_PRODUCT_MATCHING_RULES/,
+  'useSales prompt must include shared product matching rules'
 );
 
 // ── 4. usePurchases 必须做相同的事 ───────────────────────────────────────
@@ -67,8 +73,8 @@ assert.match(
 );
 assert.match(
   purchasesComposable,
-  /AI 结果只用于人工确认，不能自动入账/,
-  'usePurchases prompt must keep human-confirmation guarantee'
+  /AI_PRODUCT_MATCHING_RULES/,
+  'usePurchases prompt must include shared product matching rules'
 );
 
 // ── 5. AI 候选必须优先采用 AI 返回的 productId（命中本地清单时） ──────────

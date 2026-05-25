@@ -1,14 +1,7 @@
 <script setup lang="ts">
 import type { Product } from '~/types/product'
 import type { SalesAiCandidate, SalesItem, SalesOrderPayload } from '~/types/sale'
-import { useClipboardImagePaste } from '~/composables/useClipboardImagePaste'
 import { formatMoney, formatQuantity } from '~/utils/format'
-
-type ReviewImage = {
-  id: string
-  fileName: string
-  previewUrl: string
-}
 
 const open = defineModel<boolean>('open', { default: false })
 
@@ -18,7 +11,7 @@ const props = defineProps<{
   machines: readonly string[]
   recognizing?: boolean
   submitting?: boolean
-  images?: readonly ReviewImage[]
+  images?: readonly { id: string; fileName: string; previewUrl: string }[]
   progressMessage?: string
   errorMessage?: string
   inventoryError?: string | null
@@ -37,11 +30,14 @@ const date = shallowRef(new Date().toISOString().slice(0, 10))
 const machineId = shallowRef('')
 const note = shallowRef('')
 const formError = shallowRef('')
-const previewImage = shallowRef<ReviewImage | null>(null)
+
+const columns = ['识别名称', '匹配商品', '库存', '置信度', '数量', '单价', '小计', '异常', '操作'] as const
 
 const totalAmount = computed(() =>
   props.candidates.reduce((sum, item) => sum + Number(item.itemRevenue || 0), 0)
 )
+
+const displayError = computed(() => formError.value || props.inventoryError || '')
 
 function confidenceLabel(confidence: SalesAiCandidate['confidence']) {
   if (confidence === 'high') return '高'
@@ -81,13 +77,6 @@ function updateCandidate(index: number, patch: Partial<SalesAiCandidate>) {
   emit('updateCandidates', nextCandidates)
 }
 
-function handleFileChange(event: Event) {
-  const input = event.target as HTMLInputElement
-  const files = Array.from(input.files || [])
-  if (files.length > 0) emit('imageSelected', files)
-  input.value = ''
-}
-
 function addManualCandidate() {
   const newCandidate: SalesAiCandidate = {
     id: `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -107,24 +96,6 @@ function removeCandidate(index: number) {
   const next = props.candidates.filter((_, i) => i !== index)
   emit('updateCandidates', next)
 }
-
-function openImagePreview(image: ReviewImage) {
-  previewImage.value = image
-}
-
-function closeImagePreview() {
-  previewImage.value = null
-}
-
-watch(open, (isOpen) => {
-  if (!isOpen) closeImagePreview()
-})
-
-useClipboardImagePaste({
-  enabled: open,
-  fileNamePrefix: 'sales-screenshot',
-  onImage: (file: File) => emit('imageSelected', [file])
-})
 
 function confirmOrder() {
   const invalid = props.candidates.find(candidate =>
@@ -152,53 +123,33 @@ function confirmOrder() {
 </script>
 
 <template>
-  <AppDialog
+  <AiRecognitionDialog
     v-model:open="open"
     title="AI 销售识别确认"
     description="AI 结果只进入确认表，人工确认后才会创建销售单。"
-    size="wide"
+    upload-title="上传销售截图 / 直接粘贴"
+    upload-hint="选择一张或多张销售截图，或复制图片后按 Ctrl+V"
+    empty-message="上传截图并识别后，在这里人工确认销售明细；也可以点击上方“+ 手动添加商品”直接录入"
+    paste-file-name-prefix="sales-screenshot"
+    clear-label="一键清空"
+    confirm-label="人工确认并创建销售单"
+    :columns="columns"
+    :candidates-count="props.candidates.length"
+    :total-value="formatMoney(totalAmount)"
+    :images="props.images"
+    :recognizing="props.recognizing"
+    :submitting="props.submitting"
+    :progress-message="props.progressMessage"
+    :error-message="props.errorMessage"
+    :form-error="displayError"
+    @image-selected="emit('imageSelected', $event)"
+    @image-removed="emit('imageRemoved', $event)"
+    @clear="emit('clear')"
+    @recognize="emit('recognize')"
+    @add-manual="addManualCandidate"
+    @confirm="confirmOrder"
   >
-    <div class="sales-ai">
-      <div class="sales-ai__top">
-        <label class="sales-ai__upload">
-          <div class="sales-ai__upload-main">
-            <span>上传销售截图 / 直接粘贴</span>
-            <input type="file" accept="image/*" multiple @change="handleFileChange">
-            <strong>{{ props.images?.length ? `已选择 ${props.images.length} 张图片，可继续添加` : '选择一张或多张销售截图，或复制图片后按 Ctrl+V' }}</strong>
-          </div>
-          <div class="sales-ai__preview-area">
-            <div v-if="props.images?.length" class="sales-ai__previews" aria-label="待识别图片">
-              <article
-                v-for="image in props.images"
-                :key="image.id"
-                class="sales-ai__preview"
-                role="button"
-                tabindex="0"
-                :aria-label="`放大预览 ${image.fileName}`"
-                @click.prevent="openImagePreview(image)"
-                @keydown.enter.prevent="openImagePreview(image)"
-                @keydown.space.prevent="openImagePreview(image)"
-              >
-                <img :src="image.previewUrl" :alt="image.fileName">
-                <div>
-                  <strong>{{ image.fileName }}</strong>
-                  <button type="button" :disabled="props.recognizing" @click.stop.prevent="emit('imageRemoved', image.id)">
-                    移除
-                  </button>
-                </div>
-              </article>
-            </div>
-          </div>
-        </label>
-        <AppButton variant="secondary" :loading="props.recognizing" :disabled="!props.images?.length" @click="emit('recognize')">
-          开始识别
-        </AppButton>
-      </div>
-
-      <p v-if="props.recognizing || props.progressMessage" class="sales-ai__progress">
-        {{ props.progressMessage || 'AI 正在识别图片...' }}
-      </p>
-
+    <template #fields>
       <div class="sales-ai__grid">
         <AppInput v-model="date" label="销售日期" type="date" />
         <label class="sales-ai__field">
@@ -212,250 +163,62 @@ function confirmOrder() {
         </label>
         <AppInput v-model="note" label="备注" placeholder="可选" />
       </div>
+    </template>
 
-      <p v-if="props.errorMessage || formError || props.inventoryError" class="sales-ai__error">
-        {{ props.errorMessage || formError || props.inventoryError }}
-      </p>
-
-      <div class="sales-ai__scroll">
-        <table class="sales-ai__table">
-          <thead>
-            <tr>
-              <th scope="col" class="sales-ai__raw-col">识别名称</th>
-              <th scope="col" class="sales-ai__product-col">匹配商品</th>
-              <th scope="col">库存</th>
-              <th scope="col" class="sales-ai__badge-col">置信度</th>
-              <th scope="col" class="sales-ai__number">数量</th>
-              <th scope="col" class="sales-ai__number">单价</th>
-              <th scope="col" class="sales-ai__number">小计</th>
-              <th scope="col" class="sales-ai__badge-col">异常</th>
-              <th scope="col" class="sales-ai__action-col">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-if="props.candidates.length === 0">
-              <td class="sales-ai__empty" colspan="9">
-                上传截图并识别后，在这里人工确认销售明细；也可以点击下方"+ 手动添加商品"直接录入
-              </td>
-            </tr>
-            <tr v-for="(candidate, index) in props.candidates" v-else :key="candidate.id">
-              <td data-label="识别名称" class="sales-ai__name-cell">{{ candidate.rawName }}</td>
-              <td data-label="匹配商品" class="sales-ai__product-cell">
-                <span class="sales-ai__matched-name">
-                  {{ candidate.productName || '未匹配商品' }}
-                </span>
-                <ProductSearchSelect
-                  :model-value="candidate.productId"
-                  :products="props.products"
-                  placeholder="选择商品"
-                  @update:model-value="(value: string) => updateCandidate(index, { productId: value })"
-                />
-              </td>
-              <td data-label="库存">{{ formatQuantity(productById(candidate.productId)?.currentStock) }}</td>
-              <td data-label="置信度">
-                <StatusBadge :label="confidenceLabel(candidate.confidence)" :tone="confidenceTone(candidate.confidence)" />
-              </td>
-              <td class="sales-ai__number" data-label="数量">
-                <input
-                  class="sales-ai__input"
-                  type="number"
-                  min="1"
-                  :value="candidate.quantity"
-                  @input="updateCandidate(index, { quantity: Number(($event.target as HTMLInputElement).value) })"
-                >
-              </td>
-              <td class="sales-ai__number" data-label="单价">
-                <input
-                  class="sales-ai__input"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  :value="candidate.sellPrice"
-                  @input="updateCandidate(index, { sellPrice: Number(($event.target as HTMLInputElement).value) })"
-                >
-              </td>
-              <td class="sales-ai__number" data-label="小计">
-                {{ formatMoney(candidate.itemRevenue) }}
-              </td>
-              <td data-label="异常">
-                <StatusBadge :label="candidate.issue || '已确认'" :tone="candidate.issue ? 'danger' : 'success'" />
-              </td>
-              <td data-label="操作" class="sales-ai__action-cell">
-                <button type="button" class="sales-ai__remove" @click="removeCandidate(index)">
-                  删除
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="sales-ai__toolbar">
-        <AppButton variant="secondary" @click="addManualCandidate">
-          + 手动添加商品
-        </AppButton>
-      </div>
-
-      <footer class="sales-ai__footer">
-        <p>
-          合计 <strong>{{ formatMoney(totalAmount) }}</strong>
-        </p>
-        <div class="sales-ai__actions">
-          <AppButton
-            variant="secondary"
-            :disabled="props.recognizing || (props.candidates.length === 0 && !props.images?.length)"
-            @click="emit('clear')"
+    <template #rows>
+      <tr v-for="(candidate, index) in props.candidates" :key="candidate.id">
+        <td data-label="识别名称" class="ai-recognition__name-cell">{{ candidate.rawName }}</td>
+        <td data-label="匹配商品" class="ai-recognition__product-cell">
+          <span class="ai-recognition__matched-name">
+            {{ candidate.productName || '未匹配商品' }}
+          </span>
+          <ProductSearchSelect
+            :model-value="candidate.productId"
+            :products="props.products"
+            placeholder="选择商品"
+            @update:model-value="(value: string) => updateCandidate(index, { productId: value })"
+          />
+        </td>
+        <td data-label="库存" class="ai-recognition__number">{{ formatQuantity(productById(candidate.productId)?.currentStock) }}</td>
+        <td data-label="置信度">
+          <StatusBadge :label="confidenceLabel(candidate.confidence)" :tone="confidenceTone(candidate.confidence)" />
+        </td>
+        <td class="ai-recognition__number" data-label="数量">
+          <input
+            class="ai-recognition__input"
+            type="number"
+            min="1"
+            :value="candidate.quantity"
+            @input="updateCandidate(index, { quantity: Number(($event.target as HTMLInputElement).value) })"
           >
-            一键清空
-          </AppButton>
-          <AppButton :loading="props.submitting" :disabled="props.candidates.length === 0" @click="confirmOrder">
-            人工确认并创建销售单
-          </AppButton>
-        </div>
-      </footer>
-
-      <div
-        v-if="previewImage"
-        class="sales-ai__image-lightbox"
-        role="dialog"
-        aria-modal="true"
-        :aria-label="`预览 ${previewImage.fileName}`"
-        @click.self="closeImagePreview"
-      >
-        <div class="sales-ai__image-panel">
-          <header class="sales-ai__image-header">
-            <strong>{{ previewImage.fileName }}</strong>
-            <button type="button" aria-label="关闭预览" @click="closeImagePreview">
-              关闭
-            </button>
-          </header>
-          <img :src="previewImage.previewUrl" :alt="previewImage.fileName">
-        </div>
-      </div>
-    </div>
-  </AppDialog>
+        </td>
+        <td class="ai-recognition__number" data-label="单价">
+          <input
+            class="ai-recognition__input"
+            type="number"
+            min="0"
+            step="0.01"
+            :value="candidate.sellPrice"
+            @input="updateCandidate(index, { sellPrice: Number(($event.target as HTMLInputElement).value) })"
+          >
+        </td>
+        <td class="ai-recognition__number" data-label="小计">
+          {{ formatMoney(candidate.itemRevenue) }}
+        </td>
+        <td data-label="异常">
+          <StatusBadge :label="candidate.issue || '已确认'" :tone="candidate.issue ? 'danger' : 'success'" />
+        </td>
+        <td data-label="操作" class="ai-recognition__action-cell">
+          <button type="button" class="ai-recognition__remove" @click="removeCandidate(index)">
+            删除
+          </button>
+        </td>
+      </tr>
+    </template>
+  </AiRecognitionDialog>
 </template>
 
 <style scoped>
-.sales-ai {
-  min-width: 0;
-  display: grid;
-  gap: var(--space-4);
-}
-
-.sales-ai__top,
-.sales-ai__actions {
-  min-width: 0;
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.sales-ai__upload {
-  min-width: 0;
-  flex: 1 1 auto;
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(360px, 0.95fr);
-  align-items: start;
-  gap: var(--space-3);
-  border: 1px dashed var(--color-border);
-  border-radius: var(--radius-2);
-  padding: var(--space-3);
-  background: var(--color-surface-subtle);
-}
-
-.sales-ai__upload-main,
-.sales-ai__preview-area {
-  min-width: 0;
-  display: grid;
-  gap: var(--space-2);
-}
-
-.sales-ai__upload span,
-.sales-ai__field span {
-  color: var(--color-text-muted);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.sales-ai__upload input {
-  min-width: 0;
-  max-width: 100%;
-  min-height: 44px;
-}
-
-.sales-ai__upload strong {
-  color: var(--color-text-muted);
-  font-size: 13px;
-}
-
-.sales-ai__previews {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2);
-}
-
-.sales-ai__preview {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
-  gap: var(--space-2);
-  align-items: center;
-  padding: var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-2);
-  background: var(--color-surface);
-  cursor: zoom-in;
-}
-
-.sales-ai__preview:hover,
-.sales-ai__preview:focus-visible {
-  border-color: var(--color-primary);
-  outline: none;
-}
-
-.sales-ai__preview img {
-  width: 56px;
-  height: 56px;
-  border-radius: calc(var(--radius-2) - 2px);
-  object-fit: cover;
-  background: var(--color-surface-subtle);
-}
-
-.sales-ai__preview div {
-  min-width: 0;
-  display: grid;
-  gap: 6px;
-}
-
-.sales-ai__preview strong {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--color-text);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sales-ai__preview button {
-  width: fit-content;
-  min-height: 28px;
-  border: 0;
-  padding: 0;
-  background: transparent;
-  color: var(--color-danger);
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.sales-ai__preview button:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
 .sales-ai__grid {
   min-width: 0;
   display: grid;
@@ -469,6 +232,12 @@ function confirmOrder() {
   gap: 6px;
 }
 
+.sales-ai__field span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .sales-ai__select-control {
   width: 100%;
   min-width: 0;
@@ -479,368 +248,13 @@ function confirmOrder() {
   background: var(--color-surface);
 }
 
-.sales-ai__scroll {
-  max-width: 100%;
-  overflow-x: auto;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-2);
-}
-
-.sales-ai__table {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;
-}
-
-.sales-ai__table th,
-.sales-ai__table td {
-  height: 52px;
-  padding: 0 var(--space-2);
-  border-bottom: 1px solid var(--color-border);
-  text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.sales-ai__table th {
-  background: var(--color-surface-subtle);
-  color: var(--color-text-muted);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.sales-ai__number {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.sales-ai__raw-col {
-  width: 24%;
-}
-
-.sales-ai__product-col {
-  width: 24%;
-}
-
-.sales-ai__table td.sales-ai__product-cell {
-  overflow: visible;
-  position: relative;
-  z-index: 1;
-}
-
-.sales-ai__table td.sales-ai__product-cell:focus-within {
-  z-index: 20;
-}
-
-.sales-ai__badge-col {
-  width: 72px;
-}
-
-.sales-ai__select,
-.sales-ai__input {
-  width: 100%;
-  min-width: 0;
-  min-height: 38px;
-  box-sizing: border-box;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-2);
-  padding: 0 var(--space-2);
-  background: var(--color-surface);
-}
-
-.sales-ai__matched-name {
-  display: none;
-}
-
-.sales-ai__input {
-  max-width: 82px;
-  text-align: right;
-}
-
-.sales-ai__empty {
-  color: var(--color-text-muted);
-  text-align: center;
-}
-
-.sales-ai__footer {
-  display: grid;
-  gap: var(--space-3);
-}
-
-.sales-ai__footer p {
-  margin: 0;
-  color: var(--color-text-muted);
-  text-align: right;
-}
-
-.sales-ai__footer strong {
-  color: var(--color-text);
-  font-size: 18px;
-}
-
-.sales-ai__error {
-  margin: 0;
-  color: var(--color-danger);
-  font-weight: 700;
-}
-
-.sales-ai__progress {
-  margin: 0;
-  border-radius: var(--radius-2);
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.sales-ai__toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-start;
-  gap: var(--space-2);
-}
-
-.sales-ai__action-col {
-  width: 72px;
-}
-
-.sales-ai__action-cell {
-  text-align: center;
-}
-
-.sales-ai__remove {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-2);
-  padding: 6px 10px;
-  background: var(--color-surface);
-  color: var(--color-danger);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.sales-ai__remove:hover {
-  border-color: var(--color-danger);
-  background: var(--color-danger-soft, #fef2f2);
-}
-
-.sales-ai__image-lightbox {
-  position: fixed;
-  inset: 0;
-  z-index: 1200;
-  display: grid;
-  place-items: center;
-  padding: var(--space-5);
-  background: rgba(15, 23, 42, 0.72);
-}
-
-.sales-ai__image-panel {
-  width: min(920px, 100%);
-  max-height: min(82vh, 920px);
-  min-width: 0;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  overflow: hidden;
-  border-radius: var(--radius-3);
-  background: var(--color-surface);
-  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.32);
-}
-
-.sales-ai__image-header {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.sales-ai__image-header strong {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--color-text);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sales-ai__image-header button {
-  min-height: 36px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-2);
-  padding: 0 var(--space-3);
-  background: var(--color-surface);
-  color: var(--color-text);
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.sales-ai__image-panel img {
-  width: 100%;
-  max-height: calc(min(82vh, 920px) - 62px);
-  display: block;
-  object-fit: contain;
-  background: var(--color-surface-subtle);
-}
-
-tbody tr:last-child td {
-  border-bottom: 0;
-}
-
 @media (max-width: 760px) {
-  .sales-ai__top,
-  .sales-ai__actions {
-    min-width: 0;
-    display: grid;
-    grid-template-columns: 1fr;
-    align-items: stretch;
-    justify-content: stretch;
-  }
-
-  .sales-ai__upload,
-  .sales-ai__top :deep(.app-button),
-  .sales-ai__actions :deep(.app-button) {
-    width: 100%;
-  }
-
-  .sales-ai__upload {
-    grid-template-columns: 1fr;
-  }
-
   .sales-ai__grid {
-    grid-template-columns: 1fr;
-  }
-
-  .sales-ai__previews {
     grid-template-columns: 1fr;
   }
 
   .sales-ai__select-control {
     min-height: var(--control-height-mobile);
-  }
-
-  .sales-ai__scroll {
-    overflow-x: visible;
-    border: 0;
-  }
-
-  .sales-ai__table,
-  .sales-ai__table tbody,
-  .sales-ai__table tr,
-  .sales-ai__table td {
-    display: block;
-  }
-
-  .sales-ai__table {
-    table-layout: auto;
-  }
-
-  .sales-ai__table thead {
-    display: none;
-  }
-
-  .sales-ai__table tbody {
-    display: grid;
-    gap: var(--space-3);
-  }
-
-  .sales-ai__table tr {
-    width: 100%;
-    min-width: 0;
-    box-sizing: border-box;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-3) var(--space-2);
-    padding: var(--space-3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-2);
-    background: var(--color-surface);
-  }
-
-  .sales-ai__table td {
-    min-width: 0;
-    height: auto;
-    padding: 0;
-    border-bottom: 0;
-    white-space: normal;
-    overflow: visible;
-  }
-
-  .sales-ai__table td::before {
-    content: attr(data-label);
-    display: block;
-    margin-bottom: 4px;
-    color: var(--color-text-muted);
-    font-size: 11px;
-    font-weight: 800;
-  }
-
-  .sales-ai__number {
-    text-align: left;
-  }
-
-  .sales-ai__name-cell,
-  .sales-ai__product-cell,
-  .sales-ai__empty {
-    grid-column: 1 / -1;
-  }
-
-  .sales-ai__action-cell {
-    grid-column: 1 / -1;
-    text-align: left;
-  }
-
-  .sales-ai__remove {
-    width: 100%;
-  }
-
-  .sales-ai__name-cell {
-    line-height: 1.45;
-  }
-
-  .sales-ai__matched-name {
-    display: none;
-  }
-
-  .sales-ai__select,
-  .sales-ai__input {
-    min-height: var(--control-height-mobile);
-  }
-
-  .sales-ai__table {
-    min-width: 0;
-    max-width: 100%;
-  }
-
-  .sales-ai__input {
-    max-width: none;
-  }
-
-  .sales-ai__footer {
-    position: sticky;
-    bottom: calc(-1 * var(--space-4));
-    margin: 0 calc(-1 * var(--space-4));
-    padding: var(--space-3) var(--space-4) calc(var(--space-3) + env(safe-area-inset-bottom));
-    border-top: 1px solid var(--color-border);
-    background: var(--color-surface);
-  }
-
-  .sales-ai__footer p {
-    text-align: left;
-  }
-
-  .sales-ai__image-lightbox {
-    padding: var(--space-3);
-  }
-
-  .sales-ai__image-panel {
-    max-height: 86vh;
-  }
-
-  .sales-ai__image-panel img {
-    max-height: calc(86vh - 58px);
   }
 }
 </style>

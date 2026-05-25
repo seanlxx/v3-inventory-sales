@@ -1,4 +1,5 @@
 import type { ApiError } from '~/types/api'
+import type { AiRecognitionImage, AiRecognitionPromptOptions } from '~/composables/useAiRecognition'
 import type { Product } from '~/types/product'
 import type {
   SalesAiCandidate,
@@ -8,15 +9,12 @@ import type {
   SalesOrderPayload,
   SalesOrderType
 } from '~/types/sale'
+import { AI_PRODUCT_MATCHING_RULES, extractAiJsonObject, roundAiMoney, useAiRecognition } from '~/composables/useAiRecognition'
 import { buildProductCatalogPrompt, matchProductByName, normalizeProductName } from '~/utils/product-match'
 
-type SalesAiImage = {
-  id: string
-  imageBase64: string
-  mimeType: string
-  fileName: string
-  previewUrl: string
-}
+type SalesAiImage = AiRecognitionImage
+
+const AI_RECOGNITION_MAX_TOKENS = 2200
 
 const defaultFilters: SalesListFilters = {
   month: new Date().toISOString().slice(0, 7),
@@ -55,42 +53,8 @@ function matchesSearch(order: SalesOrder, search: string) {
   return `${order.id} ${order.note || ''} ${order.machineId} ${items}`.toLowerCase().includes(keyword)
 }
 
-function readFileAsBase64(file: File) {
-  return new Promise<{ imageBase64: string; mimeType: string; previewUrl: string }>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const value = String(reader.result || '')
-      resolve({
-        imageBase64: value.includes(',') ? value.split(',').pop() || '' : value,
-        mimeType: file.type || 'image/jpeg',
-        previewUrl: value
-      })
-    }
-    reader.onerror = () => reject(reader.error || new Error('读取图片失败'))
-    reader.readAsDataURL(file)
-  })
-}
-
-function extractJsonObject(text: string) {
-  const start = text.indexOf('{')
-  const end = text.lastIndexOf('}')
-  if (start === -1 || end === -1 || end <= start) return null
-  try {
-    return JSON.parse(text.slice(start, end + 1)) as { items?: Array<Record<string, unknown>> }
-  } catch {
-    return null
-  }
-}
-
-function streamError(message: string): ApiError {
-  return {
-    code: 'UNKNOWN_ERROR',
-    message
-  }
-}
-
 function roundMoney(value: number) {
-  return Math.round((Number(value) || 0) * 100) / 100
+  return roundAiMoney(value)
 }
 
 function candidateRevenue(candidate: SalesAiCandidate) {
@@ -186,9 +150,23 @@ function activeProducts(products: readonly Product[]) {
   return products.filter(product => product.status !== 'archived')
 }
 
+function buildSalesRecognitionPrompt(options: AiRecognitionPromptOptions & {
+  catalog: string
+}) {
+  return [
+    `从 ${options.totalImageCount} 张截图中识别销售商品明细，合并重复商品数量，返回 {"items":[{"rawName":"截图原文","productId":"匹配到的商品 id 或空字符串","productName":"匹配到的商品名","quantity":数量,"sellPrice":销售单价,"itemRevenue":小计}]}。`,
+    '销售规则：quantity 是售出库存数量；sellPrice 是单个库存单位销售价；itemRevenue 是该行销售小计。金额单位是人民币元，只返回数字。',
+    '只返回截图中真实存在的商品行；优惠、订单号、支付方式、合计行不是商品。',
+    '同一批图片中如果出现多个同样商品，返回前先合并成一行：quantity 相加，itemRevenue 相加，sellPrice=itemRevenue/quantity。',
+    ...AI_PRODUCT_MATCHING_RULES,
+    '',
+    options.catalog
+  ].join('\n')
+}
+
 export function useSales() {
   const { request } = useApi()
-  const config = useRuntimeConfig()
+  const aiRecognition = useAiRecognition()
   const toastStore = useToastStore()
 
   const orders = shallowRef<SalesOrder[]>([])
@@ -302,14 +280,7 @@ export function useSales() {
 
   async function saveSalesImages(files: File[] | File) {
     const nextFiles = Array.isArray(files) ? files : [files]
-    const images = await Promise.all(nextFiles.map(async (file, index) => {
-      const image = await readFileAsBase64(file)
-      return {
-        ...image,
-        id: `${Date.now()}-${index}-${file.name}`,
-        fileName: file.name
-      }
-    }))
+    const images = await aiRecognition.readImageFiles(nextFiles)
     salesImages.value = [...salesImages.value, ...images]
     return salesImages.value
   }
@@ -327,59 +298,6 @@ export function useSales() {
     aiCandidates.value = []
     aiError.value = null
     aiProgress.value = ''
-  }
-
-  async function requestAiStream(body: Record<string, unknown>, onDelta: (text: string) => void) {
-    const authStore = useAuthStore()
-    authStore.initialize()
-    const apiBase = String(config.public.apiBase || '/api').replace(/\/$/, '')
-    const response = await fetch(`${apiBase}/ai-proxy?stream=1`, {
-      method: 'POST',
-      headers: {
-        Accept: 'text/event-stream',
-        'Content-Type': 'application/json',
-        ...(authStore.token ? { 'X-VM-Session': authStore.token } : {})
-      },
-      body: JSON.stringify(body)
-    })
-
-    if (!response.ok || !response.body) {
-      const data = await response.json().catch(() => null) as { error?: string; message?: string } | null
-      throw streamError(data?.message || data?.error || `AI 请求失败：${response.status}`)
-    }
-
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder('utf-8')
-    let buffered = ''
-    let finalText = ''
-
-    while (true) {
-      const { value, done } = await reader.read()
-      if (done) break
-      buffered += decoder.decode(value, { stream: true })
-
-      let index = buffered.indexOf('\n\n')
-      while (index !== -1) {
-        const rawEvent = buffered.slice(0, index)
-        buffered = buffered.slice(index + 2)
-        const lines = rawEvent.split('\n')
-        const event = lines.find(line => line.startsWith('event:'))?.slice(6).trim() || 'message'
-        const dataLine = lines.find(line => line.startsWith('data:'))
-        if (dataLine) {
-          const data = JSON.parse(dataLine.slice(5).trim()) as { text?: string; error?: string }
-          if (event === 'delta' && data.text) {
-            onDelta(data.text)
-          } else if (event === 'done') {
-            finalText = data.text || finalText
-          } else if (event === 'error') {
-            throw streamError(data.error || 'AI 流式识别失败')
-          }
-        }
-        index = buffered.indexOf('\n\n')
-      }
-    }
-
-    return finalText
   }
 
   async function createOrder(type: SalesOrderType, payload: SalesOrderPayload) {
@@ -439,7 +357,13 @@ export function useSales() {
       clearSalesAiDraft()
       await Promise.all([loadOrders(), loadProducts()])
       const firstSavedOrder = savedOrders[0]
-      if (!firstSavedOrder) throw streamError('销售单创建失败，请重试')
+      if (!firstSavedOrder) {
+        const createError: ApiError = {
+          code: 'UNKNOWN_ERROR',
+          message: '销售单创建失败，请重试'
+        }
+        throw createError
+      }
       return normalizeOrder(firstSavedOrder)
     } catch (caught) {
       error.value = normalizeApiError(caught)
@@ -477,39 +401,47 @@ export function useSales() {
     }
     recognizing.value = true
     aiError.value = null
-    aiProgress.value = '正在连接 AI，准备上传图片...'
+    aiProgress.value = `正在连接 AI，准备上传 ${salesImages.value.length} 张图片...`
     try {
       const catalog = buildProductCatalogPrompt(activeProducts(products.value))
-      const userPrompt = [
-        `从 ${salesImages.value.length} 张截图中识别销售商品明细，合并重复商品数量，返回 {"items":[{"rawName":"截图原文","productId":"匹配到的商品 id 或空字符串","productName":"匹配到的商品名","quantity":数量,"sellPrice":销售单价,"itemRevenue":小计}]}。`,
-        '匹配规则：尽量在下面给出的商品清单中找最接近的一项，返回它的 productId；若清单中没有相似项，productId 留空字符串，rawName 保留截图原文。',
-        '注意名称同义：如"毫升=ml"、"克=g"、"瓶装"可省略、"1L=1000ml"。',
-        'AI 结果只用于人工确认，不能自动入账。',
-        '',
-        catalog
-      ].join('\n')
-      let receivedLength = 0
-      const text = await requestAiStream({
-        images: salesImages.value.map(image => ({
-          imageBase64: image.imageBase64,
-          mimeType: image.mimeType
-        })),
-        maxTokens: 2200,
-        stream: true,
-        systemPrompt: '你是销售截图识别助手。只返回 JSON，不要解释。',
-        userPrompt
-      }, (delta) => {
-        receivedLength += delta.length
-        aiProgress.value = `AI 正在识别，已接收 ${receivedLength} 个字符...`
+      const recognizedCandidates: SalesAiCandidate[] = []
+      const { warnings } = await aiRecognition.recognizeImageBatches<{ items?: Array<Record<string, unknown>> }>({
+        images: salesImages.value,
+        batchSize: salesImages.value.length,
+        maxTokens: AI_RECOGNITION_MAX_TOKENS,
+        systemPrompt: '你是销售截图识别助手。只返回合法 JSON，不要 Markdown，不要解释。',
+        buildUserPrompt: (promptOptions: AiRecognitionPromptOptions) => buildSalesRecognitionPrompt({
+          ...promptOptions,
+          catalog
+        }),
+        parseResult: text => extractAiJsonObject<{ items?: Array<Record<string, unknown>> }>(text),
+        onProgress: message => {
+          aiProgress.value = message
+        },
+        onBatchResult: (parsed) => {
+          const batchCandidates = normalizeAiCandidates(parsed.items || [], products.value)
+          if (batchCandidates.length === 0) return false
+          recognizedCandidates.push(...batchCandidates)
+          aiCandidates.value = mergeAiCandidates(recognizedCandidates)
+          return true
+        }
       })
-      aiProgress.value = 'AI 识别完成，正在整理结果...'
-      const parsed = extractJsonObject(text || '')
-      aiCandidates.value = normalizeAiCandidates(parsed?.items || [], products.value)
+      aiCandidates.value = mergeAiCandidates(recognizedCandidates)
       if (aiCandidates.value.length === 0) {
         aiError.value = {
           code: 'UNKNOWN_ERROR',
-          message: 'AI 未识别出可确认的销售明细，请手动录入'
+          message: warnings.length > 0
+            ? `AI 未识别出可确认的销售明细：${warnings.join('；')}。请手动录入`
+            : 'AI 未识别出可确认的销售明细，请手动录入'
         }
+      } else if (warnings.length > 0) {
+        aiError.value = {
+          code: 'UNKNOWN_ERROR',
+          message: `部分图片未完成识别：${warnings.join('；')}。已保留可确认的明细，可手动补录缺失项`
+        }
+        aiProgress.value = `AI 已整理出 ${aiCandidates.value.length} 条明细，请检查未完成批次`
+      } else {
+        aiProgress.value = `AI 识别完成，已整理出 ${aiCandidates.value.length} 条明细`
       }
       return aiCandidates.value
     } catch (caught) {

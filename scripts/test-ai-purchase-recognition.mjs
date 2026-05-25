@@ -6,19 +6,21 @@ import { fileURLToPath } from 'node:url';
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const root = dirname(scriptDir);
 
+const sharedComposable = readFileSync(join(root, 'frontend', 'app', 'composables', 'useAiRecognition.ts'), 'utf8');
 const purchasesComposable = readFileSync(join(root, 'frontend', 'app', 'composables', 'usePurchases.ts'), 'utf8');
 const reviewDialog = readFileSync(join(root, 'frontend', 'app', 'components', 'purchases', 'PurchaseAiReviewDialog.vue'), 'utf8');
+const sharedDialog = readFileSync(join(root, 'frontend', 'app', 'components', 'ai', 'AiRecognitionDialog.vue'), 'utf8');
 const productSearchSelect = readFileSync(join(root, 'frontend', 'app', 'components', 'common', 'ProductSearchSelect.vue'), 'utf8');
 
 assert.ok(
-  purchasesComposable.includes('/ai-proxy?stream=1'),
-  'purchase AI recognition should call the server-side AI proxy stream'
+  sharedComposable.includes('/ai-proxy?stream=1'),
+  'purchase AI recognition should use the shared server-side AI proxy stream'
 );
 
 assert.match(
-  purchasesComposable,
+  sharedComposable,
   /AI 结果只用于人工确认，不能自动入账/,
-  'purchase AI prompt must keep AI results out of automatic posting'
+  'shared AI prompt rules must keep AI results out of automatic posting'
 );
 
 assert.match(
@@ -41,30 +43,30 @@ assert.match(
 
 assert.match(
   purchasesComposable,
-  /normalizeAiCandidates\(parsed\?\.items \|\| \[\], products\.value\)/,
+  /normalizeAiCandidates\(parsed\.items \|\| \[\], products\.value\)/,
   'purchase AI candidates should be normalized against the local product list'
 );
 
 assert.match(
-  purchasesComposable,
+  sharedComposable,
   /requestAiStream/,
   'purchase AI recognition should use streaming progress like sales recognition'
 );
 
 assert.match(
   purchasesComposable,
-  /images: purchaseImages\.value\.map/,
-  'purchase AI recognition should send multiple selected images to the AI proxy'
+  /recognizeImageBatches/,
+  'purchase AI recognition should send selected images through the shared batch recognizer'
 );
 
 assert.match(
-  reviewDialog,
+  sharedDialog,
   /multiple @change="handleFileChange"/,
   'purchase AI review dialog should support selecting multiple images at once'
 );
 
 assert.match(
-  reviewDialog,
+  sharedDialog,
   /onImage: \(file: File\) => emit\('imageSelected', \[file\]\)/,
   'purchase AI review dialog should append pasted images to the recognition draft'
 );
@@ -83,7 +85,7 @@ assert.match(
 
 assert.match(
   purchasesComposable,
-  /aiMetadata\.value = normalizeAiMetadata\(parsed\)/,
+  /recognizedMetadata = mergeAiMetadata\(recognizedMetadata, normalizeAiMetadata\(parsed\)\)/,
   'purchase AI metadata should be normalized from the recognition result'
 );
 
@@ -100,7 +102,7 @@ assert.match(
 );
 
 assert.match(
-  reviewDialog,
+  sharedDialog,
   /progressMessage/,
   'purchase AI review dialog should display recognition progress'
 );
