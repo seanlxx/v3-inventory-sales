@@ -75,37 +75,25 @@ function roundMoney(value: number) {
   return roundAiMoney(value)
 }
 
-function mergeCandidateKey(candidate: PurchaseAiCandidate) {
-  if (candidate.productId) return `product:${candidate.productId}`
+function candidateSortKey(candidate: PurchaseAiCandidate) {
   const fallbackName = candidate.rawName === '手动添加' ? '' : candidate.rawName
   const normalizedName = normalizeProductName(candidate.productName || fallbackName)
-  return normalizedName ? `new:${normalizedName}` : candidate.id
+  if (candidate.productId) return `0:${normalizedName || candidate.productId}:${candidate.productId}`
+  if (normalizedName) return `1:${normalizedName}`
+  return '2:manual'
 }
 
-function mergeAiCandidates(candidates: PurchaseAiCandidate[]) {
-  const byKey = new Map<string, PurchaseAiCandidate>()
-  for (const candidate of candidates) {
-    const key = mergeCandidateKey(candidate)
-    const existing = byKey.get(key)
-    if (!existing) {
-      byKey.set(key, { ...candidate })
-      continue
-    }
-
-    const quantity = existing.quantity + candidate.quantity
-    const totalPrice = roundMoney(existing.totalPrice + candidate.totalPrice)
-    const rawNames = new Set(existing.rawName.split(' / ').concat(candidate.rawName).filter(Boolean))
-    byKey.set(key, {
-      ...existing,
-      rawName: Array.from(rawNames).join(' / '),
-      quantity,
-      unitPrice: roundMoney(totalPrice / Math.max(quantity, 1)),
-      totalPrice,
-      confidence: existing.confidence === 'high' && candidate.confidence === 'high' ? 'high' : 'medium',
-      issue: existing.issue || candidate.issue
-    })
-  }
-  return Array.from(byKey.values())
+function sortAiCandidates(candidates: PurchaseAiCandidate[]) {
+  return candidates
+    .map((candidate, index) => ({
+      candidate,
+      index,
+      sortKey: candidateSortKey(candidate)
+    }))
+    .sort((left, right) =>
+      left.sortKey.localeCompare(right.sortKey, 'zh-CN', { numeric: true }) || left.index - right.index
+    )
+    .map(item => item.candidate)
 }
 
 function buildPurchaseRecognitionPrompt(options: {
@@ -116,7 +104,7 @@ function buildPurchaseRecognitionPrompt(options: {
   catalog: string
 }) {
   const batchLabel = options.batchCount > 1
-    ? `这是第 ${options.batchIndex + 1}/${options.batchCount} 批，本批 ${options.batchImageCount} 张，共 ${options.totalImageCount} 张。只识别本批图片中真实存在的商品行，最终系统会自动合并各批结果。`
+    ? `这是第 ${options.batchIndex + 1}/${options.batchCount} 批，本批 ${options.batchImageCount} 张，共 ${options.totalImageCount} 张。只识别本批图片中真实存在的商品行，最终系统会把同商品排列在一起供人工核对。`
     : `从 ${options.totalImageCount} 张截图中识别进货日期、来源和商品明细。`
   return [
     `${batchLabel}返回 {"date":"YYYY-MM-DD 或空字符串","source":"拼多多/线下进货单/识别到的供应商","note":"关键依据简述","items":[{"rawName":"截图原文","productId":"匹配到的商品 id 或空字符串","productName":"匹配到的商品名","quantity":入库数量,"unitPrice":单个库存单位进货价,"totalPrice":该行实际进货总金额,"sellPrice":新商品建议售价或 0}]}。`,
@@ -125,7 +113,7 @@ function buildPurchaseRecognitionPrompt(options: {
     '拼多多订单截图规则：source 返回“拼多多”；date 优先用“发货时间”，没有发货时间再用下单时间/拼单时间；真实进货总价优先取“自动确认收货并付款¥...”或“实付/应付款”里的实际付款金额，不能用商品标价、合计拼单价、优惠前金额；例如“自动确认收货并付款¥106.5”应作为 totalPrice。',
     '拼多多规格规则：如果规格或标题写“430g*24罐”“24罐”“x24”，购买数量 x1，则 quantity=24；若购买 x2，则 quantity=48；unitPrice=totalPrice/quantity。',
     '只返回截图中真实存在的商品行；优惠、运费、订单号、快递号不是商品。',
-    '同一个批次中如果出现多个同样商品，返回前先合并成一行：quantity 相加，totalPrice 相加，unitPrice=totalPrice/quantity。',
+    '同一个批次中如果出现多个同样商品，不要合并；按截图原始明细逐行返回，系统会把同商品排列在一起供人工核对。',
     '如果识别到商品但库内没有同样商品，productId 必须留空，productName 返回可创建的新商品名称，sellPrice 不确定时返回 0，后续由人工填写售价。',
     ...AI_PRODUCT_MATCHING_RULES,
     '',
@@ -180,7 +168,7 @@ function normalizeAiCandidates(rawItems: Array<Record<string, unknown>>, product
       issue: matchedProduct ? '' : '新商品，需填写售价'
     }
   })
-  return mergeAiCandidates(candidates)
+  return sortAiCandidates(candidates)
 }
 
 export function usePurchases() {
@@ -378,13 +366,13 @@ export function usePurchases() {
 
           recognizedCandidates.push(...batchCandidates)
           aiMetadata.value = recognizedMetadata
-          aiCandidates.value = mergeAiCandidates(recognizedCandidates)
+          aiCandidates.value = sortAiCandidates(recognizedCandidates)
           return true
         }
       })
 
       aiMetadata.value = recognizedMetadata
-      aiCandidates.value = mergeAiCandidates(recognizedCandidates)
+      aiCandidates.value = sortAiCandidates(recognizedCandidates)
       if (aiCandidates.value.length === 0) {
         aiError.value = {
           code: 'UNKNOWN_ERROR',
@@ -412,7 +400,7 @@ export function usePurchases() {
   }
 
   function setAiCandidates(nextCandidates: PurchaseAiCandidate[]) {
-    aiCandidates.value = mergeAiCandidates(nextCandidates)
+    aiCandidates.value = sortAiCandidates(nextCandidates)
   }
 
   return {

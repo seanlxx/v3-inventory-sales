@@ -15,9 +15,11 @@ const emit = defineEmits<{
 const searchQuery = shallowRef('')
 const isOpen = shallowRef(false)
 const selectRef = shallowRef<HTMLDivElement | null>(null)
+const dropdownRef = shallowRef<HTMLDivElement | null>(null)
 const dropdownTop = shallowRef(0)
 const dropdownLeft = shallowRef(0)
 const dropdownWidth = shallowRef(0)
+let trackingFrame = 0
 
 const filteredProducts = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
@@ -47,12 +49,27 @@ const dropdownStyle = computed(() => ({
 }))
 
 function updateDropdownPosition() {
-  if (!isOpen.value) return
   const rect = selectRef.value?.getBoundingClientRect()
   if (!rect) return
   dropdownTop.value = rect.bottom + 4
   dropdownLeft.value = rect.left
   dropdownWidth.value = rect.width
+}
+
+function trackDropdownPosition() {
+  updateDropdownPosition()
+  if (!isOpen.value) return
+  trackingFrame = window.requestAnimationFrame(trackDropdownPosition)
+}
+
+function startDropdownTracking() {
+  window.cancelAnimationFrame(trackingFrame)
+  trackDropdownPosition()
+}
+
+function stopDropdownTracking() {
+  window.cancelAnimationFrame(trackingFrame)
+  trackingFrame = 0
 }
 
 function selectProduct(productId: string) {
@@ -67,29 +84,36 @@ function toggleDropdown() {
   if (isOpen.value) {
     nextTick(() => {
       updateDropdownPosition()
-      const input = selectRef.value?.querySelector('input')
+      const input = dropdownRef.value?.querySelector('input')
       input?.focus()
     })
   }
 }
 
 function handleClickOutside(event: MouseEvent) {
-  if (selectRef.value && !selectRef.value.contains(event.target as Node)) {
+  const target = event.target as Node
+  if (
+    selectRef.value &&
+    !selectRef.value.contains(target) &&
+    !dropdownRef.value?.contains(target)
+  ) {
     isOpen.value = false
     searchQuery.value = ''
   }
 }
 
+watch(isOpen, (open) => {
+  if (open) startDropdownTracking()
+  else stopDropdownTracking()
+})
+
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
-  window.addEventListener('resize', updateDropdownPosition)
-  window.addEventListener('scroll', updateDropdownPosition, true)
 })
 
 onUnmounted(() => {
+  stopDropdownTracking()
   document.removeEventListener('click', handleClickOutside)
-  window.removeEventListener('resize', updateDropdownPosition)
-  window.removeEventListener('scroll', updateDropdownPosition, true)
 })
 </script>
 
@@ -116,35 +140,42 @@ onUnmounted(() => {
       </svg>
     </button>
 
-    <div v-if="isOpen" class="product-search-select__dropdown" :style="dropdownStyle">
-      <div class="product-search-select__search">
-        <input
-          v-model="searchQuery"
-          type="text"
-          placeholder="搜索商品名称..."
-          class="product-search-select__input"
-          @click.stop
-        >
+    <Teleport to="body">
+      <div
+        v-if="isOpen"
+        ref="dropdownRef"
+        class="product-search-select__dropdown"
+        :style="dropdownStyle"
+      >
+        <div class="product-search-select__search">
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="搜索商品名称..."
+            class="product-search-select__input"
+            @click.stop
+          >
+        </div>
+        <div v-if="hasNoSearchResults" class="product-search-select__empty">
+          未找到匹配商品，可从全部商品中选择
+        </div>
+        <div v-if="visibleProducts.length > 0" class="product-search-select__list">
+          <button
+            v-for="product in visibleProducts"
+            :key="product.id"
+            type="button"
+            class="product-search-select__option"
+            :class="{ 'product-search-select__option--selected': product.id === props.modelValue }"
+            @click="selectProduct(product.id)"
+          >
+            {{ product.name }}
+          </button>
+        </div>
+        <div v-else class="product-search-select__empty">
+          商品库暂无可选商品
+        </div>
       </div>
-      <div v-if="hasNoSearchResults" class="product-search-select__empty">
-        未找到匹配商品，可从全部商品中选择
-      </div>
-      <div v-if="visibleProducts.length > 0" class="product-search-select__list">
-        <button
-          v-for="product in visibleProducts"
-          :key="product.id"
-          type="button"
-          class="product-search-select__option"
-          :class="{ 'product-search-select__option--selected': product.id === props.modelValue }"
-          @click="selectProduct(product.id)"
-        >
-          {{ product.name }}
-        </button>
-      </div>
-      <div v-else class="product-search-select__empty">
-        商品库暂无可选商品
-      </div>
-    </div>
+    </Teleport>
   </div>
 </template>
 
@@ -198,6 +229,7 @@ onUnmounted(() => {
 .product-search-select__dropdown {
   position: fixed;
   z-index: 1000;
+  min-width: 0;
   display: grid;
   gap: 0;
   border: 1px solid var(--color-border);

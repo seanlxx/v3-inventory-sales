@@ -63,44 +63,36 @@ function candidateRevenue(candidate: SalesAiCandidate) {
   return Math.abs(Number(candidate.sellPrice) || 0) * Math.abs(Number(candidate.quantity) || 0)
 }
 
-function mergeCandidateKey(candidate: SalesAiCandidate) {
-  if (candidate.productId) return `product:${candidate.productId}`
-  const fallbackName = candidate.rawName === '手动添加' ? '' : candidate.rawName
-  const normalizedName = normalizeProductName(candidate.productName || fallbackName)
-  return normalizedName ? `new:${normalizedName}` : candidate.id
+function normalizeCandidateAmounts(candidate: SalesAiCandidate): SalesAiCandidate {
+  const quantity = Math.abs(Number(candidate.quantity) || 0)
+  const itemRevenue = roundMoney(candidateRevenue(candidate))
+  return {
+    ...candidate,
+    quantity,
+    sellPrice: roundMoney(itemRevenue / Math.max(quantity, 1)),
+    itemRevenue
+  }
 }
 
-function mergeAiCandidates(candidates: SalesAiCandidate[]) {
-  const byKey = new Map<string, SalesAiCandidate>()
-  for (const candidate of candidates) {
-    const key = mergeCandidateKey(candidate)
-    const existing = byKey.get(key)
-    if (!existing) {
-      const quantity = Math.abs(Number(candidate.quantity) || 0)
-      const itemRevenue = roundMoney(candidateRevenue(candidate))
-      byKey.set(key, {
-        ...candidate,
-        quantity,
-        sellPrice: roundMoney(itemRevenue / Math.max(quantity, 1)),
-        itemRevenue
-      })
-      continue
-    }
+function candidateSortKey(candidate: SalesAiCandidate) {
+  const fallbackName = candidate.rawName === '手动添加' ? '' : candidate.rawName
+  const normalizedName = normalizeProductName(candidate.productName || fallbackName)
+  if (candidate.productId) return `0:${normalizedName || candidate.productId}:${candidate.productId}`
+  if (normalizedName) return `1:${normalizedName}`
+  return '2:manual'
+}
 
-    const quantity = Math.abs(Number(existing.quantity) || 0) + Math.abs(Number(candidate.quantity) || 0)
-    const itemRevenue = roundMoney(candidateRevenue(existing) + candidateRevenue(candidate))
-    const rawNames = new Set(existing.rawName.split(' / ').concat(candidate.rawName).filter(Boolean))
-    byKey.set(key, {
-      ...existing,
-      rawName: Array.from(rawNames).join(' / '),
-      quantity,
-      sellPrice: roundMoney(itemRevenue / Math.max(quantity, 1)),
-      itemRevenue,
-      confidence: existing.confidence === 'high' && candidate.confidence === 'high' ? 'high' : 'medium',
-      issue: existing.issue || candidate.issue
-    })
-  }
-  return Array.from(byKey.values())
+function sortAiCandidates(candidates: SalesAiCandidate[]) {
+  return candidates
+    .map((candidate, index) => ({
+      candidate: normalizeCandidateAmounts(candidate),
+      index,
+      sortKey: candidateSortKey(candidate)
+    }))
+    .sort((left, right) =>
+      left.sortKey.localeCompare(right.sortKey, 'zh-CN', { numeric: true }) || left.index - right.index
+    )
+    .map(item => item.candidate)
 }
 
 function normalizeAiCandidates(rawItems: Array<Record<string, unknown>>, products: readonly Product[]): SalesAiCandidate[] {
@@ -143,7 +135,7 @@ function normalizeAiCandidates(rawItems: Array<Record<string, unknown>>, product
       issue: matchedProduct ? '' : '未匹配商品'
     }
   })
-  return mergeAiCandidates(candidates)
+  return sortAiCandidates(candidates)
 }
 
 function activeProducts(products: readonly Product[]) {
@@ -154,10 +146,10 @@ function buildSalesRecognitionPrompt(options: AiRecognitionPromptOptions & {
   catalog: string
 }) {
   return [
-    `从 ${options.totalImageCount} 张截图中识别销售商品明细，合并重复商品数量，返回 {"items":[{"rawName":"截图原文","productId":"匹配到的商品 id 或空字符串","productName":"匹配到的商品名","quantity":数量,"sellPrice":销售单价,"itemRevenue":小计}]}。`,
+    `从 ${options.totalImageCount} 张截图中识别销售商品明细，不合并重复商品，返回 {"items":[{"rawName":"截图原文","productId":"匹配到的商品 id 或空字符串","productName":"匹配到的商品名","quantity":数量,"sellPrice":销售单价,"itemRevenue":小计}]}。`,
     '销售规则：quantity 是售出库存数量；sellPrice 是单个库存单位销售价；itemRevenue 是该行销售小计。金额单位是人民币元，只返回数字。',
     '只返回截图中真实存在的商品行；优惠、订单号、支付方式、合计行不是商品。',
-    '同一批图片中如果出现多个同样商品，返回前先合并成一行：quantity 相加，itemRevenue 相加，sellPrice=itemRevenue/quantity。',
+    '同一批图片中如果出现多个同样商品，不要合并；按截图原始明细逐行返回，系统会把同商品排列在一起供人工核对。',
     ...AI_PRODUCT_MATCHING_RULES,
     '',
     options.catalog
@@ -422,11 +414,11 @@ export function useSales() {
           const batchCandidates = normalizeAiCandidates(parsed.items || [], products.value)
           if (batchCandidates.length === 0) return false
           recognizedCandidates.push(...batchCandidates)
-          aiCandidates.value = mergeAiCandidates(recognizedCandidates)
+          aiCandidates.value = sortAiCandidates(recognizedCandidates)
           return true
         }
       })
-      aiCandidates.value = mergeAiCandidates(recognizedCandidates)
+      aiCandidates.value = sortAiCandidates(recognizedCandidates)
       if (aiCandidates.value.length === 0) {
         aiError.value = {
           code: 'UNKNOWN_ERROR',
@@ -454,7 +446,7 @@ export function useSales() {
   }
 
   function setAiCandidates(nextCandidates: SalesAiCandidate[]) {
-    aiCandidates.value = mergeAiCandidates(nextCandidates)
+    aiCandidates.value = sortAiCandidates(nextCandidates)
   }
 
   return {
