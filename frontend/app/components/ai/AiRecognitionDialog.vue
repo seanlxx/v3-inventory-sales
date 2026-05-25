@@ -273,11 +273,6 @@ useClipboardImagePaste({
   box-shadow: var(--shadow-card-hover);
 }
 
-.ai-recognition__upload:focus-within {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px var(--color-primary-soft);
-}
-
 .ai-recognition__upload.is-active {
   border-color: var(--color-primary);
   background: linear-gradient(180deg, var(--color-primary-soft) 0%, var(--color-surface) 60%);
