@@ -45,6 +45,21 @@ assert.match(
   'useSales must inject product catalog into AI prompt'
 );
 assert.match(
+  salesComposable,
+  /const matchableProducts = activeProducts\(products\.value\)/,
+  'useSales AI matching should only consider active products'
+);
+assert.match(
+  salesComposable,
+  /buildProductCatalogPrompt\(matchableProducts\)/,
+  'useSales AI prompt should not expose archived products'
+);
+assert.match(
+  salesComposable,
+  /normalizeAiCandidates\(parsed\.items \|\| \[\], matchableProducts\)/,
+  'useSales local AI fallback matching should not match archived products'
+);
+assert.match(
   sharedRecognitionComposable,
   /AI 结果只用于人工确认，不能自动入账/,
   'shared AI recognition rules must keep human-confirmation guarantee'
@@ -70,6 +85,21 @@ assert.match(
   purchasesComposable,
   /buildProductCatalogPrompt\(/,
   'usePurchases must inject product catalog into AI prompt'
+);
+assert.match(
+  purchasesComposable,
+  /const matchableProducts = activeProducts\(products\.value\)/,
+  'usePurchases AI matching should only consider active products'
+);
+assert.match(
+  purchasesComposable,
+  /buildProductCatalogPrompt\(matchableProducts\)/,
+  'usePurchases AI prompt should not expose archived products'
+);
+assert.match(
+  purchasesComposable,
+  /normalizeAiCandidates\(parsed\.items \|\| \[\], matchableProducts\)/,
+  'usePurchases local AI fallback matching should not match archived products'
 );
 assert.match(
   purchasesComposable,

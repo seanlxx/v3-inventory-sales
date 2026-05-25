@@ -96,6 +96,10 @@ function sortAiCandidates(candidates: PurchaseAiCandidate[]) {
     .map(item => item.candidate)
 }
 
+function activeProducts(products: readonly Product[]) {
+  return products.filter(product => product.status !== 'archived')
+}
+
 function buildPurchaseRecognitionPrompt(options: {
   totalImageCount: number
   batchImageCount: number
@@ -340,7 +344,8 @@ export function usePurchases() {
     aiError.value = null
     aiProgress.value = `正在连接 AI，准备上传 ${purchaseImages.value.length} 张图片...`
     try {
-      const catalog = buildProductCatalogPrompt(products.value)
+      const matchableProducts = activeProducts(products.value)
+      const catalog = buildProductCatalogPrompt(matchableProducts)
       const recognizedCandidates: PurchaseAiCandidate[] = []
       let recognizedMetadata: PurchaseAiMetadata | null = null
 
@@ -359,7 +364,7 @@ export function usePurchases() {
         onBatchResult: (parsed, batchIndex) => {
           recognizedMetadata = mergeAiMetadata(recognizedMetadata, normalizeAiMetadata(parsed))
           const batchCandidates = prefixBatchCandidateIds(
-            normalizeAiCandidates(parsed.items || [], products.value),
+            normalizeAiCandidates(parsed.items || [], matchableProducts),
             batchIndex
           )
           if (batchCandidates.length === 0) return false

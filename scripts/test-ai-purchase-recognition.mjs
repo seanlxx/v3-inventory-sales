@@ -43,8 +43,8 @@ assert.match(
 
 assert.match(
   purchasesComposable,
-  /normalizeAiCandidates\(parsed\.items \|\| \[\], products\.value\)/,
-  'purchase AI candidates should be normalized against the local product list'
+  /normalizeAiCandidates\(parsed\.items \|\| \[\], matchableProducts\)/,
+  'purchase AI candidates should be normalized against active local products only'
 );
 
 assert.match(
@@ -73,8 +73,14 @@ assert.match(
 
 assert.match(
   purchasesComposable,
-  /mergeAiCandidates/,
-  'purchase AI recognition should merge duplicate products into one candidate'
+  /recognizedCandidates\.push\(\.\.\.batchCandidates\)/,
+  'purchase AI recognition should keep recognized item rows for manual review'
+);
+
+assert.match(
+  purchasesComposable,
+  /sortAiCandidates\(recognizedCandidates\)/,
+  'purchase AI recognition should sort same-product rows together for review'
 );
 
 assert.match(

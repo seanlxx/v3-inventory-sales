@@ -395,7 +395,8 @@ export function useSales() {
     aiError.value = null
     aiProgress.value = `正在连接 AI，准备上传 ${salesImages.value.length} 张图片...`
     try {
-      const catalog = buildProductCatalogPrompt(activeProducts(products.value))
+      const matchableProducts = activeProducts(products.value)
+      const catalog = buildProductCatalogPrompt(matchableProducts)
       const recognizedCandidates: SalesAiCandidate[] = []
       const { warnings } = await aiRecognition.recognizeImageBatches<{ items?: Array<Record<string, unknown>> }>({
         images: salesImages.value,
@@ -411,7 +412,7 @@ export function useSales() {
           aiProgress.value = message
         },
         onBatchResult: (parsed) => {
-          const batchCandidates = normalizeAiCandidates(parsed.items || [], products.value)
+          const batchCandidates = normalizeAiCandidates(parsed.items || [], matchableProducts)
           if (batchCandidates.length === 0) return false
           recognizedCandidates.push(...batchCandidates)
           aiCandidates.value = sortAiCandidates(recognizedCandidates)
