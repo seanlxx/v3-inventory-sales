@@ -28,7 +28,8 @@ function divBlocksByClass(html, className) {
   const blocks = [];
   const pattern = /<div\b[^>]*\bclass=["']([^"']*)["'][^>]*>/gi;
   for (const match of source.matchAll(pattern)) {
-    if (!match[1].split(/\s+/).includes(className)) continue;
+    const classes = match[1].split(/\s+/);
+    if (!classes.includes(className)) continue;
     const start = match.index;
     let cursor = start + match[0].length;
     let depth = 1;
@@ -222,24 +223,36 @@ function parseSalesCards(html) {
     '立即退款'
   ];
 
-  return divBlocksByClass(html, 'item')
+  return divBlocksByClass(html, 'list-item')
     .filter(block => /订单号码|交易时间|出货详情/.test(stripTags(block)))
     .map((block) => {
       const text = stripTags(block);
-      const beforeMeta = text.slice(0, Math.max(
-        ...['设备名称', '订单号码', '出货详情', '交易时间']
-          .map(label => text.indexOf(label))
-          .filter(index => index >= 0)
-      ));
-      const header = beforeMeta.match(/^\s*(.+?)\s*(?:[>›]\s*)?(-?\d+(?:\.\d+)?)\s*(?:已支付|未支付|支付|$)/);
-      const productName = (header?.[1] || labelValue(text, '商品名称', labels))
+
+      const headBlock = divBlocksByClass(block, 'head')[0] || '';
+      const goodsNameBlock = divBlocksByClass(headBlock || block, 'goods-name2')[0] || '';
+      const productNameFromLink = stripTags(goodsNameBlock).trim();
+      const productName = (productNameFromLink || labelValue(text, '商品名称', labels))
         .replace(/[>›]+$/g, '')
         .trim();
-      const amountCents = parseMoney(header?.[2] || labelValue(text, '金额', labels));
+
+      const amountCents = parseMoney(firstClassText(headBlock || block, 'price'))
+        ?? parseMoney(labelValue(text, '金额', labels));
+
       const vendorOrderNo = labelValue(text, '订单号码', labels).split(/\s+/)[0] || '';
-      const quantity = parseInteger(text.match(/数量\s*[:：]?\s*(-?\d+)/)?.[1]) ?? 1;
+
+      const footBlock = divBlocksByClass(block, 'foot')[0] || '';
+      const numBlock = divBlocksByClass(footBlock || block, 'num')[0] || '';
+      const quantityFromBlock = parseInteger(firstClassText(numBlock, 'value'));
+      const quantity = quantityFromBlock
+        ?? parseInteger(text.match(/数量\s*[:：]?\s*(-?\d+)/)?.[1])
+        ?? 1;
+
       const costCents = parseMoney(labelValue(text, '进价', labels));
       const date = firstDate([labelValue(text, '交易时间', labels)]);
+
+      const headerText = stripTags(headBlock);
+      const shipmentText = labelValue(text, '出货详情', labels);
+      const statusText = `${headerText} ${shipmentText}`;
 
       if (!vendorOrderNo || !productName || amountCents === null) return null;
       return {
@@ -249,7 +262,7 @@ function parseSalesCards(html) {
         amountCents,
         costCents,
         date: date ? date.slice(0, 10) : '',
-        paidShipped: looksPaidShipped([text]),
+        paidShipped: looksPaidShipped([statusText]),
         raw: [text]
       };
     })
@@ -289,7 +302,20 @@ export function parseSales(html) {
 
 export function hasNextSalesPage(html, currentPage) {
   const text = stripTags(html);
-  if (new RegExp(`下一页|下页|>${currentPage + 1}<`).test(String(html))) return true;
+  const source = String(html || '');
+
+  const totalCountMatch = text.match(/共计\s*(\d+)\s*条/) || source.match(/共计\s*<span[^>]*>\s*(\d+)\s*<\/span>\s*条/i);
+  if (totalCountMatch) {
+    const total = Number(totalCountMatch[1]);
+    if (Number.isFinite(total)) {
+      const totalPages = Math.max(1, Math.ceil(total / 40));
+      return currentPage < totalPages;
+    }
+  }
+
+  if (/turnPage\s*\(\s*(\d+)\s*\)\s*"\s*>\s*下一页/.test(source)) return true;
+  if (new RegExp(`下一页|下页|>${currentPage + 1}<`).test(source)) return true;
+
   const pageMatches = [...text.matchAll(/(?:共|总)\s*(\d+)\s*页/g)];
   const totalPages = pageMatches.map(match => Number(match[1])).filter(Number.isFinite).pop();
   return totalPages ? currentPage < totalPages : false;
