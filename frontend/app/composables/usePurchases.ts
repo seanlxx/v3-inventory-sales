@@ -7,9 +7,17 @@ type PurchaseAiImage = {
   id: string
   imageBase64: string
   mimeType: string
+  aiImageBase64: string
+  aiMimeType: string
   fileName: string
   previewUrl: string
 }
+
+const AI_IMAGE_BATCH_SIZE = 4
+const AI_IMAGE_MAX_EDGE = 1600
+const AI_IMAGE_MAX_ORIGINAL_BYTES = 900 * 1024
+const AI_IMAGE_JPEG_QUALITY = 0.84
+const AI_RECOGNITION_MAX_TOKENS = 3200
 
 const defaultFilters: PurchaseListFilters = {
   month: new Date().toISOString().slice(0, 7),
@@ -24,20 +32,87 @@ function matchesPurchaseSearch(order: PurchaseOrder, search: string) {
   return `${order.id} ${order.source || ''} ${order.note || ''} ${order.machineId} ${items}`.toLowerCase().includes(keyword)
 }
 
-function readFileAsBase64(file: File) {
-  return new Promise<{ imageBase64: string; mimeType: string; previewUrl: string }>((resolve, reject) => {
+function splitDataUrl(dataUrl: string, fallbackMimeType: string) {
+  const match = dataUrl.match(/^data:([^;,]+);base64,(.*)$/)
+  return {
+    imageBase64: match?.[2] || (dataUrl.includes(',') ? dataUrl.split(',').pop() || '' : dataUrl),
+    mimeType: match?.[1] || fallbackMimeType || 'image/jpeg'
+  }
+}
+
+function readBlobAsDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => {
-      const value = String(reader.result || '')
-      resolve({
-        imageBase64: value.includes(',') ? value.split(',').pop() || '' : value,
-        mimeType: file.type || 'image/jpeg',
-        previewUrl: value
-      })
+      resolve(String(reader.result || ''))
     }
     reader.onerror = () => reject(reader.error || new Error('读取图片失败'))
-    reader.readAsDataURL(file)
+    reader.readAsDataURL(blob)
   })
+}
+
+function loadImage(dataUrl: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error('图片解码失败'))
+    image.src = dataUrl
+  })
+}
+
+function canvasToJpegDataUrl(canvas: HTMLCanvasElement) {
+  return new Promise<string | null>((resolve) => {
+    canvas.toBlob(async (blob) => {
+      if (!blob) {
+        resolve(null)
+        return
+      }
+      resolve(await readBlobAsDataUrl(blob))
+    }, 'image/jpeg', AI_IMAGE_JPEG_QUALITY)
+  })
+}
+
+async function optimizeImageForAi(file: File, originalDataUrl: string) {
+  try {
+    const image = await loadImage(originalDataUrl)
+    const width = image.naturalWidth || image.width
+    const height = image.naturalHeight || image.height
+    if (!width || !height) return originalDataUrl
+
+    const scale = Math.min(1, AI_IMAGE_MAX_EDGE / Math.max(width, height))
+    if (scale >= 1 && file.size <= AI_IMAGE_MAX_ORIGINAL_BYTES) return originalDataUrl
+
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(width * scale))
+    canvas.height = Math.max(1, Math.round(height * scale))
+
+    const context = canvas.getContext('2d')
+    if (!context) return originalDataUrl
+
+    context.fillStyle = '#fff'
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.drawImage(image, 0, 0, canvas.width, canvas.height)
+
+    const optimizedDataUrl = await canvasToJpegDataUrl(canvas)
+    if (!optimizedDataUrl) return originalDataUrl
+    return optimizedDataUrl.length < originalDataUrl.length || scale < 1 ? optimizedDataUrl : originalDataUrl
+  } catch {
+    return originalDataUrl
+  }
+}
+
+async function readFileAsBase64(file: File) {
+  const originalDataUrl = await readBlobAsDataUrl(file)
+  const optimizedDataUrl = await optimizeImageForAi(file, originalDataUrl)
+  const originalImage = splitDataUrl(originalDataUrl, file.type || 'image/jpeg')
+  const aiImage = splitDataUrl(optimizedDataUrl, file.type || 'image/jpeg')
+  return {
+    imageBase64: originalImage.imageBase64,
+    mimeType: originalImage.mimeType,
+    aiImageBase64: aiImage.imageBase64,
+    aiMimeType: aiImage.mimeType,
+    previewUrl: originalDataUrl
+  }
 }
 
 type PurchaseAiRecognitionResult = PurchaseAiMetadata & {
@@ -79,6 +154,25 @@ function normalizeAiMetadata(parsed: PurchaseAiRecognitionResult | null): Purcha
     note: String(parsed.note || '').trim()
   }
   return metadata.date || metadata.source || metadata.note ? metadata : null
+}
+
+function chunkList<T>(items: readonly T[], size: number) {
+  const chunks: T[][] = []
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size))
+  }
+  return chunks
+}
+
+function mergeAiMetadata(current: PurchaseAiMetadata | null, next: PurchaseAiMetadata | null): PurchaseAiMetadata | null {
+  if (!next) return current
+  if (!current) return next
+  const notes = [current.note, next.note].filter(Boolean)
+  return {
+    date: current.date || next.date,
+    source: current.source || next.source,
+    note: Array.from(new Set(notes)).join('；').slice(0, 240)
+  }
 }
 
 function moneyValue(...values: unknown[]) {
@@ -131,6 +225,40 @@ function mergeAiCandidates(candidates: PurchaseAiCandidate[]) {
     })
   }
   return Array.from(byKey.values())
+}
+
+function buildPurchaseRecognitionPrompt(options: {
+  totalImageCount: number
+  batchImageCount: number
+  batchIndex: number
+  batchCount: number
+  catalog: string
+}) {
+  const batchLabel = options.batchCount > 1
+    ? `这是第 ${options.batchIndex + 1}/${options.batchCount} 批，本批 ${options.batchImageCount} 张，共 ${options.totalImageCount} 张。只识别本批图片中真实存在的商品行，最终系统会自动合并各批结果。`
+    : `从 ${options.totalImageCount} 张截图中识别进货日期、来源和商品明细。`
+  return [
+    `${batchLabel}返回 {"date":"YYYY-MM-DD 或空字符串","source":"拼多多/线下进货单/识别到的供应商","note":"关键依据简述","items":[{"rawName":"截图原文","productId":"匹配到的商品 id 或空字符串","productName":"匹配到的商品名","quantity":入库数量,"unitPrice":单个库存单位进货价,"totalPrice":该行实际进货总金额,"sellPrice":新商品建议售价或 0}]}。`,
+    '通用规则：quantity 是入库库存数量，不是订单件数；unitPrice 是单个库存单位进货价；totalPrice 是该行实际进货总金额。金额单位是人民币元，只返回数字。',
+    '线下纸质进货单规则：优先读取表格右上方或表头的“下单时间”，date 取其日期；每行按条形码/货名/货号/件数/件价/换价/金额读取；若货号类似 1X12、1×24，件数为 N件，则 quantity=N*箱规后面的数量；unitPrice 优先用“换价/元”（如 3.25/瓶）；totalPrice 用“金额/元”。不要把底部合计当商品行。',
+    '拼多多订单截图规则：source 返回“拼多多”；date 优先用“发货时间”，没有发货时间再用下单时间/拼单时间；真实进货总价优先取“自动确认收货并付款¥...”或“实付/应付款”里的实际付款金额，不能用商品标价、合计拼单价、优惠前金额；例如“自动确认收货并付款¥106.5”应作为 totalPrice。',
+    '拼多多规格规则：如果规格或标题写“430g*24罐”“24罐”“x24”，购买数量 x1，则 quantity=24；若购买 x2，则 quantity=48；unitPrice=totalPrice/quantity。',
+    '只返回截图中真实存在的商品行；优惠、运费、订单号、快递号不是商品。',
+    '同一个批次中如果出现多个同样商品，返回前先合并成一行：quantity 相加，totalPrice 相加，unitPrice=totalPrice/quantity。',
+    '匹配规则：尽量在下面给出的商品清单中找最接近的一项，返回它的 productId；若清单中没有相似项，productId 留空字符串，rawName 保留截图原文。',
+    '如果识别到商品但库内没有同样商品，productId 必须留空，productName 返回可创建的新商品名称，sellPrice 不确定时返回 0，后续由人工填写售价。',
+    '注意名称同义：如"毫升=ml"、"克=g"、"瓶装"可省略、"1L=1000ml"。',
+    'AI 结果只用于人工确认，不能自动入账。',
+    '',
+    options.catalog
+  ].join('\n')
+}
+
+function prefixBatchCandidateIds(candidates: PurchaseAiCandidate[], batchIndex: number) {
+  return candidates.map(candidate => ({
+    ...candidate,
+    id: `ai-b${batchIndex + 1}-${candidate.id}`
+  }))
 }
 
 function normalizeAiCandidates(rawItems: Array<Record<string, unknown>>, products: readonly Product[]): PurchaseAiCandidate[] {
@@ -406,44 +534,85 @@ export function usePurchases() {
     aiProgress.value = `正在连接 AI，准备上传 ${purchaseImages.value.length} 张图片...`
     try {
       const catalog = buildProductCatalogPrompt(products.value)
-      const userPrompt = [
-        `从 ${purchaseImages.value.length} 张截图中识别进货日期、来源和商品明细，返回 {"date":"YYYY-MM-DD 或空字符串","source":"拼多多/线下进货单/识别到的供应商","note":"关键依据简述","items":[{"rawName":"截图原文","productId":"匹配到的商品 id 或空字符串","productName":"匹配到的商品名","quantity":入库数量,"unitPrice":单个库存单位进货价,"totalPrice":该行实际进货总金额,"sellPrice":新商品建议售价或 0}]}。`,
-        '通用规则：quantity 是入库库存数量，不是订单件数；unitPrice 是单个库存单位进货价；totalPrice 是该行实际进货总金额。金额单位是人民币元，只返回数字。',
-        '线下纸质进货单规则：优先读取表格右上方或表头的“下单时间”，date 取其日期；每行按条形码/货名/货号/件数/件价/换价/金额读取；若货号类似 1X12、1×24，件数为 N件，则 quantity=N*箱规后面的数量；unitPrice 优先用“换价/元”（如 3.25/瓶）；totalPrice 用“金额/元”。不要把底部合计当商品行。',
-        '拼多多订单截图规则：source 返回“拼多多”；date 优先用“发货时间”，没有发货时间再用下单时间/拼单时间；真实进货总价优先取“自动确认收货并付款¥...”或“实付/应付款”里的实际付款金额，不能用商品标价、合计拼单价、优惠前金额；例如“自动确认收货并付款¥106.5”应作为 totalPrice。',
-        '拼多多规格规则：如果规格或标题写“430g*24罐”“24罐”“x24”，购买数量 x1，则 quantity=24；若购买 x2，则 quantity=48；unitPrice=totalPrice/quantity。',
-        '只返回截图中真实存在的商品行；优惠、运费、订单号、快递号不是商品。',
-        '同一个进货单中如果出现多个同样商品，返回前先合并成一行：quantity 相加，totalPrice 相加，unitPrice=totalPrice/quantity。',
-        '匹配规则：尽量在下面给出的商品清单中找最接近的一项，返回它的 productId；若清单中没有相似项，productId 留空字符串，rawName 保留截图原文。',
-        '如果识别到商品但库内没有同样商品，productId 必须留空，productName 返回可创建的新商品名称，sellPrice 不确定时返回 0，后续由人工填写售价。',
-        '注意名称同义：如"毫升=ml"、"克=g"、"瓶装"可省略、"1L=1000ml"。',
-        'AI 结果只用于人工确认，不能自动入账。',
-        '',
-        catalog
-      ].join('\n')
-      let receivedLength = 0
-      const text = await requestAiStream({
-        images: purchaseImages.value.map(image => ({
-          imageBase64: image.imageBase64,
-          mimeType: image.mimeType
-        })),
-        maxTokens: 3200,
-        stream: true,
-        systemPrompt: '你是进货截图识别助手。只返回合法 JSON，不要 Markdown，不要解释。日期格式必须是 YYYY-MM-DD，金额单位为人民币元。',
-        userPrompt
-      }, (delta) => {
-        receivedLength += delta.length
-        aiProgress.value = `AI 正在识别，已接收 ${receivedLength} 个字符...`
-      })
-      aiProgress.value = 'AI 识别完成，正在整理结果...'
-      const parsed = extractJsonObject(text || '')
-      aiMetadata.value = normalizeAiMetadata(parsed)
-      aiCandidates.value = normalizeAiCandidates(parsed?.items || [], products.value)
+      const imageBatches = chunkList(purchaseImages.value, AI_IMAGE_BATCH_SIZE)
+      const recognizedCandidates: PurchaseAiCandidate[] = []
+      const warnings: string[] = []
+      let recognizedMetadata: PurchaseAiMetadata | null = null
+
+      for (let batchIndex = 0; batchIndex < imageBatches.length; batchIndex += 1) {
+        const batch = imageBatches[batchIndex] || []
+        let receivedLength = 0
+        const batchLabel = `第 ${batchIndex + 1}/${imageBatches.length} 批`
+        aiProgress.value = `AI 正在识别${batchLabel}（${batch.length} 张图片）...`
+
+        try {
+          const text = await requestAiStream({
+            images: batch.map(image => ({
+              imageBase64: image.aiImageBase64,
+              mimeType: image.aiMimeType
+            })),
+            maxTokens: AI_RECOGNITION_MAX_TOKENS,
+            stream: true,
+            systemPrompt: '你是进货截图识别助手。只返回合法 JSON，不要 Markdown，不要解释。日期格式必须是 YYYY-MM-DD，金额单位为人民币元。',
+            userPrompt: buildPurchaseRecognitionPrompt({
+              totalImageCount: purchaseImages.value.length,
+              batchImageCount: batch.length,
+              batchIndex,
+              batchCount: imageBatches.length,
+              catalog
+            })
+          }, (delta) => {
+            receivedLength += delta.length
+            aiProgress.value = `AI 正在识别${batchLabel}，已接收 ${receivedLength} 个字符...`
+          })
+
+          aiProgress.value = `${batchLabel}识别完成，正在整理结果...`
+          const parsed = extractJsonObject(text || '')
+          if (!parsed) {
+            warnings.push(`${batchLabel}结果无法解析`)
+            continue
+          }
+
+          recognizedMetadata = mergeAiMetadata(recognizedMetadata, normalizeAiMetadata(parsed))
+          const batchCandidates = prefixBatchCandidateIds(
+            normalizeAiCandidates(parsed.items || [], products.value),
+            batchIndex
+          )
+          if (batchCandidates.length === 0) {
+            warnings.push(`${batchLabel}未识别到明细`)
+            continue
+          }
+
+          recognizedCandidates.push(...batchCandidates)
+          aiMetadata.value = recognizedMetadata
+          aiCandidates.value = mergeAiCandidates(recognizedCandidates)
+        } catch (caught) {
+          const batchError = normalizeApiError(caught)
+          if (recognizedCandidates.length > 0) {
+            warnings.push(`${batchLabel}失败：${batchError.message}`)
+            break
+          }
+          throw batchError
+        }
+      }
+
+      aiMetadata.value = recognizedMetadata
+      aiCandidates.value = mergeAiCandidates(recognizedCandidates)
       if (aiCandidates.value.length === 0) {
         aiError.value = {
           code: 'UNKNOWN_ERROR',
-          message: 'AI 未识别出可确认的明细，请手动录入'
+          message: warnings.length > 0
+            ? `AI 未识别出可确认的明细：${warnings.join('；')}。请手动录入`
+            : 'AI 未识别出可确认的明细，请手动录入'
         }
+      } else if (warnings.length > 0) {
+        aiError.value = {
+          code: 'UNKNOWN_ERROR',
+          message: `部分图片未完成识别：${warnings.join('；')}。已保留可确认的明细，可手动补录缺失项`
+        }
+        aiProgress.value = `AI 已整理出 ${aiCandidates.value.length} 条明细，请检查未完成批次`
+      } else {
+        aiProgress.value = `AI 识别完成，已整理出 ${aiCandidates.value.length} 条明细`
       }
       return aiCandidates.value
     } catch (caught) {
