@@ -233,7 +233,7 @@ onMounted(async () => {
         <header class="vendor-sync__schedule-header">
           <div>
             <strong>自动同步</strong>
-            <span>由外部 cron（GitHub Actions 等）每 5 分钟轮询触发，到点才会真正运行。</span>
+            <span>由 Cloudflare Worker 每 5 分钟唤醒一次，到点才会真正运行同步。</span>
           </div>
           <StatusBadge :label="scheduleLabel" :tone="scheduleTone" />
         </header>
