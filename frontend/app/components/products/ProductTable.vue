@@ -35,6 +35,7 @@ function stockTone(product: Product) {
             <th scope="col" class="product-table__th--category product-table__center">分类</th>
             <th scope="col" class="product-table__th--machine product-table__center">售货机</th>
             <th scope="col" class="product-table__th--price product-table__center">售价</th>
+            <th scope="col" class="product-table__th--cost product-table__center">进货价</th>
             <th scope="col" class="product-table__th--stock product-table__center">库存</th>
             <th scope="col" class="product-table__th--status product-table__center">状态</th>
             <th scope="col" class="product-table__th--actions product-table__center">操作</th>
@@ -42,12 +43,12 @@ function stockTone(product: Product) {
         </thead>
         <tbody>
           <tr v-if="props.loading">
-            <td class="product-table__state" colspan="7">
+            <td class="product-table__state" colspan="8">
               正在加载商品
             </td>
           </tr>
           <tr v-else-if="props.error">
-            <td class="product-table__state product-table__state--error" colspan="7">
+            <td class="product-table__state product-table__state--error" colspan="8">
               <div class="product-table__state-stack">
                 <strong>{{ props.error.message }}</strong>
                 <AppButton variant="secondary" size="sm" @click="emit('retry')">
@@ -57,7 +58,7 @@ function stockTone(product: Product) {
             </td>
           </tr>
           <tr v-else-if="props.products.length === 0">
-            <td class="product-table__state" colspan="7">
+            <td class="product-table__state" colspan="8">
               没有符合筛选条件的商品
             </td>
           </tr>
@@ -76,6 +77,9 @@ function stockTone(product: Product) {
             <td class="product-table__center">{{ product.machineId }}</td>
             <td class="product-table__center">
               {{ formatMoney(product.sellPrice) }}
+            </td>
+            <td class="product-table__center product-table__cost">
+              {{ Number(product.avgCost) > 0 ? formatMoney(product.avgCost) : '—' }}
             </td>
             <td class="product-table__center">
               <button class="product-table__stock-button" type="button" @click="emit('movements', product)">
@@ -153,6 +157,7 @@ function stockTone(product: Product) {
 
           <div class="product-table__card-footer">
             <span>售价 {{ formatMoney(product.sellPrice) }}</span>
+            <span>进货价 {{ Number(product.avgCost) > 0 ? formatMoney(product.avgCost) : '—' }}</span>
             <button class="product-table__card-stock" type="button" @click="emit('movements', product)">
               库存 {{ formatQuantity(product.currentStock) }}
             </button>
@@ -218,6 +223,15 @@ function stockTone(product: Product) {
 
 .product-table__th--price {
   width: 90px;
+}
+
+.product-table__th--cost {
+  width: 100px;
+}
+
+.product-table__cost {
+  color: var(--color-text-soft);
+  font-variant-numeric: tabular-nums;
 }
 
 .product-table__th--stock {
