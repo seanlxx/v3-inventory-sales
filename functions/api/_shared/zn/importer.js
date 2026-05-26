@@ -55,7 +55,29 @@ async function findOrCreateProduct(env, machineId, line, statements, summary, ti
       LIMIT 1
     `, [machineId, normalized, line.vendorProductName]);
   }
-  if (product) return product;
+  if (product) {
+    // 回填：商品已存在但 barcode/normalized_name 缺失时，用 Excel 中的值补上
+    const patches = [];
+    const params = [];
+    if (barcode && !product.external_id) {
+      patches.push('external_id = ?');
+      params.push(barcode);
+      product.external_id = barcode;
+    }
+    if (normalized && !product.normalized_name) {
+      patches.push('normalized_name = ?');
+      params.push(normalized);
+      product.normalized_name = normalized;
+    }
+    if (patches.length > 0) {
+      patches.push('updated_at = ?');
+      params.push(timestamp, product.id);
+      statements.push(env.DB.prepare(
+        `UPDATE products SET ${patches.join(', ')} WHERE id = ?`
+      ).bind(...params));
+    }
+    return product;
+  }
 
   product = {
     id: newId(),
@@ -132,16 +154,94 @@ function groupLines(lines) {
   return groups;
 }
 
+async function reconcileExistingOrder(env, existing, lines, fees, summary, timestamp) {
+  // 1) 订单级：手续费/服务费/优惠/销售额若变化，回填到 sales_orders
+  const lineAmountTotal = lines.reduce((sum, l) => sum + Math.max(0,
+    Number(l.lineAmountCents) || Number(l.unitPriceCents) * Number(l.quantity) || 0), 0);
+
+  const patches = [];
+  const params = [];
+  if (Number(existing.platform_fee_cents || 0) !== fees.platformFeeCents) {
+    patches.push('platform_fee_cents = ?'); params.push(fees.platformFeeCents);
+  }
+  if (Number(existing.service_fee_cents || 0) !== fees.serviceFeeCents) {
+    patches.push('service_fee_cents = ?'); params.push(fees.serviceFeeCents);
+  }
+  if (Number(existing.discount_cents || 0) !== fees.discountCents) {
+    patches.push('discount_cents = ?'); params.push(fees.discountCents);
+  }
+  if (lineAmountTotal > 0 && Number(existing.total_amount_cents || 0) !== lineAmountTotal) {
+    patches.push('total_amount_cents = ?'); params.push(lineAmountTotal);
+  }
+  if (patches.length > 0) {
+    patches.push('updated_at = ?'); params.push(timestamp, existing.id);
+    await env.DB.prepare(`UPDATE sales_orders SET ${patches.join(', ')} WHERE id = ?`).bind(...params).run();
+    summary.ordersReconciled = (summary.ordersReconciled || 0) + 1;
+  }
+
+  // 2) 明细级：unit_price/line_amount 回填
+  const items = await all(env.DB,
+    `SELECT id, product_id, quantity, unit_price_cents, line_amount_cents
+     FROM sales_items WHERE sales_order_id = ? ORDER BY id`, [existing.id]);
+  for (let i = 0; i < Math.min(items.length, lines.length); i++) {
+    const item = items[i];
+    const line = lines[i];
+    const unitPriceCents = Math.max(0, Number(line.unitPriceCents) || 0);
+    const lineAmountCents = Math.max(0, Number(line.lineAmountCents) || unitPriceCents * Number(line.quantity));
+    const ipatches = [];
+    const iparams = [];
+    if (unitPriceCents > 0 && Number(item.unit_price_cents) !== unitPriceCents) {
+      ipatches.push('unit_price_cents = ?'); iparams.push(unitPriceCents);
+    }
+    if (lineAmountCents > 0 && Number(item.line_amount_cents) !== lineAmountCents) {
+      ipatches.push('line_amount_cents = ?'); iparams.push(lineAmountCents);
+    }
+    if (ipatches.length > 0) {
+      iparams.push(item.id);
+      await env.DB.prepare(`UPDATE sales_items SET ${ipatches.join(', ')} WHERE id = ?`).bind(...iparams).run();
+    }
+
+    // 3) 商品级：回填 barcode/normalized_name
+    const barcode = normalizeBarcode(line.vendorBarcode);
+    const normalized = normalizeProductName(line.vendorProductName);
+    if (barcode || normalized) {
+      const product = await first(env.DB, `SELECT external_id, normalized_name FROM products WHERE id = ?`, [item.product_id]);
+      if (product) {
+        const ppatches = [];
+        const pparams = [];
+        if (barcode && !product.external_id) {
+          ppatches.push('external_id = ?'); pparams.push(barcode);
+        }
+        if (normalized && !product.normalized_name) {
+          ppatches.push('normalized_name = ?'); pparams.push(normalized);
+        }
+        if (ppatches.length > 0) {
+          ppatches.push('updated_at = ?'); pparams.push(timestamp, item.product_id);
+          await env.DB.prepare(`UPDATE products SET ${ppatches.join(', ')} WHERE id = ?`).bind(...pparams).run();
+        }
+      }
+    }
+  }
+}
+
 async function importOneOrder(env, machineId, vendorOrderNo, lines, summary, warnings, balanceCache, timestamp) {
   const orderId = `zn:${vendorOrderNo}`.slice(0, 120);
 
+  // 订单级聚合（同一订单号多行 Excel 通常重复列出相同手续费，取首行而非求和）
+  const platformFeeCents = Math.max(0, Number(lines[0]?.platformFeeCents) || 0);
+  const serviceFeeCents = Math.max(0, Number(lines[0]?.serviceFeeCents) || 0);
+  const discountCents = Math.max(0, Number(lines[0]?.discountCents) || 0);
+
   const existing = await first(env.DB, `
-    SELECT id FROM sales_orders
+    SELECT * FROM sales_orders
     WHERE (source = ? AND external_id = ?) OR id = ?
     LIMIT 1
   `, [ZN_INTEGRATION, vendorOrderNo, orderId]);
   if (existing) {
     summary.ordersDuplicate += 1;
+    await reconcileExistingOrder(env, existing, lines, {
+      platformFeeCents, serviceFeeCents, discountCents
+    }, summary, timestamp);
     return;
   }
 
@@ -218,10 +318,13 @@ async function importOneOrder(env, machineId, vendorOrderNo, lines, summary, war
   statements.unshift(env.DB.prepare(`
     INSERT INTO sales_orders (
       id, type, machine_id, record_date, year_month, total_amount_cents, total_cogs_cents,
+      platform_fee_cents, service_fee_cents, discount_cents,
       note, image_asset_id, voided_at, created_at, updated_at, external_id, source
-    ) VALUES (?, 'sale', ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)
+    ) VALUES (?, 'sale', ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)
   `).bind(orderId, machineId, orderDate, yearMonthFromDate(orderDate),
-          totalAmount, totalCogs, 'zn 平台 Excel 导入',
+          totalAmount, totalCogs,
+          platformFeeCents, serviceFeeCents, discountCents,
+          'zn 平台 Excel 导入',
           timestamp, timestamp, vendorOrderNo, ZN_INTEGRATION));
 
   statements.push(env.DB.prepare(`
@@ -275,6 +378,9 @@ function validatePayload(body) {
       quantity: Math.max(1, Number(row.quantity) || 1),
       unitPriceCents: Math.round((Number(row.unitPrice) || 0) * 100),
       lineAmountCents: Math.round((Number(row.lineAmount ?? row.unitPrice ?? 0) || 0) * 100),
+      platformFeeCents: Math.round((Number(row.platformFee) || 0) * 100),
+      serviceFeeCents: Math.round((Number(row.serviceFee) || 0) * 100),
+      discountCents: Math.round((Number(row.discount) || 0) * 100),
       date: row.date || ''
     });
   }

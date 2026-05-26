@@ -26,6 +26,9 @@ type ParsedRow = {
   quantity: number
   lineAmount: number
   refundAmount: number
+  platformFee: number
+  serviceFee: number
+  discount: number
   date: string
 }
 
@@ -80,12 +83,16 @@ function normalizeRow(raw: Record<string, unknown>): ParsedRow | null {
   const quantity = Math.max(1, Number(pickField(raw, ['商品数量'])) || 1)
   const lineAmount = toNumber(pickField(raw, ['销售额', '价格']))
   const refundAmount = toNumber(pickField(raw, ['退款金额']))
+  const platformFee = toNumber(pickField(raw, ['手续费']))
+  const serviceFee = toNumber(pickField(raw, ['算法服务费']))
+  const discount = toNumber(pickField(raw, ['优惠金额']))
   const date = pickField(raw, ['创建时间', '扣款时间'])
 
   if (!vendorOrderNo && !deviceCode) return null
   return {
     vendorOrderNo, status, deviceCode, vendorProductName, vendorBarcode,
-    unitPrice, quantity, lineAmount, refundAmount, date
+    unitPrice, quantity, lineAmount, refundAmount,
+    platformFee, serviceFee, discount, date
   }
 }
 
