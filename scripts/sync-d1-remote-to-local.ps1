@@ -62,7 +62,18 @@ $repairSql = @(
   "SELECT 6, '0006_v3_structured_inventory_schema.sql'",
   "WHERE EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'products')",
   "  AND EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'stock_movements')",
-  "  AND EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'inventory_balances');"
+  "  AND EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'inventory_balances');",
+  "INSERT OR IGNORE INTO d1_migrations (id, name)",
+  "SELECT 7, '0007_shengma_integration.sql'",
+  "WHERE EXISTS (SELECT 1 FROM pragma_table_info('products') WHERE name = 'external_id')",
+  "  AND EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'external_sales_imports');",
+  "INSERT OR IGNORE INTO d1_migrations (id, name)",
+  "SELECT 8, '0008_zn_order_fees.sql'",
+  "WHERE EXISTS (SELECT 1 FROM pragma_table_info('sales_orders') WHERE name = 'platform_fee_cents')",
+  "  AND EXISTS (SELECT 1 FROM pragma_table_info('sales_orders') WHERE name = 'service_fee_cents');",
+  "INSERT OR IGNORE INTO d1_migrations (id, name)",
+  "SELECT 9, '0009_sales_received_amount.sql'",
+  "WHERE EXISTS (SELECT 1 FROM pragma_table_info('sales_orders') WHERE name = 'received_amount_cents');"
 ) -join [Environment]::NewLine
 Set-Content -LiteralPath $repairFile -Value $repairSql -Encoding UTF8
 

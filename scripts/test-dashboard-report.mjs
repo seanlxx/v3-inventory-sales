@@ -52,6 +52,9 @@ class D1Statement {
 const env = { DB: new D1Database() };
 env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0001_initial_d1_schema.sql'), 'utf8'));
 env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0006_v3_structured_inventory_schema.sql'), 'utf8'));
+env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0007_shengma_integration.sql'), 'utf8'));
+env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0008_zn_order_fees.sql'), 'utf8'));
+env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0009_sales_received_amount.sql'), 'utf8'));
 
 const testDate = new Date().toISOString().slice(0, 10);
 const testMonth = testDate.slice(0, 7);
@@ -74,7 +77,9 @@ assert.equal(trendPoint.quantity, 5, 'trend quantity should sum all order items'
 
 assert.equal(report.machineRanking[0].machineId, 'machine-a');
 assert.equal(report.machineRanking[0].revenue, 120, 'ranking revenue should count the order total once');
-assert.equal(report.machineRanking[0].profit, 75, 'ranking profit should count order cogs once');
+assert.equal(report.kpis.monthReceived, 118, 'dashboard should expose received amount after fees');
+assert.equal(report.kpis.monthGrossProfit, 73, 'dashboard gross profit should use received amount minus cogs');
+assert.equal(report.machineRanking[0].profit, 73, 'ranking profit should use received amount minus cogs');
 assert.equal(report.machineRanking[0].quantity, 5, 'ranking quantity should sum all order items');
 
 console.log('dashboard report aggregation tests passed');
@@ -100,9 +105,9 @@ async function seedDashboardRows() {
   await env.DB.prepare(`
     INSERT INTO sales_orders (
       id, type, machine_id, record_date, year_month, total_amount_cents, total_cogs_cents,
-      note, image_asset_id, voided_at, created_at, updated_at
+      received_amount_cents, note, image_asset_id, voided_at, created_at, updated_at
     ) VALUES (
-      'so-multi-item', 'sale', 'machine-a', ?, ?, 12000, 4500,
+      'so-multi-item', 'sale', 'machine-a', ?, ?, 12000, 4500, 11800,
       NULL, NULL, NULL, ?, ?
     )
   `).bind(testDate, testMonth, testTimestamp, testTimestamp).run();

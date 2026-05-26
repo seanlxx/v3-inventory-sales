@@ -42,7 +42,7 @@ function widthFor(item: MachineRankingItem) {
           <span class="machine-ranking__bar" :style="{ width: widthFor(item) }" />
         </div>
         <div class="machine-ranking__row machine-ranking__row--muted">
-          <span>毛利 {{ formatMoney(item.profit) }}</span>
+          <span>到账毛利 {{ formatMoney(item.profit) }}</span>
           <span>{{ formatQuantity(item.quantity) }} 件</span>
         </div>
       </article>

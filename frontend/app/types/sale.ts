@@ -18,6 +18,7 @@ export type SalesOrder = {
   date: string
   yearMonth?: string
   totalAmount: number
+  receivedAmount?: number
   totalCogs?: number
   items: SalesItem[]
   type: SalesOrderType

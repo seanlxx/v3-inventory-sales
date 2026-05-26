@@ -8,6 +8,8 @@ type ImportSummary = {
   ordersSkipped: number
   linesImported: number
   productsCreated: number
+  costsMatched?: number
+  costsMissing?: number
   ordersReconciled?: number
   warnings: number
 }
@@ -26,6 +28,7 @@ type ParsedRow = {
   unitPrice: number
   quantity: number
   lineAmount: number
+  receivedAmount: number
   refundAmount: number
   platformFee: number
   serviceFee: number
@@ -79,6 +82,8 @@ function mergeSummary(target: ImportSummary, next: ImportSummary) {
   target.ordersSkipped += next.ordersSkipped || 0
   target.linesImported += next.linesImported || 0
   target.productsCreated += next.productsCreated || 0
+  target.costsMatched = (target.costsMatched || 0) + (next.costsMatched || 0)
+  target.costsMissing = (target.costsMissing || 0) + (next.costsMissing || 0)
   target.ordersReconciled = (target.ordersReconciled || 0) + (next.ordersReconciled || 0)
   target.warnings += next.warnings || 0
 }
@@ -128,6 +133,7 @@ function normalizeRow(raw: Record<string, unknown>): ParsedRow | null {
   const unitPrice = toNumber(pickField(raw, ['商品单价']))
   const quantity = Math.max(1, Number(pickField(raw, ['商品数量'])) || 1)
   const lineAmount = toNumber(pickField(raw, ['销售额', '价格']))
+  const receivedAmount = toNumber(pickField(raw, ['预估到帐金额', '预估到账金额', '到账金额']))
   const refundAmount = toNumber(pickField(raw, ['退款金额']))
   const platformFee = toNumber(pickField(raw, ['手续费']))
   const serviceFee = toNumber(pickField(raw, ['算法服务费']))
@@ -137,7 +143,7 @@ function normalizeRow(raw: Record<string, unknown>): ParsedRow | null {
   if (!vendorOrderNo && !deviceCode) return null
   return {
     vendorOrderNo, status, deviceCode, vendorProductName, vendorBarcode,
-    unitPrice, quantity, lineAmount, refundAmount,
+    unitPrice, quantity, lineAmount, receivedAmount, refundAmount,
     platformFee, serviceFee, discount, date
   }
 }
@@ -190,6 +196,8 @@ async function submit() {
         ordersSkipped: 0,
         linesImported: 0,
         productsCreated: 0,
+        costsMatched: 0,
+        costsMissing: 0,
         ordersReconciled: 0,
         warnings: 0
       },
@@ -319,6 +327,14 @@ function reset() {
           <div class="zn-import__summary-item">
             <span>新建商品</span>
             <strong>{{ result.summary.productsCreated }}</strong>
+          </div>
+          <div class="zn-import__summary-item">
+            <span>成本匹配</span>
+            <strong>{{ result.summary.costsMatched || 0 }}</strong>
+          </div>
+          <div class="zn-import__summary-item">
+            <span>成本未匹配</span>
+            <strong>{{ result.summary.costsMissing || 0 }}</strong>
           </div>
           <div class="zn-import__summary-item">
             <span>订单校正</span>

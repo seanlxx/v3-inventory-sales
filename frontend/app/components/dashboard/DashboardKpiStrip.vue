@@ -22,7 +22,7 @@ const kpiItems = computed(() => [
   },
   {
     key: 'monthGrossProfit',
-    label: '本月毛利',
+    label: '本月到账毛利',
     value: formatMoney(props.kpis?.monthGrossProfit),
     tone: Number(props.kpis?.monthGrossProfit || 0) >= 0 ? 'success' : 'danger'
   },

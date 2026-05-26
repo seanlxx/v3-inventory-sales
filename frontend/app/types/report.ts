@@ -3,6 +3,7 @@ import type { InventoryBalance } from '~/types/inventory'
 export type DashboardKpis = {
   todayRevenue: number
   monthRevenue: number
+  monthReceived: number
   monthCogs: number
   monthGrossProfit: number
   profitRate: number

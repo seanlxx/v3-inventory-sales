@@ -27,3 +27,5 @@ github-recovery-codes.txt
 # 售货机平台导出的订单明细（含手机号等 PII，禁止提交）
 订单明细_*.xlsx
 订单明细_*.xls
+~$*.xlsx
+~$*.xls

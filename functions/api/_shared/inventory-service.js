@@ -109,6 +109,7 @@ function saleOrderToLegacy(order, items = []) {
     date: order.record_date,
     yearMonth: order.year_month,
     totalAmount: centsToMoney(order.total_amount_cents),
+    receivedAmount: centsToMoney(order.received_amount_cents ?? order.total_amount_cents),
     totalCogs: centsToMoney(order.total_cogs_cents),
     items,
     type: legacySalesType(order.type),
@@ -779,8 +780,8 @@ export async function createSalesOrder(env, payload, forcedType = null) {
   statements.push(env.DB.prepare(`
     INSERT INTO sales_orders (
       id, type, machine_id, record_date, year_month, total_amount_cents, total_cogs_cents,
-      note, image_asset_id, voided_at, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?, NULL, ?, ?)
+      received_amount_cents, note, image_asset_id, voided_at, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, 0, 0, 0, ?, ?, NULL, ?, ?)
   `).bind(
     orderId,
     type,
@@ -860,9 +861,10 @@ export async function createSalesOrder(env, payload, forcedType = null) {
     UPDATE sales_orders
     SET total_amount_cents = ?,
         total_cogs_cents = ?,
+        received_amount_cents = ?,
         updated_at = ?
     WHERE id = ?
-  `).bind(totalAmountCents, totalCogsCents, timestamp, orderId));
+  `).bind(totalAmountCents, totalCogsCents, totalAmountCents, timestamp, orderId));
 
   await env.DB.batch(statements);
 
@@ -872,6 +874,7 @@ export async function createSalesOrder(env, payload, forcedType = null) {
     date,
     yearMonth,
     totalAmount: centsToMoney(totalAmountCents),
+    receivedAmount: centsToMoney(totalAmountCents),
     totalCogs: centsToMoney(totalCogsCents),
     items: savedItems,
     type: legacySalesType(type),
@@ -1139,6 +1142,7 @@ export async function monthlyReport(env, options = {}) {
     SELECT
       year_month AS month,
       COALESCE(SUM(total_amount_cents), 0) AS revenue_cents,
+      COALESCE(SUM(received_amount_cents), 0) AS received_cents,
       COALESCE(SUM(total_cogs_cents), 0) AS cogs_cents,
       COALESCE(SUM(CASE WHEN type = 'refund' THEN total_amount_cents ELSE 0 END), 0) AS refunds_cents,
       COUNT(*) AS sales_count
@@ -1171,6 +1175,7 @@ export async function monthlyReport(env, options = {}) {
       byMonth.set(month, {
         month,
         revenue: 0,
+        received: 0,
         cogs: 0,
         fee: 0,
         profit: 0,
@@ -1189,6 +1194,7 @@ export async function monthlyReport(env, options = {}) {
     const item = ensureMonth(row.month);
     if (!item) continue;
     item.revenue = centsToMoney(row.revenue_cents);
+    item.received = centsToMoney(row.received_cents);
     item.cogs = centsToMoney(row.cogs_cents);
     item.refunds = centsToMoney(row.refunds_cents);
     item.salesCount = Number(row.sales_count) || 0;
@@ -1202,9 +1208,9 @@ export async function monthlyReport(env, options = {}) {
   }
 
   const monthly = Array.from(byMonth.values()).sort((a, b) => b.month.localeCompare(a.month)).map(item => {
-    item.fee = Math.round(item.revenue * feeRate * 100) / 100;
-    item.profit = Math.round((item.revenue - item.fee - item.cogs) * 100) / 100;
-    item.profitRate = item.revenue > 0 ? (item.profit / item.revenue) * 100 : 0;
+    item.fee = Math.round(Math.max(item.revenue - item.received, item.revenue * feeRate, 0) * 100) / 100;
+    item.profit = Math.round((item.received - item.cogs) * 100) / 100;
+    item.profitRate = item.received > 0 ? (item.profit / item.received) * 100 : 0;
     return item;
   });
   const monthMap = Object.fromEntries(monthly.map(item => [item.month, item]));

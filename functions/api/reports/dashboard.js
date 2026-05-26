@@ -99,6 +99,7 @@ async function getMonthlySales(env, month, machineId) {
   return await first(env.DB, `
     SELECT
       COALESCE(SUM(total_amount_cents), 0) AS revenue_cents,
+      COALESCE(SUM(received_amount_cents), 0) AS received_cents,
       COALESCE(SUM(total_cogs_cents), 0) AS cogs_cents,
       COALESCE(SUM(CASE WHEN type = 'refund' THEN total_amount_cents ELSE 0 END), 0) AS refunds_cents
     FROM sales_orders
@@ -192,6 +193,7 @@ async function getMachineRanking(env, month) {
       SELECT
         machine_id,
         COALESCE(SUM(total_amount_cents), 0) AS revenue_cents,
+        COALESCE(SUM(received_amount_cents), 0) AS received_cents,
         COALESCE(SUM(total_cogs_cents), 0) AS cogs_cents
       FROM sales_orders
       WHERE voided_at IS NULL
@@ -213,6 +215,7 @@ async function getMachineRanking(env, month) {
     SELECT
       r.machine_id,
       r.revenue_cents,
+      r.received_cents,
       r.cogs_cents,
       COALESCE(q.quantity, 0) AS quantity
     FROM revenue_by_machine r
@@ -224,7 +227,7 @@ async function getMachineRanking(env, month) {
   return rows.map(row => ({
     machineId: row.machine_id,
     revenue: centsToMoney(row.revenue_cents),
-    profit: centsToMoney((Number(row.revenue_cents) || 0) - (Number(row.cogs_cents) || 0)),
+    profit: centsToMoney((Number(row.received_cents) || 0) - (Number(row.cogs_cents) || 0)),
     quantity: Number(row.quantity) || 0
   }));
 }
@@ -355,18 +358,19 @@ export async function onRequestGet(context) {
   ]);
 
   const monthRevenue = centsToMoney(monthlySales?.revenue_cents);
+  const monthReceived = centsToMoney(monthlySales?.received_cents);
   const monthCogs = centsToMoney(monthlySales?.cogs_cents);
-  const fee = Math.round(monthRevenue * settings.feeRate * 100) / 100;
-  const monthGrossProfit = Math.round((monthRevenue - monthCogs - fee) * 100) / 100;
+  const monthGrossProfit = Math.round((monthReceived - monthCogs) * 100) / 100;
 
   return json(200, {
     month,
     kpis: {
       todayRevenue: centsToMoney(todaySales?.revenue_cents),
       monthRevenue,
+      monthReceived,
       monthCogs,
       monthGrossProfit,
-      profitRate: monthRevenue > 0 ? (monthGrossProfit / monthRevenue) * 100 : 0,
+      profitRate: monthReceived > 0 ? (monthGrossProfit / monthReceived) * 100 : 0,
       purchaseCost: centsToMoney(purchaseCost?.purchase_cents),
       refunds: centsToMoney(monthlySales?.refunds_cents),
       lowStockCount: lowStock.length
