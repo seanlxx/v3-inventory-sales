@@ -307,12 +307,26 @@ async function getLowStock(env, threshold, machineId) {
       CASE WHEN p.stock_machine_id = '${SHARED_STOCK_MACHINE_ID}' THEN '${SHARED_STOCK_MACHINE_LABEL}' ELSE p.stock_machine_id END AS display_machine_id,
       COALESCE(b.quantity_on_hand, 0) AS quantity_on_hand,
       COALESCE(b.avg_cost_cents, 0) AS avg_cost_cents,
+      COALESCE(pc.purchase_avg_cost_cents, 0) AS purchase_avg_cost_cents,
       COALESCE(b.inventory_value_cents, 0) AS inventory_value_cents,
       b.updated_at
     FROM product_rows p
     LEFT JOIN inventory_balances b
       ON b.product_id = p.id
      AND b.machine_id = p.stock_machine_id
+    LEFT JOIN (
+      SELECT
+        i.product_id,
+        CASE
+          WHEN COALESCE(SUM(i.quantity), 0) > 0
+          THEN ROUND(COALESCE(SUM(i.total_cost_cents), 0) * 1.0 / SUM(i.quantity))
+          ELSE 0
+        END AS purchase_avg_cost_cents
+      FROM purchase_items i
+      JOIN purchase_orders o ON o.id = i.purchase_id
+      WHERE o.voided_at IS NULL
+      GROUP BY i.product_id
+    ) pc ON pc.product_id = p.id
     WHERE p.status = 'active'
       AND COALESCE(b.quantity_on_hand, 0) <= ?
       ${machineFilter}
@@ -327,7 +341,8 @@ async function getLowStock(env, threshold, machineId) {
     stockMachineId: row.machine_id,
     category: row.category || '其他',
     quantityOnHand: Number(row.quantity_on_hand) || 0,
-    avgCost: centsToMoney(row.avg_cost_cents),
+    avgCost: centsToMoney(Math.max(0, Number(row.avg_cost_cents) || 0)),
+    purchaseAvgCost: centsToMoney(row.purchase_avg_cost_cents),
     inventoryValue: centsToMoney(row.inventory_value_cents),
     lowStockThreshold: threshold,
     isLowStock: true,

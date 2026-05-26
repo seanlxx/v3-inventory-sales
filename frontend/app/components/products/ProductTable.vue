@@ -23,6 +23,10 @@ function stockTone(product: Product) {
   if (stock <= 5) return 'warning'
   return 'success'
 }
+
+function purchaseCost(product: Product) {
+  return Number(product.purchaseAvgCost) || Number(product.avgCost) || 0
+}
 </script>
 
 <template>
@@ -79,7 +83,7 @@ function stockTone(product: Product) {
               {{ formatMoney(product.sellPrice) }}
             </td>
             <td class="product-table__center product-table__cost">
-              {{ Number(product.avgCost) > 0 ? formatMoney(product.avgCost) : '—' }}
+              {{ purchaseCost(product) > 0 ? formatMoney(purchaseCost(product)) : '—' }}
             </td>
             <td class="product-table__center">
               <button class="product-table__stock-button" type="button" @click="emit('movements', product)">
@@ -157,7 +161,7 @@ function stockTone(product: Product) {
 
           <div class="product-table__card-footer">
             <span>售价 {{ formatMoney(product.sellPrice) }}</span>
-            <span>进货价 {{ Number(product.avgCost) > 0 ? formatMoney(product.avgCost) : '—' }}</span>
+            <span>进货价 {{ purchaseCost(product) > 0 ? formatMoney(purchaseCost(product)) : '—' }}</span>
             <button class="product-table__card-stock" type="button" @click="emit('movements', product)">
               库存 {{ formatQuantity(product.currentStock) }}
             </button>

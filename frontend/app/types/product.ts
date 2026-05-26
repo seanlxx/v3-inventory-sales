@@ -11,6 +11,7 @@ export type Product = {
   imageAssetId?: string | null
   currentStock?: number
   avgCost?: number
+  purchaseAvgCost?: number
   totalPurchaseQty?: number
   totalPurchaseCost?: number
   createdAt: string

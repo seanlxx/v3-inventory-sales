@@ -20,6 +20,10 @@ function stockTone(balance: InventoryBalance) {
   if (balance.isLowStock) return 'warning'
   return 'success'
 }
+
+function purchaseCost(balance: InventoryBalance) {
+  return Number(balance.purchaseAvgCost) || Number(balance.avgCost) || 0
+}
 </script>
 
 <template>
@@ -43,7 +47,7 @@ function stockTone(balance: InventoryBalance) {
             <th scope="col" class="inventory-table__center">分类</th>
             <th scope="col" class="inventory-table__center">售货机</th>
             <th scope="col" class="inventory-table__center">现存</th>
-            <th scope="col" class="inventory-table__center">均价</th>
+            <th scope="col" class="inventory-table__center">进货价</th>
             <th scope="col" class="inventory-table__center">库存金额</th>
             <th scope="col" class="inventory-table__center">状态</th>
             <th scope="col" class="inventory-table__center">更新时间</th>
@@ -91,7 +95,7 @@ function stockTone(balance: InventoryBalance) {
               </button>
             </td>
             <td class="inventory-table__center">
-              {{ formatMoney(balance.avgCost) }}
+              {{ purchaseCost(balance) > 0 ? formatMoney(purchaseCost(balance)) : '—' }}
             </td>
             <td class="inventory-table__center">
               {{ formatMoney(balance.inventoryValue) }}
@@ -168,8 +172,8 @@ function stockTone(balance: InventoryBalance) {
             </dd>
           </div>
           <div>
-            <dt>均价</dt>
-            <dd>{{ formatMoney(balance.avgCost) }}</dd>
+            <dt>进货价</dt>
+            <dd>{{ purchaseCost(balance) > 0 ? formatMoney(purchaseCost(balance)) : '—' }}</dd>
           </div>
           <div>
             <dt>库存金额</dt>

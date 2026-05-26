@@ -131,6 +131,7 @@ assert.deepEqual(await balance('p1', 'machine-a'), {
   total_purchase_qty: 3,
   total_purchase_cost_cents: 1000
 });
+assert.equal((await listProducts(env, { id: 'p1' }))[0].purchaseAvgCost, 3.33);
 
 await assert.rejects(
   () => createSalesOrder(env, {
@@ -323,6 +324,7 @@ assert.deepEqual(await balance('p2', 'machine-a'), {
   total_purchase_qty: 0,
   total_purchase_cost_cents: 0
 });
+assert.equal((await listProducts(env, { id: 'p2' }))[0].purchaseAvgCost, 0, 'voided purchases should not leave a displayed purchase cost');
 
 await archiveProduct(env, 'p2');
 assert.equal((await listProducts(env, { id: 'p2', includeArchived: true }))[0].status, 'archived');

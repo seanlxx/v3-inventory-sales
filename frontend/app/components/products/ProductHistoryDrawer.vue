@@ -37,6 +37,10 @@ function quantityDeltaLabel(movement: StockMovement) {
   const delta = Number(movement.qtyDelta) || 0
   return `${delta > 0 ? '+' : ''}${formatQuantity(delta)}`
 }
+
+const displayCost = computed(() =>
+  Number(props.product?.purchaseAvgCost) || Number(props.product?.avgCost) || 0
+)
 </script>
 
 <template>
@@ -55,8 +59,8 @@ function quantityDeltaLabel(movement: StockMovement) {
         <strong>{{ formatMoney(props.product.sellPrice) }}</strong>
       </div>
       <div>
-        <span>均价</span>
-        <strong>{{ formatMoney(props.product.avgCost) }}</strong>
+        <span>进货价</span>
+        <strong>{{ formatMoney(displayCost) }}</strong>
       </div>
     </div>
 

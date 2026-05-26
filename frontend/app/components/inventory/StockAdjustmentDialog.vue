@@ -23,6 +23,10 @@ watch(() => props.balance, balance => {
   formError.value = ''
 }, { immediate: true })
 
+const displayCost = computed(() =>
+  Number(props.balance?.purchaseAvgCost) || Number(props.balance?.avgCost) || 0
+)
+
 function submitAdjustment() {
   if (!props.balance) return
   const nextQuantity = Number(targetQuantity.value)
@@ -56,8 +60,8 @@ function submitAdjustment() {
           <strong>{{ formatQuantity(props.balance.quantityOnHand) }} 件</strong>
         </div>
         <div>
-          <span>当前均价</span>
-          <strong>{{ formatMoney(props.balance.avgCost) }}</strong>
+          <span>进货价</span>
+          <strong>{{ displayCost > 0 ? formatMoney(displayCost) : '—' }}</strong>
         </div>
         <div>
           <span>库存金额</span>

@@ -8,6 +8,7 @@ export type InventoryBalance = {
   category?: string
   quantityOnHand: number
   avgCost: number
+  purchaseAvgCost?: number
   inventoryValue: number
   lowStockThreshold?: number
   isLowStock?: boolean

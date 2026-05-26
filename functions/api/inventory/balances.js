@@ -48,10 +48,24 @@ export async function onRequestGet(context) {
         CASE WHEN b.machine_id = '${SHARED_STOCK_MACHINE_ID}' THEN '${SHARED_STOCK_MACHINE_LABEL}' ELSE b.machine_id END AS display_machine_id,
         b.quantity_on_hand,
         b.avg_cost_cents,
+        COALESCE(pc.purchase_avg_cost_cents, 0) AS purchase_avg_cost_cents,
         b.inventory_value_cents,
         b.updated_at
       FROM inventory_balances b
       JOIN products p ON p.id = b.product_id
+      LEFT JOIN (
+        SELECT
+          i.product_id,
+          CASE
+            WHEN COALESCE(SUM(i.quantity), 0) > 0
+            THEN ROUND(COALESCE(SUM(i.total_cost_cents), 0) * 1.0 / SUM(i.quantity))
+            ELSE 0
+          END AS purchase_avg_cost_cents
+        FROM purchase_items i
+        JOIN purchase_orders o ON o.id = i.purchase_id
+        WHERE o.voided_at IS NULL
+        GROUP BY i.product_id
+      ) pc ON pc.product_id = p.id
 
       UNION ALL
 
@@ -64,6 +78,7 @@ export async function onRequestGet(context) {
         CASE WHEN p.stock_machine_id = '${SHARED_STOCK_MACHINE_ID}' THEN '${SHARED_STOCK_MACHINE_LABEL}' ELSE p.stock_machine_id END AS display_machine_id,
         0 AS quantity_on_hand,
         0 AS avg_cost_cents,
+        COALESCE(pc.purchase_avg_cost_cents, 0) AS purchase_avg_cost_cents,
         0 AS inventory_value_cents,
         NULL AS updated_at
       FROM (
@@ -72,6 +87,19 @@ export async function onRequestGet(context) {
           ${SHARED_PRODUCT_STOCK_MACHINE_SQL} AS stock_machine_id
         FROM products p
       ) p
+      LEFT JOIN (
+        SELECT
+          i.product_id,
+          CASE
+            WHEN COALESCE(SUM(i.quantity), 0) > 0
+            THEN ROUND(COALESCE(SUM(i.total_cost_cents), 0) * 1.0 / SUM(i.quantity))
+            ELSE 0
+          END AS purchase_avg_cost_cents
+        FROM purchase_items i
+        JOIN purchase_orders o ON o.id = i.purchase_id
+        WHERE o.voided_at IS NULL
+        GROUP BY i.product_id
+      ) pc ON pc.product_id = p.id
       WHERE NOT EXISTS (
         SELECT 1
         FROM inventory_balances b
@@ -87,6 +115,7 @@ export async function onRequestGet(context) {
       display_machine_id,
       quantity_on_hand,
       avg_cost_cents,
+      purchase_avg_cost_cents,
       inventory_value_cents,
       updated_at
     FROM balance_rows
@@ -102,7 +131,8 @@ export async function onRequestGet(context) {
     stockMachineId: row.machine_id,
     category: row.category || '其他',
     quantityOnHand: Number(row.quantity_on_hand) || 0,
-    avgCost: centsToMoney(row.avg_cost_cents),
+    avgCost: centsToMoney(Math.max(0, Number(row.avg_cost_cents) || 0)),
+    purchaseAvgCost: centsToMoney(row.purchase_avg_cost_cents),
     inventoryValue: centsToMoney(row.inventory_value_cents),
     lowStockThreshold: DEFAULT_LOW_STOCK_THRESHOLD,
     isLowStock: (Number(row.quantity_on_hand) || 0) <= DEFAULT_LOW_STOCK_THRESHOLD,

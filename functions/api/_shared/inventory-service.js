@@ -35,11 +35,17 @@ function balanceKey(productId, machineId) {
 }
 
 function balanceToLegacy(row = {}) {
+  const totalPurchaseQty = Number(row.total_purchase_qty) || 0;
+  const totalPurchaseCostCents = Number(row.total_purchase_cost_cents) || 0;
+  const purchaseAvgCostCents = Number(row.purchase_avg_cost_cents) || (
+    totalPurchaseQty > 0 ? Math.round(totalPurchaseCostCents / totalPurchaseQty) : 0
+  );
   return {
     currentStock: Number(row.quantity_on_hand) || 0,
-    avgCost: centsToMoney(row.avg_cost_cents),
-    totalPurchaseQty: Number(row.total_purchase_qty) || 0,
-    totalPurchaseCost: centsToMoney(row.total_purchase_cost_cents)
+    avgCost: centsToMoney(Math.max(0, Number(row.avg_cost_cents) || 0)),
+    purchaseAvgCost: centsToMoney(purchaseAvgCostCents),
+    totalPurchaseQty,
+    totalPurchaseCost: centsToMoney(totalPurchaseCostCents)
   };
 }
 
@@ -204,6 +210,27 @@ async function getBalance(env, productId, machineId, cache = new Map()) {
   return balance;
 }
 
+async function getPurchaseAvgCostCents(env, productId, cache = new Map()) {
+  const id = stringOrNull(productId);
+  if (!id) return 0;
+  if (cache.has(id)) return cache.get(id);
+  const row = await first(env.DB, `
+    SELECT
+      CASE
+        WHEN COALESCE(SUM(i.quantity), 0) > 0
+        THEN ROUND(COALESCE(SUM(i.total_cost_cents), 0) * 1.0 / SUM(i.quantity))
+        ELSE 0
+      END AS purchase_avg_cost_cents
+    FROM purchase_items i
+    JOIN purchase_orders o ON o.id = i.purchase_id
+    WHERE i.product_id = ?
+      AND o.voided_at IS NULL
+  `, [id]);
+  const cents = Math.max(0, Number(row?.purchase_avg_cost_cents) || 0);
+  cache.set(id, cents);
+  return cents;
+}
+
 function upsertProductStatement(db, product) {
   return db.prepare(`
     INSERT INTO products (
@@ -330,11 +357,25 @@ export async function listProducts(env, options = {}) {
       COALESCE(b.avg_cost_cents, 0) AS avg_cost_cents,
       COALESCE(b.inventory_value_cents, 0) AS inventory_value_cents,
       COALESCE(b.total_purchase_qty, 0) AS total_purchase_qty,
-      COALESCE(b.total_purchase_cost_cents, 0) AS total_purchase_cost_cents
+      COALESCE(b.total_purchase_cost_cents, 0) AS total_purchase_cost_cents,
+      COALESCE(pc.purchase_avg_cost_cents, 0) AS purchase_avg_cost_cents
     FROM products p
     LEFT JOIN inventory_balances b
       ON b.product_id = p.id
      AND b.machine_id = ${SHARED_PRODUCT_STOCK_MACHINE_SQL}
+    LEFT JOIN (
+      SELECT
+        i.product_id,
+        CASE
+          WHEN COALESCE(SUM(i.quantity), 0) > 0
+          THEN ROUND(COALESCE(SUM(i.total_cost_cents), 0) * 1.0 / SUM(i.quantity))
+          ELSE 0
+        END AS purchase_avg_cost_cents
+      FROM purchase_items i
+      JOIN purchase_orders o ON o.id = i.purchase_id
+      WHERE o.voided_at IS NULL
+      GROUP BY i.product_id
+    ) pc ON pc.product_id = p.id
     ${where}
     ORDER BY p.machine_id, p.name
   `, params);
@@ -776,6 +817,7 @@ export async function createSalesOrder(env, payload, forcedType = null) {
   }
   const statements = [];
   const balanceCache = new Map();
+  const purchaseCostCache = new Map();
   const savedItems = [];
   let totalAmountCents = 0;
   let totalCogsCents = 0;
@@ -819,7 +861,10 @@ export async function createSalesOrder(env, payload, forcedType = null) {
       ? 0
       : (moneyToCents(item.sellPrice) || product.sell_price_cents || 0);
     const explicitLineCogs = hasOwn(item, 'itemCogs') ? Math.abs(moneyToCents(item.itemCogs)) : 0;
-    const unitCostCents = explicitLineCogs && qty > 0 ? Math.round(explicitLineCogs / qty) : (balance.avg_cost_cents || moneyToCents(item.avgCost));
+    const historicalUnitCostCents = Math.max(0, Number(balance.avg_cost_cents) || 0)
+      || await getPurchaseAvgCostCents(env, product.id, purchaseCostCache)
+      || moneyToCents(item.avgCost);
+    const unitCostCents = explicitLineCogs && qty > 0 ? Math.round(explicitLineCogs / qty) : historicalUnitCostCents;
     const lineAmountCents = type === 'loss'
       ? 0
       : (hasOwn(item, 'itemRevenue') ? Math.abs(moneyToCents(item.itemRevenue)) : qty * unitPriceCents);
