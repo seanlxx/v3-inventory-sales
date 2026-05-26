@@ -33,7 +33,7 @@ function submitAdjustment() {
 
   const payload: InventoryAdjustmentPayload = {
     productId: props.balance.productId,
-    machineId: props.balance.machineId,
+    machineId: props.balance.stockMachineId || props.balance.machineId,
     quantityOnHand: nextQuantity,
     note: note.value.trim()
   }

@@ -4,6 +4,7 @@ export type Product = {
   id: string
   name: string
   machineId: string
+  stockMachineId?: string
   category: string
   sellPrice: number
   status: ProductStatus

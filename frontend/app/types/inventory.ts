@@ -4,6 +4,7 @@ export type InventoryBalance = {
   productId: string
   productName: string
   machineId: string
+  stockMachineId?: string
   category?: string
   quantityOnHand: number
   avgCost: number

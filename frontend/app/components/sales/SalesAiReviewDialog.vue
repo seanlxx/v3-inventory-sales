@@ -158,7 +158,7 @@ function confirmOrder() {
         <label class="sales-ai__field">
           <span>售货机</span>
           <select v-model="machineId" class="sales-ai__select-control">
-            <option value="">按商品所属机器</option>
+            <option value="">不指定设备</option>
             <option v-for="machine in props.machines" :key="machine" :value="machine">
               {{ machine }}
             </option>

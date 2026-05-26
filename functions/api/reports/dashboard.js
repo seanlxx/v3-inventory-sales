@@ -1,6 +1,7 @@
 import { all, first } from '../_shared/d1.js';
 import { json, methodNotAllowed } from '../_shared/http.js';
 import { centsToMoney } from '../_shared/validators.js';
+import { SHARED_STOCK_MACHINE_ID, SHARED_STOCK_MACHINE_LABEL, stockMachineIdFor } from '../_shared/stock-scope.js';
 
 function currentMonth() {
   return new Date().toISOString().slice(0, 7);
@@ -234,34 +235,43 @@ async function getMachineRanking(env, month) {
 
 async function getLowStock(env, threshold, machineId) {
   const params = [threshold];
-  const machineFilter = machineId ? 'AND COALESCE(b.machine_id, p.machine_id) = ?' : '';
-  if (machineId) params.push(machineId);
+  const stockMachineId = machineId ? stockMachineIdFor(machineId) : '';
+  const machineFilter = stockMachineId ? 'AND stock_machine_id = ?' : '';
+  if (stockMachineId) params.push(stockMachineId);
 
   const rows = await all(env.DB, `
+    WITH product_rows AS (
+      SELECT
+        p.*,
+        CASE WHEN p.machine_id IN ('1号机', '2号机', '${SHARED_STOCK_MACHINE_ID}') THEN '${SHARED_STOCK_MACHINE_ID}' ELSE p.machine_id END AS stock_machine_id
+      FROM products p
+    )
     SELECT
       p.id AS product_id,
       p.name AS product_name,
       p.category,
-      COALESCE(b.machine_id, p.machine_id) AS machine_id,
+      p.stock_machine_id AS machine_id,
+      CASE WHEN p.stock_machine_id = '${SHARED_STOCK_MACHINE_ID}' THEN '${SHARED_STOCK_MACHINE_LABEL}' ELSE p.stock_machine_id END AS display_machine_id,
       COALESCE(b.quantity_on_hand, 0) AS quantity_on_hand,
       COALESCE(b.avg_cost_cents, 0) AS avg_cost_cents,
       COALESCE(b.inventory_value_cents, 0) AS inventory_value_cents,
       b.updated_at
-    FROM products p
+    FROM product_rows p
     LEFT JOIN inventory_balances b
       ON b.product_id = p.id
-     AND b.machine_id = p.machine_id
+     AND b.machine_id = p.stock_machine_id
     WHERE p.status = 'active'
       AND COALESCE(b.quantity_on_hand, 0) <= ?
       ${machineFilter}
-    ORDER BY COALESCE(b.quantity_on_hand, 0), p.machine_id, p.name
+    ORDER BY COALESCE(b.quantity_on_hand, 0), p.stock_machine_id, p.name
     LIMIT 20
   `, params);
 
   return rows.map(row => ({
     productId: row.product_id,
     productName: row.product_name,
-    machineId: row.machine_id,
+    machineId: row.display_machine_id || row.machine_id,
+    stockMachineId: row.machine_id,
     category: row.category || '其他',
     quantityOnHand: Number(row.quantity_on_hand) || 0,
     avgCost: centsToMoney(row.avg_cost_cents),
@@ -274,20 +284,28 @@ async function getLowStock(env, threshold, machineId) {
 
 async function getRecentExceptions(env, threshold, machineId) {
   const params = [threshold];
-  const machineFilter = machineId ? 'AND COALESCE(b.machine_id, p.machine_id) = ?' : '';
-  if (machineId) params.push(machineId);
+  const stockMachineId = machineId ? stockMachineIdFor(machineId) : '';
+  const machineFilter = stockMachineId ? 'AND stock_machine_id = ?' : '';
+  if (stockMachineId) params.push(stockMachineId);
 
   const lowStockRows = await all(env.DB, `
+    WITH product_rows AS (
+      SELECT
+        p.*,
+        CASE WHEN p.machine_id IN ('1号机', '2号机', '${SHARED_STOCK_MACHINE_ID}') THEN '${SHARED_STOCK_MACHINE_ID}' ELSE p.machine_id END AS stock_machine_id
+      FROM products p
+    )
     SELECT
       p.id,
       p.name,
-      COALESCE(b.machine_id, p.machine_id) AS machine_id,
+      p.stock_machine_id AS machine_id,
+      CASE WHEN p.stock_machine_id = '${SHARED_STOCK_MACHINE_ID}' THEN '${SHARED_STOCK_MACHINE_LABEL}' ELSE p.stock_machine_id END AS display_machine_id,
       COALESCE(b.quantity_on_hand, 0) AS quantity_on_hand,
       COALESCE(b.updated_at, p.updated_at) AS occurred_at
-    FROM products p
+    FROM product_rows p
     LEFT JOIN inventory_balances b
       ON b.product_id = p.id
-     AND b.machine_id = p.machine_id
+     AND b.machine_id = p.stock_machine_id
     WHERE p.status = 'active'
       AND COALESCE(b.quantity_on_hand, 0) <= ?
       ${machineFilter}

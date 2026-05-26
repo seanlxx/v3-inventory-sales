@@ -244,6 +244,50 @@ assert.deepEqual(await balance('p1', 'machine-a'), {
   total_purchase_cost_cents: 1000
 });
 
+await saveProduct(env, {
+  id: 'p-shared',
+  name: 'Shared Pool Drink',
+  machineId: '1号机',
+  category: 'drink',
+  sellPrice: 4
+});
+await createPurchases(env, {
+  id: 'po-shared',
+  productId: 'p-shared',
+  quantity: 10,
+  totalPrice: 20,
+  date: '2026-05-04'
+});
+assert.deepEqual(await balance('p-shared', '1/2号机'), {
+  quantity_on_hand: 10,
+  avg_cost_cents: 200,
+  inventory_value_cents: 2000,
+  total_purchase_qty: 10,
+  total_purchase_cost_cents: 2000
+});
+const sharedSale = await createSalesOrder(env, {
+  id: 'so-shared',
+  machineId: '2号机',
+  date: '2026-05-04',
+  items: [{ productId: 'p-shared', quantity: 3 }]
+}, 'sale');
+assert.equal(sharedSale.machineId, '2号机', 'sales order should keep the actual vending machine');
+assert.deepEqual(await balance('p-shared', '1/2号机'), {
+  quantity_on_hand: 7,
+  avg_cost_cents: 200,
+  inventory_value_cents: 1400,
+  total_purchase_qty: 10,
+  total_purchase_cost_cents: 2000
+});
+await assert.rejects(
+  () => createAdjustment(env, {
+    productId: 'p-shared',
+    machineId: '1号机',
+    quantityOnHand: 9
+  }),
+  /不允许盘点调整/
+);
+
 await createAdjustment(env, {
   productId: 'p1',
   machineId: 'machine-a',

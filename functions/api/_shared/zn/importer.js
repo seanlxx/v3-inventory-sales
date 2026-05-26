@@ -2,6 +2,7 @@ import { all, first } from '../d1.js';
 import { centsToMoney, newId, nowIso, yearMonthFromDate } from '../validators.js';
 import { ZN_INTEGRATION, mapZnDeviceToMachine } from './constants.js';
 import { normalizeProductName } from '../shengma/mapper.js';
+import { stockMachineIdFor } from '../stock-scope.js';
 
 const EMPTY_SUMMARY = {
   ordersImported: 0,
@@ -131,7 +132,7 @@ function normalizeMultiItemLineAmounts(lines) {
 async function patchProductMetadata(env, product, line, statements, timestamp) {
   const barcode = normalizeBarcode(line.vendorBarcode);
   const normalized = normalizeProductName(line.vendorProductName);
-  const productMachineId = product.product_machine_id || product.machine_id;
+  const productMachineId = stockMachineIdFor(product.product_machine_id || product.machine_id);
   const patches = [];
   const params = [];
   if (barcode && !product.external_id) {
@@ -163,6 +164,7 @@ async function patchProductMetadata(env, product, line, statements, timestamp) {
 }
 
 async function findOrCreateProduct(env, machineId, line, statements, summary, timestamp, costCandidateCache) {
+  const stockMachineId = stockMachineIdFor(machineId);
   const barcode = normalizeBarcode(line.vendorBarcode);
   const normalized = normalizeProductName(line.vendorProductName);
 
@@ -172,7 +174,7 @@ async function findOrCreateProduct(env, machineId, line, statements, summary, ti
       SELECT * FROM products
       WHERE machine_id = ? AND external_id = ? AND status = 'active'
       LIMIT 1
-    `, [machineId, barcode]);
+    `, [stockMachineId, barcode]);
   }
   if (!product && normalized) {
     product = await first(env.DB, `
@@ -181,17 +183,17 @@ async function findOrCreateProduct(env, machineId, line, statements, summary, ti
         AND (normalized_name = ? OR name = ?)
         AND status = 'active'
       LIMIT 1
-    `, [machineId, normalized, line.vendorProductName]);
+    `, [stockMachineId, normalized, line.vendorProductName]);
   }
   if (product) return await patchProductMetadata(env, product, line, statements, timestamp);
 
-  const candidates = await loadPurchaseCostCandidates(env, machineId, costCandidateCache);
+  const candidates = await loadPurchaseCostCandidates(env, stockMachineId, costCandidateCache);
   const purchaseMatch = findPurchaseCostCandidate(candidates, line, null);
   if (purchaseMatch) return await patchProductMetadata(env, purchaseMatch, line, statements, timestamp);
 
   product = {
     id: newId(),
-    machine_id: machineId,
+    machine_id: stockMachineId,
     name: line.vendorProductName || (barcode || '未知商品'),
     category: '其他',
     sell_price_cents: Math.max(0, Number(line.unitPriceCents) || 0),
@@ -217,13 +219,14 @@ async function findOrCreateProduct(env, machineId, line, statements, summary, ti
 }
 
 async function getBalance(env, productId, machineId) {
+  const stockMachineId = stockMachineIdFor(machineId);
   return await first(env.DB, `
     SELECT * FROM inventory_balances
     WHERE product_id = ? AND machine_id = ?
     LIMIT 1
-  `, [productId, machineId]) || {
+  `, [productId, stockMachineId]) || {
     product_id: productId,
-    machine_id: machineId,
+    machine_id: stockMachineId,
     quantity_on_hand: 0,
     avg_cost_cents: 0,
     inventory_value_cents: 0,
@@ -234,7 +237,8 @@ async function getBalance(env, productId, machineId) {
 }
 
 async function loadPurchaseCostCandidates(env, machineId, cache) {
-  if (cache.has(machineId)) return cache.get(machineId);
+  const stockMachineId = stockMachineIdFor(machineId);
+  if (cache.has(stockMachineId)) return cache.get(stockMachineId);
   const rows = await all(env.DB, `
     SELECT
       p.id,
@@ -250,11 +254,11 @@ async function loadPurchaseCostCandidates(env, machineId, cache) {
     JOIN purchase_orders o ON o.id = i.purchase_id
     JOIN products p ON p.id = i.product_id
     WHERE o.voided_at IS NULL
-      AND o.machine_id = ?
+      AND p.machine_id = ?
     GROUP BY p.id, o.machine_id, p.machine_id, p.name, p.normalized_name, p.external_id
     HAVING SUM(i.quantity) > 0 AND SUM(i.total_cost_cents) > 0
-  `, [machineId]);
-  cache.set(machineId, rows);
+  `, [stockMachineId]);
+  cache.set(stockMachineId, rows);
   return rows;
 }
 
@@ -365,19 +369,20 @@ async function rebuildExistingOrder(env, existing, lines, fees, summary, timesta
 
   for (const line of lines) {
     if (!line.vendorProductName) continue;
+    const stockMachineId = stockMachineIdFor(existing.machine_id);
     const product = await findOrCreateProduct(env, existing.machine_id, line, statements, summary, timestamp, costCandidateCache);
     const quantity = Math.max(1, Number(line.quantity) || 1);
     const unitPriceCents = Math.max(0, Number(line.unitPriceCents) || 0);
     const lineAmountCents = Math.max(0, Number(line.lineAmountCents) || unitPriceCents * quantity);
 
-    const balanceKey = `${product.id}|${existing.machine_id}`;
+    const balanceKey = `${product.id}|${stockMachineId}`;
     if (!balanceCache.has(balanceKey)) {
-      balanceCache.set(balanceKey, await getBalance(env, product.id, existing.machine_id));
+      balanceCache.set(balanceKey, await getBalance(env, product.id, stockMachineId));
     }
     const balance = balanceCache.get(balanceKey);
     const candidates = Number(balance.avg_cost_cents) > 0
       ? []
-      : await loadPurchaseCostCandidates(env, existing.machine_id, costCandidateCache);
+      : await loadPurchaseCostCandidates(env, stockMachineId, costCandidateCache);
     const costMatch = Number(balance.avg_cost_cents) > 0
       ? null
       : findPurchaseCostCandidate(candidates, line, product);
@@ -403,7 +408,7 @@ async function rebuildExistingOrder(env, existing, lines, fees, summary, timesta
       ) VALUES (?, ?, ?, 'sale', ?, ?, 'sales_order', ?, ?, NULL, ?, ?, ?)
     `).bind(
       `sales_order:${existing.id}:${product.id}:${itemIndex}`,
-      product.id, existing.machine_id, -quantity, unitCostCents,
+      product.id, stockMachineId, -quantity, unitCostCents,
       existing.id, itemId,
       `${ZN_INTEGRATION}:sale:${existing.external_id || existing.id}:${itemIndex}`,
       'zn 平台 Excel 导入校正', timestamp
@@ -574,6 +579,7 @@ async function reconcileExistingOrder(env, existing, lines, fees, summary, times
 }
 
 async function importOneOrder(env, machineId, vendorOrderNo, lines, summary, warnings, balanceCache, costCandidateCache, timestamp) {
+  const stockMachineId = stockMachineIdFor(machineId);
   const orderId = `zn:${vendorOrderNo}`.slice(0, 120);
 
   // 订单级聚合（同一订单号多行 Excel 通常重复列出相同手续费，取首行而非求和）
@@ -610,14 +616,14 @@ async function importOneOrder(env, machineId, vendorOrderNo, lines, summary, war
     const unitPriceCents = Math.max(0, Number(line.unitPriceCents) || 0);
     const lineAmountCents = Math.max(0, Number(line.lineAmountCents) || unitPriceCents * quantity);
 
-    const balanceKey = `${product.id}|${machineId}`;
+    const balanceKey = `${product.id}|${stockMachineId}`;
     if (!balanceCache.has(balanceKey)) {
-      balanceCache.set(balanceKey, await getBalance(env, product.id, machineId));
+      balanceCache.set(balanceKey, await getBalance(env, product.id, stockMachineId));
     }
     const balance = balanceCache.get(balanceKey);
     const candidates = Number(balance.avg_cost_cents) > 0
       ? []
-      : await loadPurchaseCostCandidates(env, machineId, costCandidateCache);
+      : await loadPurchaseCostCandidates(env, stockMachineId, costCandidateCache);
     const costMatch = Number(balance.avg_cost_cents) > 0
       ? null
       : findPurchaseCostCandidate(candidates, line, product);
@@ -643,7 +649,7 @@ async function importOneOrder(env, machineId, vendorOrderNo, lines, summary, war
       ) VALUES (?, ?, ?, 'sale', ?, ?, 'sales_order', ?, ?, NULL, ?, ?, ?)
     `).bind(
       `sales_order:${orderId}:${product.id}:${itemIndex}`,
-      product.id, machineId, -quantity, unitCostCents,
+      product.id, stockMachineId, -quantity, unitCostCents,
       orderId, itemId,
       `${ZN_INTEGRATION}:sale:${vendorOrderNo}:${itemIndex}`,
       'zn 平台 Excel 导入', timestamp

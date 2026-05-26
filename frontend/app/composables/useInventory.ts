@@ -17,7 +17,7 @@ const defaultFilters: InventoryListFilters = {
 function matchesSearch(balance: InventoryBalance, search: string) {
   const keyword = search.trim().toLowerCase()
   if (!keyword) return true
-  return `${balance.productName} ${balance.productId} ${balance.machineId} ${balance.category || ''}`.toLowerCase().includes(keyword)
+  return `${balance.productName} ${balance.productId} ${balance.machineId} ${balance.stockMachineId || ''} ${balance.category || ''}`.toLowerCase().includes(keyword)
 }
 
 export function useInventory() {
@@ -37,8 +37,7 @@ export function useInventory() {
   const machineOptions = computed(() => {
     const machines = new Set(balances.value.map(balance => balance.machineId).filter(Boolean))
     if (machines.size === 0) {
-      machines.add('1号机')
-      machines.add('2号机')
+      machines.add('1/2号机总库存')
     }
     return Array.from(machines).sort((left, right) => left.localeCompare(right, 'zh-CN'))
   })
@@ -83,7 +82,7 @@ export function useInventory() {
       movements.value = await request<StockMovement[]>('/inventory/movements', {
         query: {
           productId: selectedBalance.value?.productId,
-          machineId: selectedBalance.value?.machineId,
+          machineId: selectedBalance.value?.stockMachineId || selectedBalance.value?.machineId,
           limit: 80
         }
       })

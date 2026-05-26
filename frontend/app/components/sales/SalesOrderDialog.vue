@@ -48,7 +48,7 @@ const copy = computed(() => {
 
 function resetForm() {
   date.value = new Date().toISOString().slice(0, 10)
-  machineId.value = props.machines[0] || ''
+  machineId.value = ''
   note.value = ''
   items.value = []
   formError.value = ''
@@ -95,7 +95,7 @@ function submitForm() {
         <label class="sales-form__field">
           <span>售货机</span>
           <select v-model="machineId" class="sales-form__select">
-            <option value="">按商品所属机器</option>
+            <option value="">不指定设备</option>
             <option v-for="machine in props.machines" :key="machine" :value="machine">
               {{ machine }}
             </option>

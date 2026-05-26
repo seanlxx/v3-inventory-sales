@@ -14,6 +14,7 @@ import {
   stringOrNull,
   yearMonthFromDate
 } from './validators.js';
+import { canServeOrderMachine, isSharedStockMachine, SHARED_PRODUCT_STOCK_MACHINE_SQL, stockMachineIdFor } from './stock-scope.js';
 
 export class InventoryValidationError extends Error {
   constructor(message) {
@@ -47,6 +48,7 @@ function productToLegacy(row) {
     id: row.id,
     name: row.name,
     machineId: row.machine_id,
+    stockMachineId: row.stock_machine_id || stockMachineIdFor(row.machine_id),
     category: row.category || '其他',
     sellPrice: centsToMoney(row.sell_price_cents),
     status: row.status,
@@ -138,9 +140,10 @@ function saleItemToLegacy(row) {
 
 function productRowFromPayload(payload, existing = null) {
   const timestamp = nowIso();
+  const machineId = stockMachineIdFor(stringOrNull(payload.machineId) || existing?.machine_id || '1号机');
   return {
     id: stringOrNull(payload.id) || existing?.id || newId(),
-    machine_id: stringOrNull(payload.machineId) || existing?.machine_id || '1号机',
+    machine_id: machineId,
     name: stringOrNull(payload.name) || existing?.name || '',
     category: stringOrNull(payload.category) || existing?.category || '其他',
     sell_price_cents: moneyToCents(hasOwn(payload, 'sellPrice') ? payload.sellPrice : centsToMoney(existing?.sell_price_cents)),
@@ -166,16 +169,18 @@ async function getProduct(env, productId) {
 }
 
 async function getProductByNameMachine(env, name, machineId) {
+  const stockMachineId = stockMachineIdFor(machineId);
   return await first(env.DB, `
     SELECT *
     FROM products
     WHERE name = ? AND machine_id = ? AND status = 'active'
     LIMIT 1
-  `, [name, machineId]);
+  `, [name, stockMachineId]);
 }
 
 async function getBalance(env, productId, machineId, cache = new Map()) {
-  const key = balanceKey(productId, machineId);
+  const stockMachineId = stockMachineIdFor(machineId);
+  const key = balanceKey(productId, stockMachineId);
   if (cache.has(key)) return cache.get(key);
 
   const row = await first(env.DB, `
@@ -183,11 +188,11 @@ async function getBalance(env, productId, machineId, cache = new Map()) {
     FROM inventory_balances
     WHERE product_id = ? AND machine_id = ?
     LIMIT 1
-  `, [productId, machineId]);
+  `, [productId, stockMachineId]);
 
   const balance = row || {
     product_id: productId,
-    machine_id: machineId,
+    machine_id: stockMachineId,
     quantity_on_hand: 0,
     avg_cost_cents: 0,
     inventory_value_cents: 0,
@@ -298,7 +303,7 @@ async function applyMovement(env, cache, movement, valueDeltaCents, statements, 
     purchaseCostDeltaCents,
     timestamp: movement.created_at
   });
-  cache.set(balanceKey(movement.product_id, movement.machine_id), nextBalance);
+  cache.set(balanceKey(movement.product_id, nextBalance.machine_id), nextBalance);
   statements.push(movementStatement(env.DB, movement));
   statements.push(upsertBalanceStatement(env.DB, nextBalance));
   return nextBalance;
@@ -313,13 +318,14 @@ export async function listProducts(env, options = {}) {
     params.push(options.id);
   }
   if (options.machineId) {
-    conditions.push('p.machine_id = ?');
-    params.push(options.machineId);
+    conditions.push(`${SHARED_PRODUCT_STOCK_MACHINE_SQL} = ?`);
+    params.push(stockMachineIdFor(options.machineId));
   }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const rows = await all(env.DB, `
     SELECT
       p.*,
+      ${SHARED_PRODUCT_STOCK_MACHINE_SQL} AS stock_machine_id,
       COALESCE(b.quantity_on_hand, 0) AS quantity_on_hand,
       COALESCE(b.avg_cost_cents, 0) AS avg_cost_cents,
       COALESCE(b.inventory_value_cents, 0) AS inventory_value_cents,
@@ -328,7 +334,7 @@ export async function listProducts(env, options = {}) {
     FROM products p
     LEFT JOIN inventory_balances b
       ON b.product_id = p.id
-     AND b.machine_id = p.machine_id
+     AND b.machine_id = ${SHARED_PRODUCT_STOCK_MACHINE_SQL}
     ${where}
     ORDER BY p.machine_id, p.name
   `, params);
@@ -382,7 +388,7 @@ export async function updateProductStatus(env, productId, status) {
 async function ensurePurchaseProduct(env, purchase, statements) {
   let product = purchase.productId ? await getProduct(env, purchase.productId) : null;
   const productName = stringOrNull(purchase.productName);
-  const machineId = stringOrNull(purchase.machineId) || product?.machine_id || '1号机';
+  const machineId = stockMachineIdFor(stringOrNull(purchase.machineId) || product?.machine_id || '1号机');
 
   if (!product && productName) {
     product = await getProductByNameMachine(env, productName, machineId);
@@ -434,7 +440,7 @@ export async function createPurchases(env, payload) {
 
     const date = recordDate(input.date);
     const itemId = `${orderId}:0`;
-    const machineId = product.machine_id;
+    const machineId = stockMachineIdFor(product.machine_id);
 
     statements.push(env.DB.prepare(`
       INSERT INTO purchase_orders (
@@ -515,7 +521,7 @@ export async function createPurchaseOrder(env, payload) {
     products.push({ rawItem, product });
     if (!orderMachineId) orderMachineId = product.machine_id;
   }
-  orderMachineId = orderMachineId || '1号机';
+  orderMachineId = stockMachineIdFor(orderMachineId || '1号机');
 
   const date = recordDate(payload.date);
   const imageAssetId = stringOrNull(payload.imageAssetId) || sharedImage?.id || null;
@@ -760,9 +766,11 @@ export async function createSalesOrder(env, payload, forcedType = null) {
   const date = recordDate(payload.date);
   const yearMonth = yearMonthFromDate(date);
   const orderId = stringOrNull(payload.id) || newId();
-  const productMachineIds = [...new Set(Array.from(productMap.values()).map(product => product.machine_id).filter(Boolean))];
-  const machineId = stringOrNull(payload.machineId) || (productMachineIds.length === 1 ? productMachineIds[0] : '1号机');
-  const mismatchedProduct = Array.from(productMap.values()).find(product => product.machine_id !== machineId);
+  const productMachineIds = [...new Set(Array.from(productMap.values()).map(product => stockMachineIdFor(product.machine_id)).filter(Boolean))];
+  const requestedMachineId = stringOrNull(payload.machineId);
+  const machineId = requestedMachineId || (productMachineIds.length === 1 ? productMachineIds[0] : '1号机');
+  const stockMachineId = stockMachineIdFor(machineId);
+  const mismatchedProduct = Array.from(productMap.values()).find(product => !canServeOrderMachine(product.machine_id, machineId));
   if (mismatchedProduct) {
     throw validationError(`${mismatchedProduct.name} 属于 ${mismatchedProduct.machine_id}，不能记入 ${machineId}`);
   }
@@ -802,7 +810,7 @@ export async function createSalesOrder(env, payload, forcedType = null) {
     const qty = positiveQuantity(item.quantity);
     if (qty <= 0) continue;
 
-    const balance = await getBalance(env, product.id, machineId, balanceCache);
+    const balance = await getBalance(env, product.id, stockMachineId, balanceCache);
     if ((type === 'sale' || type === 'loss') && qty > balance.quantity_on_hand) {
       throw validationError(`${product.name} 库存不足：当前 ${balance.quantity_on_hand}，本次 ${qty}`);
     }
@@ -832,7 +840,7 @@ export async function createSalesOrder(env, payload, forcedType = null) {
     await applyMovement(env, balanceCache, {
       id: `sales_order:${orderId}:${product.id}:${index}`,
       product_id: product.id,
-      machine_id: machineId,
+      machine_id: stockMachineId,
       movement_type: type,
       qty_delta: qtyDelta,
       unit_cost_cents: unitCostCents,
@@ -1009,7 +1017,10 @@ export async function createAdjustment(env, payload) {
   const product = productId ? await getProduct(env, productId) : null;
   if (!product) throw new Error('Product not found');
 
-  const machineId = stringOrNull(payload.machineId) || product.machine_id;
+  const machineId = stockMachineIdFor(stringOrNull(payload.machineId) || product.machine_id);
+  if (isSharedStockMachine(machineId)) {
+    throw validationError('1/2号机总库存只按入库单和销售扣减计算，不允许盘点调整');
+  }
   const balanceCache = new Map();
   const current = await getBalance(env, product.id, machineId, balanceCache);
   const target = hasOwn(payload, 'quantityOnHand') ? quantity(payload.quantityOnHand) : null;
