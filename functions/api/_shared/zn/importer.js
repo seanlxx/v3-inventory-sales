@@ -94,7 +94,75 @@ function toDateOnly(value) {
   return '';
 }
 
-async function findOrCreateProduct(env, machineId, line, statements, summary, timestamp) {
+function toMoneyCents(value) {
+  return Math.round((Number(value) || 0) * 100);
+}
+
+function normalizeRowText(value) {
+  return String(value || '').trim();
+}
+
+function hasProductLine(row) {
+  return !!(normalizeRowText(row?.vendorProductName) || normalizeRowText(row?.vendorBarcode));
+}
+
+function expectedItemCount(row) {
+  const title = normalizeRowText(row?.title);
+  const match = title.match(/(?:共计消费|共计)(\d+)件商品/);
+  if (match) return Math.max(1, Number(match[1]) || 1);
+  const priceCents = toMoneyCents(row?.lineAmount ?? row?.price);
+  const unitPriceCents = toMoneyCents(row?.unitPrice);
+  const quantity = Math.max(1, Number(row?.quantity) || 1);
+  if (priceCents > unitPriceCents * quantity) return Math.max(quantity + 1, 2);
+  return quantity;
+}
+
+function normalizeMultiItemLineAmounts(lines) {
+  const groups = groupLines(lines);
+  for (const groupLines of groups.values()) {
+    if (groupLines.length <= 1) continue;
+    for (const line of groupLines) {
+      const calculated = Math.max(0, Number(line.unitPriceCents) || 0) * Math.max(1, Number(line.quantity) || 1);
+      if (calculated > 0) line.lineAmountCents = calculated;
+    }
+  }
+}
+
+async function patchProductMetadata(env, product, line, statements, timestamp) {
+  const barcode = normalizeBarcode(line.vendorBarcode);
+  const normalized = normalizeProductName(line.vendorProductName);
+  const productMachineId = product.product_machine_id || product.machine_id;
+  const patches = [];
+  const params = [];
+  if (barcode && !product.external_id) {
+    const existingBarcodeProduct = await first(env.DB, `
+      SELECT id
+      FROM products
+      WHERE machine_id = ? AND external_id = ? AND id != ?
+      LIMIT 1
+    `, [productMachineId, barcode, product.id]);
+    if (!existingBarcodeProduct) {
+      patches.push('external_id = ?');
+      params.push(barcode);
+      product.external_id = barcode;
+    }
+  }
+  if (normalized && !product.normalized_name) {
+    patches.push('normalized_name = ?');
+    params.push(normalized);
+    product.normalized_name = normalized;
+  }
+  if (patches.length > 0) {
+    patches.push('updated_at = ?');
+    params.push(timestamp, product.id);
+    statements.push(env.DB.prepare(
+      `UPDATE products SET ${patches.join(', ')} WHERE id = ?`
+    ).bind(...params));
+  }
+  return product;
+}
+
+async function findOrCreateProduct(env, machineId, line, statements, summary, timestamp, costCandidateCache) {
   const barcode = normalizeBarcode(line.vendorBarcode);
   const normalized = normalizeProductName(line.vendorProductName);
 
@@ -115,29 +183,11 @@ async function findOrCreateProduct(env, machineId, line, statements, summary, ti
       LIMIT 1
     `, [machineId, normalized, line.vendorProductName]);
   }
-  if (product) {
-    // 回填：商品已存在但 barcode/normalized_name 缺失时，用 Excel 中的值补上
-    const patches = [];
-    const params = [];
-    if (barcode && !product.external_id) {
-      patches.push('external_id = ?');
-      params.push(barcode);
-      product.external_id = barcode;
-    }
-    if (normalized && !product.normalized_name) {
-      patches.push('normalized_name = ?');
-      params.push(normalized);
-      product.normalized_name = normalized;
-    }
-    if (patches.length > 0) {
-      patches.push('updated_at = ?');
-      params.push(timestamp, product.id);
-      statements.push(env.DB.prepare(
-        `UPDATE products SET ${patches.join(', ')} WHERE id = ?`
-      ).bind(...params));
-    }
-    return product;
-  }
+  if (product) return await patchProductMetadata(env, product, line, statements, timestamp);
+
+  const candidates = await loadPurchaseCostCandidates(env, machineId, costCandidateCache);
+  const purchaseMatch = findPurchaseCostCandidate(candidates, line, null);
+  if (purchaseMatch) return await patchProductMetadata(env, purchaseMatch, line, statements, timestamp);
 
   product = {
     id: newId(),
@@ -188,7 +238,8 @@ async function loadPurchaseCostCandidates(env, machineId, cache) {
   const rows = await all(env.DB, `
     SELECT
       p.id,
-      p.machine_id,
+      o.machine_id,
+      p.machine_id AS product_machine_id,
       p.name,
       p.normalized_name,
       p.external_id,
@@ -199,8 +250,8 @@ async function loadPurchaseCostCandidates(env, machineId, cache) {
     JOIN purchase_orders o ON o.id = i.purchase_id
     JOIN products p ON p.id = i.product_id
     WHERE o.voided_at IS NULL
-      AND p.machine_id = ?
-    GROUP BY p.id, p.machine_id, p.name, p.normalized_name, p.external_id
+      AND o.machine_id = ?
+    GROUP BY p.id, o.machine_id, p.machine_id, p.name, p.normalized_name, p.external_id
     HAVING SUM(i.quantity) > 0 AND SUM(i.total_cost_cents) > 0
   `, [machineId]);
   cache.set(machineId, rows);
@@ -273,7 +324,144 @@ function groupLines(lines) {
   return groups;
 }
 
+async function restoreExistingOrderInventory(env, existing, timestamp) {
+  const movements = await all(env.DB, `
+    SELECT product_id, machine_id, qty_delta, unit_cost_cents, ref_item_id
+    FROM stock_movements
+    WHERE ref_type = 'sales_order'
+      AND ref_id = ?
+      AND movement_type = 'sale'
+  `, [existing.id]);
+  for (const movement of movements) {
+    const balance = await getBalance(env, movement.product_id, movement.machine_id);
+    const quantity = Math.abs(Number(movement.qty_delta) || 0);
+    const valueCents = quantity * (Number(movement.unit_cost_cents) || 0);
+    const nextQty = Number(balance.quantity_on_hand) + quantity;
+    const nextValue = Number(balance.inventory_value_cents) + valueCents;
+    await upsertBalanceStmt(env, {
+      ...balance,
+      quantity_on_hand: nextQty,
+      inventory_value_cents: nextValue,
+      avg_cost_cents: nextQty === 0 ? 0 : Math.round(nextValue / nextQty),
+      updated_at: timestamp
+    }).run();
+  }
+}
+
+async function rebuildExistingOrder(env, existing, lines, fees, summary, timestamp, costCandidateCache) {
+  const statements = [];
+  const balanceCache = new Map();
+  let totalAmount = 0;
+  let totalCogs = 0;
+  let itemIndex = 0;
+
+  await restoreExistingOrderInventory(env, existing, timestamp);
+  await env.DB.prepare("DELETE FROM stock_movements WHERE ref_type = 'sales_order' AND ref_id = ?")
+    .bind(existing.id)
+    .run();
+  await env.DB.prepare('DELETE FROM sales_items WHERE sales_order_id = ?')
+    .bind(existing.id)
+    .run();
+
+  for (const line of lines) {
+    if (!line.vendorProductName) continue;
+    const product = await findOrCreateProduct(env, existing.machine_id, line, statements, summary, timestamp, costCandidateCache);
+    const quantity = Math.max(1, Number(line.quantity) || 1);
+    const unitPriceCents = Math.max(0, Number(line.unitPriceCents) || 0);
+    const lineAmountCents = Math.max(0, Number(line.lineAmountCents) || unitPriceCents * quantity);
+
+    const balanceKey = `${product.id}|${existing.machine_id}`;
+    if (!balanceCache.has(balanceKey)) {
+      balanceCache.set(balanceKey, await getBalance(env, product.id, existing.machine_id));
+    }
+    const balance = balanceCache.get(balanceKey);
+    const candidates = Number(balance.avg_cost_cents) > 0
+      ? []
+      : await loadPurchaseCostCandidates(env, existing.machine_id, costCandidateCache);
+    const costMatch = Number(balance.avg_cost_cents) > 0
+      ? null
+      : findPurchaseCostCandidate(candidates, line, product);
+    const balanceCostCents = Number(balance.avg_cost_cents) || 0;
+    const unitCostCents = line.costCents ?? (balanceCostCents || costMatch?.avgCostCents || 0);
+    const lineCogsCents = unitCostCents * quantity;
+    if (unitCostCents > 0) summary.costsMatched = (summary.costsMatched || 0) + 1;
+    else summary.costsMissing = (summary.costsMissing || 0) + 1;
+
+    const itemId = `${existing.id}:${itemIndex}`;
+    statements.push(env.DB.prepare(`
+      INSERT INTO sales_items (
+        id, sales_order_id, product_id, quantity, unit_price_cents, unit_cost_cents,
+        line_amount_cents, line_cogs_cents, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(itemId, existing.id, product.id, quantity, unitPriceCents, unitCostCents,
+            lineAmountCents, lineCogsCents, timestamp));
+
+    statements.push(env.DB.prepare(`
+      INSERT INTO stock_movements (
+        id, product_id, machine_id, movement_type, qty_delta, unit_cost_cents,
+        ref_type, ref_id, ref_item_id, voids_movement_id, external_id, reason, created_at
+      ) VALUES (?, ?, ?, 'sale', ?, ?, 'sales_order', ?, ?, NULL, ?, ?, ?)
+    `).bind(
+      `sales_order:${existing.id}:${product.id}:${itemIndex}`,
+      product.id, existing.machine_id, -quantity, unitCostCents,
+      existing.id, itemId,
+      `${ZN_INTEGRATION}:sale:${existing.external_id || existing.id}:${itemIndex}`,
+      'zn 平台 Excel 导入校正', timestamp
+    ));
+
+    const nextQty = Number(balance.quantity_on_hand) - quantity;
+    const nextValue = Number(balance.inventory_value_cents) - quantity * unitCostCents;
+    const nextBalance = {
+      ...balance,
+      quantity_on_hand: nextQty,
+      inventory_value_cents: nextQty === 0 ? 0 : nextValue,
+      avg_cost_cents: nextQty === 0 ? 0 : Math.round(nextValue / nextQty),
+      updated_at: timestamp
+    };
+    statements.push(upsertBalanceStmt(env, nextBalance));
+    balanceCache.set(balanceKey, nextBalance);
+
+    totalAmount += lineAmountCents;
+    totalCogs += lineCogsCents;
+    itemIndex += 1;
+  }
+
+  if (itemIndex === 0) return;
+  const receivedAmountCents = receivedAmountForOrder(lines, totalAmount, fees);
+  statements.push(env.DB.prepare(`
+    UPDATE sales_orders
+    SET total_amount_cents = ?,
+        total_cogs_cents = ?,
+        platform_fee_cents = ?,
+        service_fee_cents = ?,
+        discount_cents = ?,
+        received_amount_cents = ?,
+        updated_at = ?
+    WHERE id = ?
+  `).bind(
+    totalAmount,
+    totalCogs,
+    fees.platformFeeCents,
+    fees.serviceFeeCents,
+    fees.discountCents,
+    receivedAmountCents,
+    timestamp,
+    existing.id
+  ));
+
+  await env.DB.batch(statements);
+  summary.ordersReconciled = (summary.ordersReconciled || 0) + 1;
+}
+
 async function reconcileExistingOrder(env, existing, lines, fees, summary, timestamp, costCandidateCache) {
+  const items = await all(env.DB,
+    `SELECT id, product_id, quantity, unit_price_cents, unit_cost_cents, line_amount_cents, line_cogs_cents
+     FROM sales_items WHERE sales_order_id = ? ORDER BY id`, [existing.id]);
+  if (items.length !== lines.length && lines.length > 0) {
+    await rebuildExistingOrder(env, existing, lines, fees, summary, timestamp, costCandidateCache);
+    return;
+  }
+
   // 1) 订单级：手续费/服务费/优惠/销售额若变化，回填到 sales_orders
   const lineAmountTotal = lines.reduce((sum, l) => sum + Math.max(0,
     Number(l.lineAmountCents) || Number(l.unitPriceCents) * Number(l.quantity) || 0), 0);
@@ -303,9 +491,6 @@ async function reconcileExistingOrder(env, existing, lines, fees, summary, times
   }
 
   // 2) 明细级：unit_price/line_amount 回填
-  const items = await all(env.DB,
-    `SELECT id, product_id, quantity, unit_price_cents, unit_cost_cents, line_amount_cents, line_cogs_cents
-     FROM sales_items WHERE sales_order_id = ? ORDER BY id`, [existing.id]);
   let totalCogsCents = 0;
   let cogsChanged = false;
   for (let i = 0; i < Math.min(items.length, lines.length); i++) {
@@ -420,7 +605,7 @@ async function importOneOrder(env, machineId, vendorOrderNo, lines, summary, war
       warnings.push(`订单 ${vendorOrderNo} 缺商品名，跳过此行`);
       continue;
     }
-    const product = await findOrCreateProduct(env, machineId, line, statements, summary, timestamp);
+    const product = await findOrCreateProduct(env, machineId, line, statements, summary, timestamp, costCandidateCache);
     const quantity = Math.max(1, Number(line.quantity) || 1);
     const unitPriceCents = Math.max(0, Number(line.unitPriceCents) || 0);
     const lineAmountCents = Math.max(0, Number(line.lineAmountCents) || unitPriceCents * quantity);
@@ -526,43 +711,71 @@ function validatePayload(body) {
   const lines = [];
   const skipped = { canceled: 0, refunded: 0, unmappedDevice: 0, missing: 0 };
   const unmappedDevices = new Set();
+  let currentOrder = null;
 
   for (const row of orders) {
-    const status = String(row?.status || '').trim();
+    const vendorOrderNo = normalizeRowText(row?.vendorOrderNo);
+    const hasOrderNo = !!vendorOrderNo;
+    const status = normalizeRowText(row?.status || currentOrder?.status);
+    const refundAmount = Number(hasOrderNo ? row?.refundAmount : currentOrder?.refundAmount) || 0;
+    const deviceCode = normalizeRowText(row?.deviceCode || currentOrder?.deviceCode);
+    if (vendorOrderNo) {
+      currentOrder = {
+        vendorOrderNo,
+        status,
+        refundAmount,
+        deviceCode,
+        receivedAmount: row?.receivedAmount,
+        platformFee: row?.platformFee,
+        serviceFee: row?.serviceFee,
+        discount: row?.discount,
+        date: row?.date,
+        expectedItems: expectedItemCount(row),
+        itemCount: 0
+      };
+    }
+
     if (status && status !== '已完成') {
       skipped.canceled += 1;
       continue;
     }
-    if ((Number(row?.refundAmount) || 0) > 0) {
+    if (refundAmount > 0) {
       skipped.refunded += 1;
       continue;
     }
-    const machineId = mapZnDeviceToMachine(row?.deviceCode);
+    const machineId = mapZnDeviceToMachine(deviceCode);
     if (!machineId) {
       skipped.unmappedDevice += 1;
-      unmappedDevices.add(String(row?.deviceCode || ''));
+      unmappedDevices.add(deviceCode);
       continue;
     }
-    if (!row?.vendorOrderNo || !row?.vendorProductName) {
+    const canInheritOrder = !vendorOrderNo
+      && currentOrder
+      && currentOrder.itemCount < currentOrder.expectedItems
+      && hasProductLine(row);
+    const effectiveOrderNo = vendorOrderNo || (canInheritOrder ? currentOrder.vendorOrderNo : '');
+    if (!effectiveOrderNo || !hasProductLine(row)) {
       skipped.missing += 1;
       continue;
     }
     lines.push({
       machineId,
-      vendorOrderNo: String(row.vendorOrderNo).trim(),
-      vendorProductName: String(row.vendorProductName).trim(),
-      vendorBarcode: String(row.vendorBarcode || '').trim(),
+      vendorOrderNo: effectiveOrderNo,
+      vendorProductName: normalizeRowText(row.vendorProductName),
+      vendorBarcode: normalizeRowText(row.vendorBarcode),
       quantity: Math.max(1, Number(row.quantity) || 1),
-      unitPriceCents: Math.round((Number(row.unitPrice) || 0) * 100),
-      lineAmountCents: Math.round((Number(row.lineAmount ?? row.unitPrice ?? 0) || 0) * 100),
-      receivedAmountCents: Math.round((Number(row.receivedAmount) || 0) * 100),
-      platformFeeCents: Math.round((Number(row.platformFee) || 0) * 100),
-      serviceFeeCents: Math.round((Number(row.serviceFee) || 0) * 100),
-      discountCents: Math.round((Number(row.discount) || 0) * 100),
-      date: row.date || ''
+      unitPriceCents: toMoneyCents(row.unitPrice),
+      lineAmountCents: toMoneyCents(row.lineAmount ?? row.unitPrice),
+      receivedAmountCents: toMoneyCents(hasOrderNo ? row.receivedAmount : currentOrder?.receivedAmount),
+      platformFeeCents: toMoneyCents(hasOrderNo ? row.platformFee : currentOrder?.platformFee),
+      serviceFeeCents: toMoneyCents(hasOrderNo ? row.serviceFee : currentOrder?.serviceFee),
+      discountCents: toMoneyCents(hasOrderNo ? row.discount : currentOrder?.discount),
+      date: row.date || currentOrder?.date || ''
     });
+    if (currentOrder && effectiveOrderNo === currentOrder.vendorOrderNo) currentOrder.itemCount += 1;
   }
 
+  normalizeMultiItemLineAmounts(lines);
   return { lines, skipped, unmappedDevices: Array.from(unmappedDevices) };
 }
 

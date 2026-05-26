@@ -21,6 +21,7 @@ type ImportResult = {
 
 type ParsedRow = {
   vendorOrderNo: string
+  title: string
   status: string
   deviceCode: string
   vendorProductName: string
@@ -56,6 +57,7 @@ const summaryCount = computed(() => {
   let refunded = 0
   let importableRows = 0
   const importableOrders = new Set<string>()
+  let lastOrderNo = ''
   for (const row of rows.value) {
     devices.add(row.deviceCode)
     if (row.status === '已完成') completed += 1
@@ -63,8 +65,10 @@ const summaryCount = computed(() => {
     if (row.refundAmount > 0) refunded += 1
     if (isImportableRow(row)) {
       importableRows += 1
-      importableOrders.add(row.vendorOrderNo)
+      const orderNo = row.vendorOrderNo || lastOrderNo
+      if (orderNo) importableOrders.add(orderNo)
     }
+    if (row.vendorOrderNo) lastOrderNo = row.vendorOrderNo
   }
   return { total: rows.value.length, devices: Array.from(devices), completed, canceled, refunded, importableRows, importableOrders: importableOrders.size }
 })
@@ -72,7 +76,6 @@ const summaryCount = computed(() => {
 function isImportableRow(row: ParsedRow) {
   return row.status === '已完成'
     && row.refundAmount <= 0
-    && !!row.vendorOrderNo
     && !!row.vendorProductName
 }
 
@@ -92,8 +95,9 @@ function chunkRowsByOrder(sourceRows: ParsedRow[], batchSize: number) {
   const batches: ParsedRow[][] = []
   let current: ParsedRow[] = []
   const currentOrders = new Set<string>()
+  let lastOrderNo = ''
   for (const row of sourceRows) {
-    const orderNo = row.vendorOrderNo || `row-${current.length}`
+    const orderNo = row.vendorOrderNo || lastOrderNo || `row-${current.length}`
     if (current.length > 0 && !currentOrders.has(orderNo) && currentOrders.size >= batchSize) {
       batches.push(current)
       current = []
@@ -101,6 +105,7 @@ function chunkRowsByOrder(sourceRows: ParsedRow[], batchSize: number) {
     }
     current.push(row)
     currentOrders.add(orderNo)
+    if (row.vendorOrderNo) lastOrderNo = row.vendorOrderNo
   }
   if (current.length > 0) batches.push(current)
   return batches
@@ -126,6 +131,7 @@ function toNumber(value: string): number {
 
 function normalizeRow(raw: Record<string, unknown>): ParsedRow | null {
   const vendorOrderNo = pickField(raw, ['订单号'])
+  const title = pickField(raw, ['标题'])
   const status = pickField(raw, ['状态'])
   const deviceCode = pickField(raw, ['设备编号'])
   const vendorProductName = pickField(raw, ['商品名称'])
@@ -140,9 +146,9 @@ function normalizeRow(raw: Record<string, unknown>): ParsedRow | null {
   const discount = toNumber(pickField(raw, ['优惠金额']))
   const date = pickField(raw, ['创建时间', '扣款时间'])
 
-  if (!vendorOrderNo && !deviceCode) return null
+  if (!vendorOrderNo && !deviceCode && !vendorProductName) return null
   return {
-    vendorOrderNo, status, deviceCode, vendorProductName, vendorBarcode,
+    vendorOrderNo, title, status, deviceCode, vendorProductName, vendorBarcode,
     unitPrice, quantity, lineAmount, receivedAmount, refundAmount,
     platformFee, serviceFee, discount, date
   }

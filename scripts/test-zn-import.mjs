@@ -69,6 +69,7 @@ function toNumber(value) {
 }
 function normalizeRow(raw) {
   const vendorOrderNo = pickField(raw, ['订单号']);
+  const title = pickField(raw, ['标题']);
   const status = pickField(raw, ['状态']);
   const deviceCode = pickField(raw, ['设备编号']);
   const vendorProductName = pickField(raw, ['商品名称']);
@@ -82,8 +83,8 @@ function normalizeRow(raw) {
   const serviceFee = toNumber(pickField(raw, ['算法服务费']));
   const discount = toNumber(pickField(raw, ['优惠金额']));
   const date = pickField(raw, ['创建时间', '扣款时间']);
-  if (!vendorOrderNo && !deviceCode) return null;
-  return { vendorOrderNo, status, deviceCode, vendorProductName, vendorBarcode, unitPrice, quantity, lineAmount, receivedAmount, refundAmount, platformFee, serviceFee, discount, date };
+  if (!vendorOrderNo && !deviceCode && !vendorProductName) return null;
+  return { vendorOrderNo, title, status, deviceCode, vendorProductName, vendorBarcode, unitPrice, quantity, lineAmount, receivedAmount, refundAmount, platformFee, serviceFee, discount, date };
 }
 
 const xlsxPath = join(projectRoot, '订单明细_2026-05-01_2026-05-25.xlsx');
@@ -113,11 +114,39 @@ console.log('first import: sales_orders=%d items=%d sale_movements=%d products=%
 assert.equal(r1.summary.ordersImported, salesCount, '导入计数与表中行数应一致');
 assert.equal(r1.summary.linesImported, itemsCount, '明细行数应一致');
 assert.equal(r1.summary.ordersImported, 768, '完整 Excel 应导入 768 个有效订单');
-assert.equal(r1.summary.linesImported, 768, '完整 Excel 每个有效订单应有一条明细');
+assert.equal(r1.summary.linesImported, 927, '完整 Excel 应按订单声明商品数导入有效商品明细');
+assert(r1.summary.linesImported > r1.summary.ordersImported, '一单多商品订单应拆成多条销售明细');
 assert(r1.summary.costsMatched > 0, '导入时应能从现有进货价匹配到部分成本');
 assert(r1.summary.ordersImported > 0, '应至少有一些订单导入成功');
 assert.equal((await listSales(env, { yearMonth: '2026-05', status: 'active', limit: 500, offset: 0 })).length, 500);
 assert.equal((await listSales(env, { yearMonth: '2026-05', status: 'active', limit: 500, offset: 500 })).length, 268);
+
+const multiItemOrder = env.DB.query(`
+  SELECT p.name, si.quantity, si.unit_price_cents, si.line_amount_cents
+  FROM sales_items si
+  JOIN products p ON p.id = si.product_id
+  WHERE si.sales_order_id = ?
+  ORDER BY si.unit_price_cents
+`, 'zn:visionpaySFTS20260525083347733X');
+console.log('多商品订单明细:', multiItemOrder);
+assert.equal(multiItemOrder.length, 2, '同一订单中的冰露和东鹏应拆成两条明细');
+assert.deepEqual(
+  multiItemOrder.map(item => [item.name, item.quantity, item.unit_price_cents, item.line_amount_cents]),
+  [
+    ['冰露矿泉水(550ml)', 1, 100, 100],
+    ['东鹏补水啦电解质水柠檬味1L', 1, 550, 550]
+  ],
+  '多商品订单不应把整单 6.5 元挂到冰露一条明细上'
+);
+
+const multiItemOrderTotal = env.DB.queryOne(`
+  SELECT total_amount_cents, received_amount_cents, platform_fee_cents
+  FROM sales_orders
+  WHERE id = ?
+`, 'zn:visionpaySFTS20260525083347733X');
+assert.equal(multiItemOrderTotal.total_amount_cents, 650, '多商品订单汇总销售额应保留整单金额');
+assert.equal(multiItemOrderTotal.received_amount_cents, 646, '多商品订单到账额应保留整单到账金额');
+assert.equal(multiItemOrderTotal.platform_fee_cents, 4, '多商品订单手续费应保留整单手续费');
 
 // 手续费/服务费应有非零订单
 const feeOrders = env.DB.queryOne(`
@@ -140,6 +169,26 @@ console.log('金额汇总:', receivedTotals);
 assert(receivedTotals.received_amount_cents > 0, '应写入到账金额');
 assert(receivedTotals.received_amount_cents < receivedTotals.total_amount_cents, '到账金额应小于含手续费前销售额');
 assert(receivedTotals.total_cogs_cents > 0, '应按现有进货价写入销售成本');
+
+const dongpengImportedSales = env.DB.queryOne(`
+  SELECT COALESCE(SUM(si.quantity), 0) AS quantity
+  FROM sales_items si
+  WHERE si.product_id = 'cost-dp-1'
+`).quantity;
+const splitDongpengProducts = env.DB.queryOne(`
+  SELECT COUNT(*) AS n
+  FROM products
+  WHERE name = '东鹏特饮维生素功能饮料500ml'
+`).n;
+const dongpengProduct = env.DB.queryOne(`
+  SELECT external_id, normalized_name
+  FROM products
+  WHERE id = 'cost-dp-1'
+`);
+assert(dongpengImportedSales > 0, 'zn 导入应把销售匹配到已有进货商品');
+assert.equal(splitDongpengProducts, 0, 'zn 导入不应把已有进货商品拆成新销售商品');
+assert(dongpengProduct.external_id, '匹配到已有进货商品后应回填条码');
+assert(dongpengProduct.normalized_name, '匹配到已有进货商品后应回填归一化名称');
 
 // 检查 1号机/2号机 都有数据
 const m1 = env.DB.queryOne('SELECT COUNT(*) AS n FROM sales_orders WHERE machine_id = ?', '1号机').n;
@@ -263,8 +312,9 @@ function chunkByOrder(sourceRows, batchSize) {
   const batches = [];
   let current = [];
   const currentOrders = new Set();
+  let lastOrderNo = '';
   for (const row of sourceRows) {
-    const orderNo = row.vendorOrderNo || `row-${current.length}`;
+    const orderNo = row.vendorOrderNo || lastOrderNo || `row-${current.length}`;
     if (current.length > 0 && !currentOrders.has(orderNo) && currentOrders.size >= batchSize) {
       batches.push(current);
       current = [];
@@ -272,6 +322,7 @@ function chunkByOrder(sourceRows, batchSize) {
     }
     current.push(row);
     currentOrders.add(orderNo);
+    if (row.vendorOrderNo) lastOrderNo = row.vendorOrderNo;
   }
   if (current.length > 0) batches.push(current);
   return batches;
@@ -302,6 +353,112 @@ assert.equal(chunkedSummary.ordersImported, r1.summary.ordersImported, '分批�
 assert.equal(chunkedSummary.linesImported, r1.summary.linesImported, '分批导入明细应与一次性导入一致');
 
 console.log('\n✅ 分批导入测试通过：大 Excel 可分批提交且不漏单');
+
+// === 第五次：模拟线上已导入过的错单，重复导入应能把一条明细校正为两条 ===
+console.log('\n--- 多商品错单校正测试 ---');
+const envReconcile = { DB: new D1Database() };
+envReconcile.DB.exec(readFileSync(join(projectRoot, 'migrations', '0001_initial_d1_schema.sql'), 'utf8'));
+envReconcile.DB.exec(readFileSync(join(projectRoot, 'migrations', '0006_v3_structured_inventory_schema.sql'), 'utf8'));
+envReconcile.DB.exec(readFileSync(join(projectRoot, 'migrations', '0007_shengma_integration.sql'), 'utf8'));
+envReconcile.DB.exec(readFileSync(join(projectRoot, 'migrations', '0008_zn_order_fees.sql'), 'utf8'));
+envReconcile.DB.exec(readFileSync(join(projectRoot, 'migrations', '0009_sales_received_amount.sql'), 'utf8'));
+const brokenOrderStart = orders.findIndex(row => row.vendorOrderNo === 'visionpaySFTS20260525083347733X');
+const brokenOrderRows = brokenOrderStart >= 0
+  ? orders.slice(brokenOrderStart, brokenOrderStart + 2)
+  : [];
+assert.equal(brokenOrderRows.length, 2, '测试数据应包含错单主行和续行');
+const timestamp = '2026-05-25T00:00:00.000Z';
+await envReconcile.DB.prepare(`
+  INSERT INTO products (
+    id, machine_id, name, category, sell_price_cents, status,
+    created_at, updated_at, normalized_name, external_id
+  ) VALUES
+    ('broken-water', '1号机', '冰露矿泉水(550ml)', '饮料', 100, 'active', ?, ?, '冰露矿泉水550ml', '6928804013740'),
+    ('broken-dp', '1号机', '东鹏补水啦电解质水柠檬味1L', '饮料', 550, 'active', ?, ?, '东鹏补水啦电解质水柠檬味1l', '6934502302277')
+`).bind(timestamp, timestamp, timestamp, timestamp).run();
+await envReconcile.DB.prepare(`
+  INSERT INTO inventory_balances (
+    product_id, machine_id, quantity_on_hand, avg_cost_cents, inventory_value_cents,
+    total_purchase_qty, total_purchase_cost_cents, updated_at
+  ) VALUES
+    ('broken-water', '1号机', 9, 60, 540, 10, 600, ?),
+    ('broken-dp', '1号机', 10, 400, 4000, 10, 4000, ?)
+`).bind(timestamp, timestamp).run();
+await envReconcile.DB.prepare(`
+  INSERT INTO sales_orders (
+    id, type, machine_id, record_date, year_month, total_amount_cents, total_cogs_cents,
+    platform_fee_cents, service_fee_cents, discount_cents, received_amount_cents,
+    note, image_asset_id, voided_at, created_at, updated_at, external_id, source
+  ) VALUES (
+    'zn:visionpaySFTS20260525083347733X', 'sale', '1号机', '2026-05-25', '2026-05',
+    650, 60, 4, 0, 0, 646, '历史错误导入', NULL, NULL, ?, ?,
+    'visionpaySFTS20260525083347733X', 'zn'
+  )
+`).bind(timestamp, timestamp).run();
+await envReconcile.DB.prepare(`
+  INSERT INTO sales_items (
+    id, sales_order_id, product_id, quantity, unit_price_cents, unit_cost_cents,
+    line_amount_cents, line_cogs_cents, created_at
+  ) VALUES (
+    'zn:visionpaySFTS20260525083347733X:0', 'zn:visionpaySFTS20260525083347733X',
+    'broken-water', 1, 100, 60, 650, 60, ?
+  )
+`).bind(timestamp).run();
+await envReconcile.DB.prepare(`
+  INSERT INTO stock_movements (
+    id, product_id, machine_id, movement_type, qty_delta, unit_cost_cents,
+    ref_type, ref_id, ref_item_id, voids_movement_id, external_id, reason, created_at
+  ) VALUES (
+    'sales_order:zn:visionpaySFTS20260525083347733X:broken-water:0',
+    'broken-water', '1号机', 'sale', -1, 60, 'sales_order',
+    'zn:visionpaySFTS20260525083347733X', 'zn:visionpaySFTS20260525083347733X:0',
+    NULL, 'zn:sale:visionpaySFTS20260525083347733X:0', '历史错误导入', ?
+  )
+`).bind(timestamp).run();
+await envReconcile.DB.prepare(`
+  INSERT INTO external_sales_imports (
+    integration, vendor_order_no, local_sales_order_id, imported_at, raw_json
+  ) VALUES ('zn', 'visionpaySFTS20260525083347733X', 'zn:visionpaySFTS20260525083347733X', 0, '{}')
+`).run();
+
+const r5 = await runZnImport(envReconcile, { orders: brokenOrderRows });
+console.log('第五次:', r5.summary);
+assert.equal(r5.summary.ordersImported, 0, '历史错单重复导入不应创建新订单');
+assert.equal(r5.summary.ordersDuplicate, 1, '历史错单应识别为重复订单');
+assert.equal(r5.summary.ordersReconciled, 1, '历史错单应被校正');
+
+const fixedItems = envReconcile.DB.query(`
+  SELECT p.name, si.quantity, si.unit_price_cents, si.line_amount_cents, si.line_cogs_cents
+  FROM sales_items si
+  JOIN products p ON p.id = si.product_id
+  WHERE si.sales_order_id = ?
+  ORDER BY si.unit_price_cents
+`, 'zn:visionpaySFTS20260525083347733X');
+console.log('校正后明细:', fixedItems);
+assert.equal(fixedItems.length, 2, '历史错单应重建为两条销售明细');
+assert.deepEqual(
+  fixedItems.map(item => [item.name, item.quantity, item.unit_price_cents, item.line_amount_cents]),
+  [
+    ['冰露矿泉水(550ml)', 1, 100, 100],
+    ['东鹏补水啦电解质水柠檬味1L', 1, 550, 550]
+  ],
+  '历史错单校正后应按商品单价分别记录小计'
+);
+const fixedBalances = envReconcile.DB.query(`
+  SELECT product_id, quantity_on_hand
+  FROM inventory_balances
+  ORDER BY product_id
+`);
+assert.deepEqual(
+  fixedBalances.map(item => [item.product_id, item.quantity_on_hand]),
+  [
+    ['broken-dp', 9],
+    ['broken-water', 9]
+  ],
+  '历史错单校正应同步恢复旧库存影响并扣减两种商品'
+);
+
+console.log('\n✅ 多商品错单校正测试通过：重复导入能修正已存在的一单多商品错误明细');
 
 async function seedCostProducts(targetEnv) {
   const timestamp = '2026-05-01T00:00:00.000Z';
