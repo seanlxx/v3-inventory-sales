@@ -15,6 +15,7 @@ import { buildProductCatalogPrompt, matchProductByName, normalizeProductName } f
 type SalesAiImage = AiRecognitionImage
 
 const AI_RECOGNITION_MAX_TOKENS = 2200
+const SALES_LIST_PAGE_SIZE = 500
 
 const defaultFilters: SalesListFilters = {
   month: new Date().toISOString().slice(0, 7),
@@ -261,16 +262,24 @@ export function useSales() {
     loading.value = true
     error.value = null
     try {
-      const response = await request<SalesOrder[]>('/inventory/sales', {
-        query: {
-          yearMonth: filters.month,
-          type: filters.type,
-          status: filters.status,
-          machineId: filters.machineId,
-          limit: 200
-        }
-      })
-      orders.value = response.map(normalizeOrder)
+      const loadedOrders: SalesOrder[] = []
+      let offset = 0
+      while (true) {
+        const response = await request<SalesOrder[]>('/inventory/sales', {
+          query: {
+            yearMonth: filters.month,
+            type: filters.type,
+            status: filters.status,
+            machineId: filters.machineId,
+            limit: SALES_LIST_PAGE_SIZE,
+            offset
+          }
+        })
+        loadedOrders.push(...response)
+        if (response.length < SALES_LIST_PAGE_SIZE) break
+        offset += SALES_LIST_PAGE_SIZE
+      }
+      orders.value = loadedOrders.map(normalizeOrder)
     } catch (caught) {
       error.value = normalizeApiError(caught)
     } finally {

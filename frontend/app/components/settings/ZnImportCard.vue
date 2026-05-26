@@ -8,6 +8,7 @@ type ImportSummary = {
   ordersSkipped: number
   linesImported: number
   productsCreated: number
+  ordersReconciled?: number
   warnings: number
 }
 
@@ -41,19 +42,64 @@ const submitting = ref(false)
 const rows = ref<ParsedRow[]>([])
 const result = ref<ImportResult | null>(null)
 const errorMessage = ref('')
+const importProgress = ref('')
+const IMPORT_BATCH_SIZE = 80
 
 const summaryCount = computed(() => {
   if (rows.value.length === 0) return null
   const devices = new Set<string>()
   let completed = 0
   let canceled = 0
+  let refunded = 0
+  let importableRows = 0
+  const importableOrders = new Set<string>()
   for (const row of rows.value) {
     devices.add(row.deviceCode)
     if (row.status === '已完成') completed += 1
     else canceled += 1
+    if (row.refundAmount > 0) refunded += 1
+    if (isImportableRow(row)) {
+      importableRows += 1
+      importableOrders.add(row.vendorOrderNo)
+    }
   }
-  return { total: rows.value.length, devices: Array.from(devices), completed, canceled }
+  return { total: rows.value.length, devices: Array.from(devices), completed, canceled, refunded, importableRows, importableOrders: importableOrders.size }
 })
+
+function isImportableRow(row: ParsedRow) {
+  return row.status === '已完成'
+    && row.refundAmount <= 0
+    && !!row.vendorOrderNo
+    && !!row.vendorProductName
+}
+
+function mergeSummary(target: ImportSummary, next: ImportSummary) {
+  target.ordersImported += next.ordersImported || 0
+  target.ordersDuplicate += next.ordersDuplicate || 0
+  target.ordersSkipped += next.ordersSkipped || 0
+  target.linesImported += next.linesImported || 0
+  target.productsCreated += next.productsCreated || 0
+  target.ordersReconciled = (target.ordersReconciled || 0) + (next.ordersReconciled || 0)
+  target.warnings += next.warnings || 0
+}
+
+function chunkRowsByOrder(sourceRows: ParsedRow[], batchSize: number) {
+  const batches: ParsedRow[][] = []
+  let current: ParsedRow[] = []
+  const currentOrders = new Set<string>()
+  for (const row of sourceRows) {
+    const orderNo = row.vendorOrderNo || `row-${current.length}`
+    if (current.length > 0 && !currentOrders.has(orderNo) && currentOrders.size >= batchSize) {
+      batches.push(current)
+      current = []
+      currentOrders.clear()
+    }
+    current.push(row)
+    currentOrders.add(orderNo)
+  }
+  if (current.length > 0) batches.push(current)
+  return batches
+}
 
 function pickField(row: Record<string, unknown>, names: string[]): string {
   for (const key of Object.keys(row)) {
@@ -134,14 +180,34 @@ async function submit() {
   if (rows.value.length === 0) return
   submitting.value = true
   errorMessage.value = ''
+  importProgress.value = ''
   try {
-    const response = await api.request<ImportResult>('/integrations/zn/import', {
-      method: 'POST',
-      body: { orders: rows.value }
-    })
-    result.value = response
+    const batches = chunkRowsByOrder(rows.value, IMPORT_BATCH_SIZE)
+    const merged: ImportResult = {
+      summary: {
+        ordersImported: 0,
+        ordersDuplicate: 0,
+        ordersSkipped: 0,
+        linesImported: 0,
+        productsCreated: 0,
+        ordersReconciled: 0,
+        warnings: 0
+      },
+      warnings: []
+    }
+    for (let index = 0; index < batches.length; index += 1) {
+      importProgress.value = `正在导入第 ${index + 1} / ${batches.length} 批...`
+      const response = await api.request<ImportResult>('/integrations/zn/import', {
+        method: 'POST',
+        body: { orders: batches[index] }
+      })
+      mergeSummary(merged.summary, response.summary)
+      merged.warnings.push(...response.warnings)
+    }
+    merged.summary.warnings = merged.warnings.length
+    result.value = merged
     toast.show(
-      `已导入 ${response.summary.ordersImported} 单，重复 ${response.summary.ordersDuplicate}，跳过 ${response.summary.ordersSkipped}`,
+      `已导入 ${merged.summary.ordersImported} 单，重复 ${merged.summary.ordersDuplicate}，跳过 ${merged.summary.ordersSkipped}`,
       'success'
     )
   } catch (error) {
@@ -149,6 +215,7 @@ async function submit() {
     toast.show(errorMessage.value, 'danger')
   } finally {
     submitting.value = false
+    importProgress.value = ''
   }
 }
 
@@ -157,6 +224,7 @@ function reset() {
   fileName.value = ''
   result.value = null
   errorMessage.value = ''
+  importProgress.value = ''
 }
 </script>
 
@@ -185,6 +253,9 @@ function reset() {
       <p v-if="errorMessage" class="zn-import__error">
         {{ errorMessage }}
       </p>
+      <p v-if="importProgress" class="zn-import__progress">
+        {{ importProgress }}
+      </p>
 
       <section v-if="summaryCount" class="zn-import__summary">
         <div class="zn-import__summary-item">
@@ -198,6 +269,18 @@ function reset() {
         <div class="zn-import__summary-item">
           <span>取消 / 其他</span>
           <strong>{{ summaryCount.canceled }}</strong>
+        </div>
+        <div class="zn-import__summary-item">
+          <span>含退款</span>
+          <strong>{{ summaryCount.refunded }}</strong>
+        </div>
+        <div class="zn-import__summary-item">
+          <span>预计导入行</span>
+          <strong>{{ summaryCount.importableRows }}</strong>
+        </div>
+        <div class="zn-import__summary-item">
+          <span>预计导入单</span>
+          <strong>{{ summaryCount.importableOrders }}</strong>
         </div>
         <div class="zn-import__summary-item">
           <span>设备数</span>
@@ -236,6 +319,10 @@ function reset() {
           <div class="zn-import__summary-item">
             <span>新建商品</span>
             <strong>{{ result.summary.productsCreated }}</strong>
+          </div>
+          <div class="zn-import__summary-item">
+            <span>订单校正</span>
+            <strong>{{ result.summary.ordersReconciled || 0 }}</strong>
           </div>
           <div class="zn-import__summary-item">
             <span>警告</span>
@@ -339,6 +426,13 @@ function reset() {
 .zn-import__error {
   margin: 0;
   color: var(--color-danger);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.zn-import__progress {
+  margin: 0;
+  color: var(--color-text-muted);
   font-size: 13px;
   font-weight: 700;
 }
