@@ -174,13 +174,7 @@
 │   ├── settings.js         # 系统设置 CRUD
 │   ├── images.js           # R2 图片读取
 │   └── ai-proxy.js         # AI 多模型代理路由
-├── migrations/
-│   ├── 0001_initial_d1_schema.sql
-│   ├── 0002_chunk_record_images.sql
-│   ├── 0003_cap_password_pbkdf2_iterations.sql
-│   ├── 0004_r2_image_keys.sql
-│   ├── 0005_query_path_indexes.sql
-│   └── 0006_v3_structured_inventory_schema.sql
+├── migrations/             # D1 数据库迁移脚本
 ├── scripts/
 │   ├── build.ps1           # 构建 dist/（Nuxt generate + 复制 _headers）
 │   ├── dev.ps1             # 本地开发（构建 → 迁移 → wrangler pages dev）
@@ -216,7 +210,6 @@ C:\Users\Admin\WeChatProjects\minicode-1\MINIPROGRAM_IMPLEMENTATION.md
 | --- | --- |
 | `dist/` | 构建产物，由 `scripts/build.ps1` 生成 |
 | `output/` | 本地调试日志、截图、临时产物 |
-| `.migration/` | 旧版数据迁移导出的 JSON / SQL，含敏感数据 |
 | `.wrangler/` | wrangler 本地缓存 |
 | `.sisyphus/` | 本地编排状态 |
 
@@ -233,7 +226,7 @@ C:\Users\Admin\WeChatProjects\minicode-1\MINIPROGRAM_IMPLEMENTATION.md
 
 ### 1.4 数据模型
 
- v3 使用结构化关系表，schema 定义在 `migrations/0006_v3_structured_inventory_schema.sql`：
+当前数据模型使用结构化关系表，核心表如下：
 
 | 表 | 用途 | 关键列 |
 | --- | --- | --- |
