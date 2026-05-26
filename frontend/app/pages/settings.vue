@@ -303,6 +303,10 @@ onMounted(async () => {
       </form>
     </SettingsSection>
 
+    <ClientOnly>
+      <ZnImportCard />
+    </ClientOnly>
+
     <VendorSyncCard />
 
     <SettingsSection title="AI provider" description="填写 Base URL 和 API Key 后手动获取模型，再选择当前要使用的模型。">
