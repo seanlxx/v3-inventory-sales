@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import * as XLSX from '../output/xlsx-inspect/node_modules/xlsx/xlsx.mjs';
 
+import { listSales } from '../functions/api/_shared/inventory-service.js';
 import { runZnImport } from '../functions/api/_shared/zn/importer.js';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -110,6 +111,8 @@ assert.equal(r1.summary.linesImported, itemsCount, '明细行数应一致');
 assert.equal(r1.summary.ordersImported, 768, '完整 Excel 应导入 768 个有效订单');
 assert.equal(r1.summary.linesImported, 768, '完整 Excel 每个有效订单应有一条明细');
 assert(r1.summary.ordersImported > 0, '应至少有一些订单导入成功');
+assert.equal((await listSales(env, { yearMonth: '2026-05', status: 'active', limit: 500, offset: 0 })).length, 500);
+assert.equal((await listSales(env, { yearMonth: '2026-05', status: 'active', limit: 500, offset: 500 })).length, 268);
 
 // 手续费/服务费应有非零订单
 const feeOrders = env.DB.queryOne(`
