@@ -61,7 +61,7 @@ onMounted(() => {
       </div>
       <div class="dashboard-page__column">
         <MachineRankingPanel
-          :items="report?.machineRanking ?? []"
+          :items="report?.profitBreakdown ?? []"
           :loading="loading"
         />
         <LowStockPanel

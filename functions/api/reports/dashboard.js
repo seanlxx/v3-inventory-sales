@@ -233,6 +233,59 @@ async function getMachineRanking(env, month) {
   }));
 }
 
+async function getProfitBreakdown(env, month) {
+  const rows = await all(env.DB, `
+    WITH order_rows AS (
+      SELECT
+        id,
+        CASE
+          WHEN machine_id IN ('1号机', '2号机', '${SHARED_STOCK_MACHINE_ID}') THEN '${SHARED_STOCK_MACHINE_ID}'
+          ELSE machine_id
+        END AS display_machine_id,
+        total_amount_cents,
+        received_amount_cents,
+        total_cogs_cents
+      FROM sales_orders
+      WHERE voided_at IS NULL
+        AND type = 'sale'
+        AND year_month = ?
+    ),
+    totals_by_machine AS (
+      SELECT
+        display_machine_id,
+        COALESCE(SUM(total_amount_cents), 0) AS revenue_cents,
+        COALESCE(SUM(received_amount_cents), 0) AS received_cents,
+        COALESCE(SUM(total_cogs_cents), 0) AS cogs_cents
+      FROM order_rows
+      GROUP BY display_machine_id
+    ),
+    quantity_by_machine AS (
+      SELECT
+        o.display_machine_id,
+        COALESCE(SUM(i.quantity), 0) AS quantity
+      FROM order_rows o
+      JOIN sales_items i ON i.sales_order_id = o.id
+      GROUP BY o.display_machine_id
+    )
+    SELECT
+      t.display_machine_id,
+      t.revenue_cents,
+      t.received_cents,
+      t.cogs_cents,
+      COALESCE(q.quantity, 0) AS quantity
+    FROM totals_by_machine t
+    LEFT JOIN quantity_by_machine q ON q.display_machine_id = t.display_machine_id
+    ORDER BY (t.received_cents - t.cogs_cents) DESC, t.revenue_cents DESC
+  `, [month]);
+
+  return rows.map(row => ({
+    machineId: row.display_machine_id,
+    revenue: centsToMoney(row.revenue_cents),
+    profit: centsToMoney((Number(row.received_cents) || 0) - (Number(row.cogs_cents) || 0)),
+    quantity: Number(row.quantity) || 0
+  }));
+}
+
 async function getLowStock(env, threshold, machineId) {
   const params = [threshold];
   const stockMachineId = machineId ? stockMachineIdFor(machineId) : '';
@@ -365,6 +418,7 @@ export async function onRequestGet(context) {
     purchaseCost,
     salesTrend,
     machineRanking,
+    profitBreakdown,
     lowStock
   ] = await Promise.all([
     getMonthlySales(context.env, month, effectiveMachineId),
@@ -372,6 +426,7 @@ export async function onRequestGet(context) {
     getPurchaseCost(context.env, month, effectiveMachineId),
     getSalesTrend(context.env, days, effectiveMachineId),
     getMachineRanking(context.env, month),
+    getProfitBreakdown(context.env, month),
     getLowStock(context.env, settings.lowStockThreshold, effectiveMachineId)
   ]);
 
@@ -395,6 +450,7 @@ export async function onRequestGet(context) {
     },
     salesTrend,
     machineRanking,
+    profitBreakdown,
     lowStock,
     recentExceptions: await getRecentExceptions(context.env, settings.lowStockThreshold, effectiveMachineId)
   });

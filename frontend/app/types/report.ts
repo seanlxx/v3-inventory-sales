@@ -25,6 +25,8 @@ export type MachineRankingItem = {
   quantity: number
 }
 
+export type ProfitBreakdownItem = MachineRankingItem
+
 export type DashboardExceptionType = 'refund' | 'loss' | 'void' | 'low_stock'
 
 export type DashboardException = {
@@ -41,6 +43,7 @@ export type DashboardReport = {
   kpis: DashboardKpis
   salesTrend: SalesTrendPoint[]
   machineRanking: MachineRankingItem[]
+  profitBreakdown: ProfitBreakdownItem[]
   lowStock: InventoryBalance[]
   recentExceptions: DashboardException[]
 }
