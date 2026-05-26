@@ -193,7 +193,6 @@
 ├── wrangler.jsonc           # Cloudflare 部署配置
 ├── dev.bat                  # Windows 双击入口：调用 scripts/dev.ps1 -SyncRemote
 ├── AGENTS.md               # ← 你正在读的文件
-├── CLAUDE.md               # Claude 专用指令（OpenACP 本地工作区说明）
 └── .gitignore
 ```
 
@@ -220,7 +219,6 @@ C:\Users\Admin\WeChatProjects\minicode-1\MINIPROGRAM_IMPLEMENTATION.md
 | `.migration/` | 旧版数据迁移导出的 JSON / SQL，含敏感数据 |
 | `.wrangler/` | wrangler 本地缓存 |
 | `.sisyphus/` | 本地编排状态 |
-| `.openacp/` | OpenACP 本地工作区（含 secrets） |
 
 ### 1.3 Cloudflare 绑定
 
@@ -379,7 +377,6 @@ powershell -ExecutionPolicy Bypass -File ./scripts/deploy-pages.ps1
   - `售货机数据备份_*.json`
   - `d1-seed.sql` / `d1-image-rows.json`
   - `.env*`（`.env.example` 除外）
-  - `.openacp/`
 - ❌ 不做与当前目标无关的样式重构、目录重组、兼容性改造。
 - ❌ 不给未出现过的场景加"防御性"代码、fallback、兼容旧格式的分支。
 
@@ -424,7 +421,7 @@ powershell -ExecutionPolicy Bypass -File ./scripts/deploy-pages.ps1
 #### 安全红线
 
 - `.gitignore` 已排除敏感文件，但仍需确认 `git status` 输出中**没有**以下内容被意外暂存：
-  - `.wrangler/`、`dist/`、`.sisyphus/`、`.openacp/`
+  - `.wrangler/`、`dist/`、`.sisyphus/`
   - `github-recovery-codes.txt`
   - `售货机数据备份_*.json`、`d1-seed.sql`、`d1-image-rows.json`
   - `.env*`（`.env.example` 除外）
