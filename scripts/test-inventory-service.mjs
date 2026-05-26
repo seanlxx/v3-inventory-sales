@@ -9,6 +9,7 @@ import {
   createAdjustment,
   createPurchases,
   listProducts,
+  listSales,
   createSalesOrder,
   saveProduct,
   updateProductStatus,
@@ -21,11 +22,12 @@ const projectRoot = dirname(scriptDir);
 class D1Database {
   constructor() {
     this.db = new DatabaseSync(':memory:');
+    this.maxBindParams = Infinity;
     this.db.exec('PRAGMA foreign_keys = ON;');
   }
 
   prepare(sql) {
-    return new D1Statement(this.db, sql);
+    return new D1Statement(this, sql);
   }
 
   async batch(statements) {
@@ -49,25 +51,35 @@ class D1Database {
 }
 
 class D1Statement {
-  constructor(db, sql, params = []) {
-    this.db = db;
+  constructor(database, sql, params = []) {
+    this.database = database;
+    this.db = database.db;
     this.sql = sql;
     this.params = params;
   }
 
   bind(...params) {
-    return new D1Statement(this.db, this.sql, params.map(param => param === undefined ? null : param));
+    return new D1Statement(this.database, this.sql, params.map(param => param === undefined ? null : param));
+  }
+
+  assertBindLimit() {
+    if (this.params.length > this.database.maxBindParams) {
+      throw new Error(`too many SQL bound parameters: ${this.params.length}`);
+    }
   }
 
   async all() {
+    this.assertBindLimit();
     return { results: this.db.prepare(this.sql).all(...this.params) };
   }
 
   async first() {
+    this.assertBindLimit();
     return this.db.prepare(this.sql).get(...this.params) || null;
   }
 
   async run() {
+    this.assertBindLimit();
     const result = this.db.prepare(this.sql).run(...this.params);
     return { success: true, meta: result };
   }
@@ -251,6 +263,39 @@ await assert.rejects(
   () => updateProductStatus(env, 'p2', 'unknown'),
   /Invalid product status/
 );
+
+await saveProduct(env, {
+  id: 'p-bulk-sales',
+  name: 'Bulk Sales Soda',
+  machineId: 'machine-bulk',
+  category: 'drink',
+  sellPrice: 2
+});
+await createPurchases(env, {
+  id: 'po-bulk-sales',
+  productId: 'p-bulk-sales',
+  quantity: 120,
+  totalPrice: 120,
+  date: '2026-05-01'
+});
+for (let index = 0; index < 120; index += 1) {
+  await createSalesOrder(env, {
+    id: `so-bulk-${String(index).padStart(3, '0')}`,
+    machineId: 'machine-bulk',
+    date: '2026-05-10',
+    items: [{ productId: 'p-bulk-sales', quantity: 1 }]
+  }, 'sale');
+}
+env.DB.maxBindParams = 100;
+const bulkSales = await listSales(env, {
+  yearMonth: '2026-05',
+  status: 'active',
+  machineId: 'machine-bulk',
+  limit: 200
+});
+env.DB.maxBindParams = Infinity;
+assert.equal(bulkSales.length, 120, 'sales list should handle more than 100 orders');
+assert.equal(bulkSales.every(order => order.items.length === 1), true, 'batched sales list should include every order item');
 
 assert.equal(await movementBalanceDiffCount(), 0, 'movement totals should match inventory_balances');
 console.log('inventory service ledger tests passed');

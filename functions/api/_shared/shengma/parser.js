@@ -223,19 +223,29 @@ function parseSalesCards(html) {
     '立即退款'
   ];
 
-  return divBlocksByClass(html, 'list-item')
+  const blocks = [
+    ...divBlocksByClass(html, 'list-item'),
+    ...divBlocksByClass(html, 'item')
+  ];
+
+  return Array.from(new Set(blocks))
     .filter(block => /订单号码|交易时间|出货详情/.test(stripTags(block)))
     .map((block) => {
       const text = stripTags(block);
 
       const headBlock = divBlocksByClass(block, 'head')[0] || '';
+      const titleBlock = divBlocksByClass(block, 'title')[0] || '';
       const goodsNameBlock = divBlocksByClass(headBlock || block, 'goods-name2')[0] || '';
       const productNameFromLink = stripTags(goodsNameBlock).trim();
-      const productName = (productNameFromLink || labelValue(text, '商品名称', labels))
+      const productNameFromTitle = stripTags(titleBlock)
+        .split(/\s+/)
+        .filter(part => !/^-?\d+(?:\.\d+)?$|已支付|未支付|支付|出货|退款/.test(part))[0] || '';
+      const productName = (productNameFromLink || labelValue(text, '商品名称', labels) || productNameFromTitle)
         .replace(/[>›]+$/g, '')
         .trim();
 
       const amountCents = parseMoney(firstClassText(headBlock || block, 'price'))
+        ?? parseMoney(stripTags(titleBlock).match(/-?\d+(?:\.\d+)?/)?.[0])
         ?? parseMoney(labelValue(text, '金额', labels));
 
       const vendorOrderNo = labelValue(text, '订单号码', labels).split(/\s+/)[0] || '';
@@ -250,7 +260,7 @@ function parseSalesCards(html) {
       const costCents = parseMoney(labelValue(text, '进价', labels));
       const date = firstDate([labelValue(text, '交易时间', labels)]);
 
-      const headerText = stripTags(headBlock);
+      const headerText = `${stripTags(headBlock)} ${stripTags(titleBlock)}`;
       const shipmentText = labelValue(text, '出货详情', labels);
       const statusText = `${headerText} ${shipmentText}`;
 

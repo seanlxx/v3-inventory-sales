@@ -101,7 +101,7 @@ useClipboardImagePaste({
                 {{ hasImages ? `已选择 ${props.images.length} 张图片，可继续多选或 Ctrl+V 粘贴` : props.uploadHint }}
               </strong>
             </div>
-            <input type="file" accept="image/*" multiple class="ai-recognition__upload-input" @change="handleFileChange">
+            <input type="file" accept="image/*" class="ai-recognition__upload-input" multiple @change="handleFileChange">
           </div>
           <div class="ai-recognition__preview-area">
             <div v-if="hasImages" class="ai-recognition__previews" aria-label="待识别图片">

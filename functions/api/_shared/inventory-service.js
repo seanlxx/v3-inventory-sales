@@ -23,6 +23,7 @@ export class InventoryValidationError extends Error {
 }
 
 const PRODUCT_STATUSES = new Set(['active', 'archived']);
+const IN_CLAUSE_BATCH_SIZE = 50;
 
 function validationError(message) {
   return new InventoryValidationError(message);
@@ -935,17 +936,21 @@ export async function listSales(env, filters = {}) {
   if (!orders.length) return [];
 
   const ids = orders.map(order => order.id);
-  const itemRows = await all(env.DB, `
-    SELECT
-      i.*,
-      o.type AS order_type,
-      p.name AS product_name
-    FROM sales_items i
-    JOIN sales_orders o ON o.id = i.sales_order_id
-    JOIN products p ON p.id = i.product_id
-    WHERE i.sales_order_id IN (${ids.map(() => '?').join(', ')})
-    ORDER BY i.sales_order_id, i.id
-  `, ids);
+  const itemRows = [];
+  for (let index = 0; index < ids.length; index += IN_CLAUSE_BATCH_SIZE) {
+    const batchIds = ids.slice(index, index + IN_CLAUSE_BATCH_SIZE);
+    itemRows.push(...await all(env.DB, `
+      SELECT
+        i.*,
+        o.type AS order_type,
+        p.name AS product_name
+      FROM sales_items i
+      JOIN sales_orders o ON o.id = i.sales_order_id
+      JOIN products p ON p.id = i.product_id
+      WHERE i.sales_order_id IN (${batchIds.map(() => '?').join(', ')})
+      ORDER BY i.sales_order_id, i.id
+    `, batchIds));
+  }
   const itemsByOrder = new Map();
   for (const item of itemRows) {
     if (!itemsByOrder.has(item.sales_order_id)) itemsByOrder.set(item.sales_order_id, []);
