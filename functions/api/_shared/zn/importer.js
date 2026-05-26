@@ -166,7 +166,7 @@ async function importOneOrder(env, machineId, vendorOrderNo, lines, summary, war
       balanceCache.set(balanceKey, await getBalance(env, product.id, machineId));
     }
     const balance = balanceCache.get(balanceKey);
-    const unitCostCents = line.costCents ?? Number(balance.avg_cost_cents) || 0;
+    const unitCostCents = line.costCents ?? (Number(balance.avg_cost_cents) || 0);
     const lineCogsCents = unitCostCents * quantity;
 
     const itemId = `${orderId}:${itemIndex}`;
