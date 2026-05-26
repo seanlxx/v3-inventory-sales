@@ -44,6 +44,18 @@ function normalizeFeeRate(value) {
   return number > 1 ? number / 100 : number;
 }
 
+function machineFilterFor(column, machineId) {
+  const value = String(machineId || '').trim();
+  if (!value) return { sql: '', params: [] };
+  if (stockMachineIdFor(value) === SHARED_STOCK_MACHINE_ID) {
+    return {
+      sql: `AND ${column} IN (?, ?, ?)`,
+      params: ['1号机', '2号机', SHARED_STOCK_MACHINE_ID]
+    };
+  }
+  return { sql: `AND ${column} = ?`, params: [value] };
+}
+
 function safeJsonParse(value, fallback = null) {
   try {
     return JSON.parse(value);
@@ -93,9 +105,8 @@ function dateWindowStart(days) {
 }
 
 async function getMonthlySales(env, month, machineId) {
-  const params = [month];
-  const machineFilter = machineId ? 'AND machine_id = ?' : '';
-  if (machineId) params.push(machineId);
+  const machineFilter = machineFilterFor('machine_id', machineId);
+  const params = [month, ...machineFilter.params];
 
   return await first(env.DB, `
     SELECT
@@ -106,28 +117,26 @@ async function getMonthlySales(env, month, machineId) {
     FROM sales_orders
     WHERE voided_at IS NULL
       AND year_month = ?
-      ${machineFilter}
+      ${machineFilter.sql}
   `, params);
 }
 
 async function getTodaySales(env, machineId) {
-  const params = [todayDate()];
-  const machineFilter = machineId ? 'AND machine_id = ?' : '';
-  if (machineId) params.push(machineId);
+  const machineFilter = machineFilterFor('machine_id', machineId);
+  const params = [todayDate(), ...machineFilter.params];
 
   return await first(env.DB, `
     SELECT COALESCE(SUM(total_amount_cents), 0) AS revenue_cents
     FROM sales_orders
     WHERE voided_at IS NULL
       AND record_date = ?
-      ${machineFilter}
+      ${machineFilter.sql}
   `, params);
 }
 
 async function getPurchaseCost(env, month, machineId) {
-  const params = [month];
-  const machineFilter = machineId ? 'AND o.machine_id = ?' : '';
-  if (machineId) params.push(machineId);
+  const machineFilter = machineFilterFor('o.machine_id', machineId);
+  const params = [month, ...machineFilter.params];
 
   return await first(env.DB, `
     SELECT COALESCE(SUM(i.total_cost_cents), 0) AS purchase_cents
@@ -135,14 +144,14 @@ async function getPurchaseCost(env, month, machineId) {
     JOIN purchase_items i ON i.purchase_id = o.id
     WHERE o.voided_at IS NULL
       AND substr(o.record_date, 1, 7) = ?
-      ${machineFilter}
+      ${machineFilter.sql}
   `, params);
 }
 
 async function getSalesTrend(env, days, machineId) {
-  const params = [dateWindowStart(days)];
-  const machineFilter = machineId ? 'AND machine_id = ?' : '';
-  if (machineId) params.push(machineId);
+  const startDate = dateWindowStart(days);
+  const revenueFilter = machineFilterFor('machine_id', machineId);
+  const quantityFilter = machineFilterFor('o.machine_id', machineId);
 
   const rows = await all(env.DB, `
     WITH revenue_by_date AS (
@@ -153,7 +162,7 @@ async function getSalesTrend(env, days, machineId) {
       WHERE voided_at IS NULL
         AND type = 'sale'
         AND record_date >= ?
-        ${machineFilter}
+        ${revenueFilter.sql}
       GROUP BY record_date
     ),
     quantity_by_date AS (
@@ -165,7 +174,7 @@ async function getSalesTrend(env, days, machineId) {
       WHERE o.voided_at IS NULL
         AND o.type = 'sale'
         AND o.record_date >= ?
-        ${machineFilter ? 'AND o.machine_id = ?' : ''}
+        ${quantityFilter.sql}
       GROUP BY o.record_date
     )
     SELECT
@@ -175,7 +184,7 @@ async function getSalesTrend(env, days, machineId) {
     FROM revenue_by_date r
     LEFT JOIN quantity_by_date q ON q.date = r.date
     ORDER BY r.date
-  `, [...params, ...params]);
+  `, [startDate, ...revenueFilter.params, startDate, ...quantityFilter.params]);
   const rowMap = new Map(rows.map(row => [row.date, row]));
 
   return dateSeries(days).map(date => {
@@ -381,17 +390,15 @@ async function getRecentExceptions(env, threshold, machineId) {
     LIMIT 6
   `, params);
 
-  const orderParams = [];
-  const orderMachineFilter = machineId ? 'AND machine_id = ?' : '';
-  if (machineId) orderParams.push(machineId);
+  const orderMachineFilter = machineFilterFor('machine_id', machineId);
   const orderRows = await all(env.DB, `
     SELECT id, type, record_date, machine_id, voided_at, created_at
     FROM sales_orders
     WHERE (type IN ('refund', 'loss') OR voided_at IS NOT NULL)
-      ${orderMachineFilter}
+      ${orderMachineFilter.sql}
     ORDER BY COALESCE(voided_at, created_at) DESC
     LIMIT 8
-  `, orderParams);
+  `, orderMachineFilter.params);
 
   return [
     ...orderRows.map(row => {
