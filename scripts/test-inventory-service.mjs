@@ -15,6 +15,7 @@ import {
   updateProductStatus,
   voidDocument
 } from '../functions/api/_shared/inventory-service.js';
+import { onRequestGet as listInventoryBalances } from '../functions/api/inventory/balances.js';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const projectRoot = dirname(scriptDir);
@@ -180,6 +181,29 @@ await assert.rejects(
 );
 assert.equal(await rowCount('sales_orders'), 2, 'machine mismatch should not write a partial order');
 
+await saveProduct(env, {
+  id: 'p-cross-machine',
+  name: 'Cross Machine Snack',
+  machineId: 'machine-b',
+  category: 'snack',
+  sellPrice: 3
+});
+await createPurchases(env, {
+  id: 'po-cross-machine',
+  machineId: 'machine-a',
+  date: '2026-05-02',
+  items: [{ productId: 'p-cross-machine', quantity: 4, totalPrice: 12 }]
+});
+const balancesResponse = await listInventoryBalances({
+  request: new Request('http://local.test/api/inventory/balances'),
+  env
+});
+const inventoryBalances = await balancesResponse.json();
+const crossMachineBalance = inventoryBalances.find(
+  row => row.productId === 'p-cross-machine' && row.machineId === 'machine-a'
+);
+assert.equal(crossMachineBalance?.quantityOnHand, 4, 'inventory balances API should list actual balance machine');
+
 const refund = await createSalesOrder(env, {
   id: 'rf1',
   machineId: 'machine-a',
@@ -328,13 +352,21 @@ async function movementBalanceDiffCount() {
       SELECT product_id, machine_id, SUM(qty_delta) AS recalculated_qty
       FROM stock_movements
       GROUP BY product_id, machine_id
+    ),
+    balance_keys AS (
+      SELECT product_id, machine_id FROM inventory_balances
+      UNION
+      SELECT product_id, machine_id FROM movement_totals
     )
     SELECT COUNT(*) AS count
-    FROM inventory_balances b
+    FROM balance_keys k
+    LEFT JOIN inventory_balances b
+      ON b.product_id = k.product_id
+     AND b.machine_id = k.machine_id
     LEFT JOIN movement_totals m
-      ON m.product_id = b.product_id
-     AND m.machine_id = b.machine_id
-    WHERE b.quantity_on_hand != COALESCE(m.recalculated_qty, 0)
+      ON m.product_id = k.product_id
+     AND m.machine_id = k.machine_id
+    WHERE COALESCE(b.quantity_on_hand, 0) != COALESCE(m.recalculated_qty, 0)
   `).first();
   return Number(row.count) || 0;
 }
