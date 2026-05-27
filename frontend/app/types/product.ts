@@ -15,6 +15,7 @@ export type Product = {
   purchaseAvgCost?: number
   totalPurchaseQty?: number
   totalPurchaseCost?: number
+  salesTrend?: number[]
   createdAt: string
   updatedAt?: string
 }

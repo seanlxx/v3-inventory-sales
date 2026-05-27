@@ -13,7 +13,8 @@ export async function onRequestGet(context) {
   const products = await listProducts(context.env, {
     id,
     machineId: url.searchParams.get('machineId'),
-    includeArchived: url.searchParams.get('includeArchived') === '1'
+    includeArchived: url.searchParams.get('includeArchived') === '1',
+    trendDays: Number(url.searchParams.get('trendDays')) || 0
   });
   return json(200, id ? products[0] || null : products);
 }

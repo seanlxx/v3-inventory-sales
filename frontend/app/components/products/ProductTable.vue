@@ -27,6 +27,18 @@ function stockTone(product: Product) {
   return stockToneForQuantity(Number(product.currentStock) || 0)
 }
 
+function trendTone(product: Product): 'primary' | 'success' | 'warning' | 'neutral' {
+  const trend = product.salesTrend || []
+  const total = trend.reduce((sum, v) => sum + (Number(v) || 0), 0)
+  if (total === 0) return 'neutral'
+  const half = Math.floor(trend.length / 2)
+  const earlier = trend.slice(0, half).reduce((s, v) => s + v, 0)
+  const recent = trend.slice(half).reduce((s, v) => s + v, 0)
+  if (recent > earlier * 1.1) return 'success'
+  if (recent < earlier * 0.9) return 'warning'
+  return 'primary'
+}
+
 function purchaseCost(product: Product) {
   return Number(product.purchaseAvgCost) || Number(product.avgCost) || 0
 }
@@ -45,17 +57,18 @@ function purchaseCost(product: Product) {
             <th scope="col" class="product-table__th--cost product-table__center">进货价</th>
             <th scope="col" class="product-table__th--stock product-table__center">总库存</th>
             <th scope="col" class="product-table__th--status product-table__center">状态</th>
+            <th scope="col" class="product-table__th--trend product-table__center">近 14 天趋势</th>
             <th scope="col" class="product-table__th--actions product-table__center">操作</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="props.loading">
-            <td class="product-table__state" colspan="8">
+            <td class="product-table__state" colspan="9">
               正在加载商品
             </td>
           </tr>
           <tr v-else-if="props.error">
-            <td class="product-table__state product-table__state--error" colspan="8">
+            <td class="product-table__state product-table__state--error" colspan="9">
               <div class="product-table__state-stack">
                 <strong>{{ props.error.message }}</strong>
                 <AppButton variant="secondary" size="sm" @click="emit('retry')">
@@ -65,7 +78,7 @@ function purchaseCost(product: Product) {
             </td>
           </tr>
           <tr v-else-if="props.products.length === 0">
-            <td class="product-table__state" colspan="8">
+            <td class="product-table__state" colspan="9">
               没有符合筛选条件的商品
             </td>
           </tr>
@@ -90,13 +103,22 @@ function purchaseCost(product: Product) {
             </td>
             <td class="product-table__center">
               <button class="product-table__stock-button" type="button" @click="emit('movements', product)">
-                <StatusBadge :label="`${formatQuantity(product.currentStock)} 件`" :tone="stockTone(product)" />
+                <StatusBadge class="product-table__stock-badge" :label="`${formatQuantity(product.currentStock)} 件`" :tone="stockTone(product)" />
               </button>
             </td>
             <td class="product-table__center">
               <StatusBadge
+                class="product-table__status-badge"
                 :label="product.status === 'archived' ? '已下架' : '在售'"
                 :tone="product.status === 'archived' ? 'warning' : 'success'"
+              />
+            </td>
+            <td class="product-table__center">
+              <Sparkline
+                :values="product.salesTrend || []"
+                :width="110"
+                :height="30"
+                :tone="trendTone(product)"
               />
             </td>
             <td class="product-table__center">
@@ -169,6 +191,15 @@ function purchaseCost(product: Product) {
               库存 {{ formatQuantity(product.currentStock) }}
             </button>
           </div>
+          <div class="product-table__card-trend">
+            <span class="product-table__card-trend-label">近 14 天趋势</span>
+            <Sparkline
+              :values="product.salesTrend || []"
+              :width="160"
+              :height="32"
+              :tone="trendTone(product)"
+            />
+          </div>
           <div class="product-table__card-actions">
             <AppButton size="sm" variant="secondary" :disabled="product.status === 'archived'" @click="emit('edit', product)">
               编辑
@@ -210,7 +241,7 @@ function purchaseCost(product: Product) {
 
 .product-table__table {
   width: 100%;
-  min-width: 960px;
+  min-width: 1080px;
   border-collapse: collapse;
   table-layout: fixed;
 }
@@ -241,11 +272,15 @@ function purchaseCost(product: Product) {
 }
 
 .product-table__th--stock {
-  width: 120px;
+  width: 110px;
 }
 
 .product-table__th--status {
   width: 90px;
+}
+
+.product-table__th--trend {
+  width: 130px;
 }
 
 .product-table__th--actions {
@@ -341,6 +376,12 @@ function purchaseCost(product: Product) {
   color: var(--color-text-soft);
   cursor: pointer;
   font-size: 12px;
+}
+
+.product-table__stock-badge,
+.product-table__status-badge {
+  min-width: 76px;
+  font-variant-numeric: tabular-nums;
 }
 
 .product-table__actions {
@@ -468,6 +509,20 @@ tbody tr:hover {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: var(--space-2);
     padding-top: 2px;
+  }
+
+  .product-table__card-trend {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: 4px 0;
+  }
+
+  .product-table__card-trend-label {
+    color: var(--mobile-muted);
+    font-size: 12px;
+    font-weight: 700;
   }
 
   .product-table__card-actions :deep(.app-button) {

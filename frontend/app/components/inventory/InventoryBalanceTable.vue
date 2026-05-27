@@ -88,8 +88,7 @@ function purchaseCost(balance: InventoryBalance) {
             </td>
             <td class="inventory-table__center">
               <button class="inventory-table__stock-button" type="button" @click="emit('movements', balance)">
-                <StatusBadge :label="`${formatQuantity(balance.quantityOnHand)} 件`" :tone="stockTone(balance)" />
-                <span>查流水</span>
+                <StatusBadge class="inventory-table__stock-badge" :label="`${formatQuantity(balance.quantityOnHand)} 件`" :tone="stockTone(balance)" />
               </button>
             </td>
             <td class="inventory-table__center">
@@ -100,8 +99,9 @@ function purchaseCost(balance: InventoryBalance) {
             </td>
             <td class="inventory-table__center">
               <StatusBadge
-                :label="balance.isLowStock ? `低于 ${formatQuantity(balance.lowStockThreshold)} 件` : '正常'"
-                :tone="balance.isLowStock ? 'warning' : 'success'"
+                class="inventory-table__status-badge"
+                :label="balance.isLowStock ? (Number(balance.quantityOnHand) <= 0 ? '缺货' : '偏低') : '正常'"
+                :tone="Number(balance.quantityOnHand) <= 0 ? 'danger' : (balance.isLowStock ? 'warning' : 'success')"
               />
             </td>
             <td class="inventory-table__center">{{ formatDateTime(balance.updatedAt) }}</td>
@@ -150,8 +150,9 @@ function purchaseCost(balance: InventoryBalance) {
             </div>
           </div>
           <StatusBadge
-            :label="balance.isLowStock ? `低于 ${formatQuantity(balance.lowStockThreshold)} 件` : '正常'"
-            :tone="balance.isLowStock ? 'warning' : 'success'"
+            class="inventory-table__status-badge"
+            :label="balance.isLowStock ? (Number(balance.quantityOnHand) <= 0 ? '缺货' : '偏低') : '正常'"
+            :tone="Number(balance.quantityOnHand) <= 0 ? 'danger' : (balance.isLowStock ? 'warning' : 'success')"
           />
         </header>
 
@@ -337,6 +338,12 @@ function purchaseCost(balance: InventoryBalance) {
   color: var(--color-text-soft);
   cursor: pointer;
   font-size: 12px;
+}
+
+.inventory-table__stock-badge,
+.inventory-table__status-badge {
+  min-width: 76px;
+  font-variant-numeric: tabular-nums;
 }
 
 .inventory-table__actions {

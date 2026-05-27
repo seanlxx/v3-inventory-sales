@@ -81,6 +81,7 @@ function productToLegacy(row) {
     sellPrice: centsToMoney(row.sell_price_cents),
     status: row.status,
     inventoryByMachine: inventoryByMachineToLegacy(row.inventory_by_machine),
+    salesTrend: Array.isArray(row.sales_trend) ? row.sales_trend : undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     ...balanceToLegacy(row)
@@ -337,10 +338,49 @@ export async function listProducts(env, options = {}) {
     inventoryByProduct.set(row.product_id, inventory);
   });
 
+  const trendDays = Number.isFinite(Number(options.trendDays)) ? Math.max(0, Math.min(60, Number(options.trendDays))) : 0;
+  const trendByProduct = trendDays > 0 ? await loadSalesTrend(env, productIds, trendDays) : new Map();
+
   return rows.map(row => productToLegacy({
     ...row,
-    inventory_by_machine: inventoryByProduct.get(row.id) || {}
+    inventory_by_machine: inventoryByProduct.get(row.id) || {},
+    sales_trend: trendByProduct.get(row.id) || (trendDays > 0 ? new Array(trendDays).fill(0) : null)
   }));
+}
+
+async function loadSalesTrend(env, productIds, days) {
+  const result = new Map();
+  if (!productIds.length || !days) return result;
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const startDate = new Date(today.getTime() - (days - 1) * 86400000);
+  const startIso = startDate.toISOString().slice(0, 10);
+  const dateIndex = new Map();
+  for (let i = 0; i < days; i += 1) {
+    const d = new Date(startDate.getTime() + i * 86400000).toISOString().slice(0, 10);
+    dateIndex.set(d, i);
+  }
+  const rows = [];
+  for (let index = 0; index < productIds.length; index += IN_CLAUSE_BATCH_SIZE) {
+    const batchIds = productIds.slice(index, index + IN_CLAUSE_BATCH_SIZE);
+    rows.push(...await all(env.DB, `
+      SELECT i.product_id AS product_id, o.record_date AS record_date, SUM(i.quantity) AS qty
+      FROM sales_items i
+      JOIN sales_orders o ON o.id = i.sales_order_id
+      WHERE o.voided_at IS NULL
+        AND o.type = 'sale'
+        AND o.record_date >= ?
+        AND i.product_id IN (${placeholders(batchIds.length)})
+      GROUP BY i.product_id, o.record_date
+    `, [startIso, ...batchIds]));
+  }
+  rows.forEach(row => {
+    const arr = result.get(row.product_id) || new Array(days).fill(0);
+    const idx = dateIndex.get(row.record_date);
+    if (idx !== undefined) arr[idx] = Number(row.qty) || 0;
+    result.set(row.product_id, arr);
+  });
+  return result;
 }
 
 export async function saveProduct(env, payload) {

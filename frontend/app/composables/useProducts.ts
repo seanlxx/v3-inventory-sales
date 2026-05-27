@@ -97,7 +97,8 @@ export function useProducts() {
     try {
       products.value = await request<Product[]>('/products', {
         query: {
-          includeArchived: '1'
+          includeArchived: '1',
+          trendDays: '14'
         }
       })
     } catch (caught) {
