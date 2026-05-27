@@ -297,6 +297,31 @@ function receivedAmountForOrder(lines, lineAmountTotal, fees) {
   return Math.max(0, lineAmountTotal - fees.platformFeeCents - fees.serviceFeeCents);
 }
 
+function applyBalanceDelta(balance, qtyDelta, valueDeltaCents, timestamp) {
+  const previousQty = Number(balance.quantity_on_hand) || 0;
+  const previousValueCents = Math.max(0, Number(balance.inventory_value_cents) || 0);
+  const nextQty = previousQty + qtyDelta;
+  const next = {
+    ...balance,
+    quantity_on_hand: nextQty,
+    inventory_value_cents: previousValueCents + valueDeltaCents,
+    updated_at: timestamp
+  };
+
+  if (nextQty <= 0) {
+    next.inventory_value_cents = 0;
+    next.avg_cost_cents = 0;
+  } else {
+    if (previousQty < 0 && qtyDelta > 0 && valueDeltaCents > 0) {
+      next.inventory_value_cents = Math.round(nextQty * (valueDeltaCents / qtyDelta));
+    }
+    next.inventory_value_cents = Math.max(0, Number(next.inventory_value_cents) || 0);
+    next.avg_cost_cents = Math.round(next.inventory_value_cents / nextQty);
+  }
+
+  return next;
+}
+
 function upsertBalanceStmt(env, balance) {
   return env.DB.prepare(`
     INSERT INTO inventory_balances (
@@ -340,15 +365,7 @@ async function restoreExistingOrderInventory(env, existing, timestamp) {
     const balance = await getBalance(env, movement.product_id, movement.machine_id);
     const quantity = Math.abs(Number(movement.qty_delta) || 0);
     const valueCents = quantity * (Number(movement.unit_cost_cents) || 0);
-    const nextQty = Number(balance.quantity_on_hand) + quantity;
-    const nextValue = Number(balance.inventory_value_cents) + valueCents;
-    await upsertBalanceStmt(env, {
-      ...balance,
-      quantity_on_hand: nextQty,
-      inventory_value_cents: nextValue,
-      avg_cost_cents: nextQty === 0 ? 0 : Math.round(nextValue / nextQty),
-      updated_at: timestamp
-    }).run();
+    await upsertBalanceStmt(env, applyBalanceDelta(balance, quantity, valueCents, timestamp)).run();
   }
 }
 
@@ -414,15 +431,7 @@ async function rebuildExistingOrder(env, existing, lines, fees, summary, timesta
       'zn 平台 Excel 导入校正', timestamp
     ));
 
-    const nextQty = Number(balance.quantity_on_hand) - quantity;
-    const nextValue = Number(balance.inventory_value_cents) - quantity * unitCostCents;
-    const nextBalance = {
-      ...balance,
-      quantity_on_hand: nextQty,
-      inventory_value_cents: nextQty === 0 ? 0 : nextValue,
-      avg_cost_cents: nextQty === 0 ? 0 : Math.round(nextValue / nextQty),
-      updated_at: timestamp
-    };
+    const nextBalance = applyBalanceDelta(balance, -quantity, -quantity * unitCostCents, timestamp);
     statements.push(upsertBalanceStmt(env, nextBalance));
     balanceCache.set(balanceKey, nextBalance);
 
@@ -655,16 +664,7 @@ async function importOneOrder(env, machineId, vendorOrderNo, lines, summary, war
       'zn 平台 Excel 导入', timestamp
     ));
 
-    const nextQty = Number(balance.quantity_on_hand) - quantity;
-    const nextValue = Number(balance.inventory_value_cents) - quantity * unitCostCents;
-    const nextBalance = {
-      ...balance,
-      quantity_on_hand: nextQty,
-      inventory_value_cents: nextValue,
-      avg_cost_cents: nextQty === 0 ? 0 : Math.round(nextValue / nextQty),
-      updated_at: timestamp
-    };
-    if (nextQty === 0) nextBalance.inventory_value_cents = 0;
+    const nextBalance = applyBalanceDelta(balance, -quantity, -quantity * unitCostCents, timestamp);
     statements.push(upsertBalanceStmt(env, nextBalance));
     balanceCache.set(balanceKey, nextBalance);
 

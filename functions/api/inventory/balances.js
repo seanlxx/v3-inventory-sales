@@ -11,6 +11,11 @@ function addFilter(conditions, params, sql, value) {
   params.push(value);
 }
 
+function inventoryValueCents(row) {
+  if ((Number(row.quantity_on_hand) || 0) <= 0) return 0;
+  return Math.max(0, Number(row.inventory_value_cents) || 0);
+}
+
 export async function onRequestGet(context) {
   const url = new URL(context.request.url);
   const conditions = ['status = ?'];
@@ -133,7 +138,7 @@ export async function onRequestGet(context) {
     quantityOnHand: Number(row.quantity_on_hand) || 0,
     avgCost: centsToMoney(Math.max(0, Number(row.avg_cost_cents) || 0)),
     purchaseAvgCost: centsToMoney(row.purchase_avg_cost_cents),
-    inventoryValue: centsToMoney(row.inventory_value_cents),
+    inventoryValue: centsToMoney(inventoryValueCents(row)),
     lowStockThreshold: DEFAULT_LOW_STOCK_THRESHOLD,
     isLowStock: (Number(row.quantity_on_hand) || 0) <= DEFAULT_LOW_STOCK_THRESHOLD,
     updatedAt: row.updated_at || null

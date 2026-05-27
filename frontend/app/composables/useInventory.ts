@@ -37,7 +37,7 @@ export function useInventory() {
   const machineOptions = computed(() => {
     const machines = new Set(balances.value.map(balance => balance.machineId).filter(Boolean))
     if (machines.size === 0) {
-      machines.add('1/2号机总库存')
+      machines.add('总库存')
     }
     return Array.from(machines).sort((left, right) => left.localeCompare(right, 'zh-CN'))
   })

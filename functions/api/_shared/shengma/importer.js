@@ -112,16 +112,24 @@ function upsertBalanceStatement(db, balance) {
 }
 
 function applyAdjustmentToBalance(balance, qtyDelta, unitCostCents, timestamp) {
+  const previousQty = Number(balance.quantity_on_hand) || 0;
+  const previousValueCents = Math.max(0, Number(balance.inventory_value_cents) || 0);
+  const nextQty = previousQty + qtyDelta;
+  const valueDeltaCents = qtyDelta * unitCostCents;
   const next = {
     ...balance,
-    quantity_on_hand: Number(balance.quantity_on_hand) + qtyDelta,
-    inventory_value_cents: Number(balance.inventory_value_cents) + qtyDelta * unitCostCents,
+    quantity_on_hand: nextQty,
+    inventory_value_cents: previousValueCents + valueDeltaCents,
     updated_at: timestamp
   };
-  if (next.quantity_on_hand === 0) {
+  if (next.quantity_on_hand <= 0) {
     next.avg_cost_cents = 0;
     next.inventory_value_cents = 0;
   } else {
+    if (previousQty < 0 && qtyDelta > 0 && valueDeltaCents > 0) {
+      next.inventory_value_cents = Math.round(next.quantity_on_hand * (valueDeltaCents / qtyDelta));
+    }
+    next.inventory_value_cents = Math.max(0, Number(next.inventory_value_cents) || 0);
     next.avg_cost_cents = Math.round(next.inventory_value_cents / next.quantity_on_hand);
   }
   return next;

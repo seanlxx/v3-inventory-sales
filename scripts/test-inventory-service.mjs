@@ -280,6 +280,13 @@ assert.deepEqual(await balance('p-shared', '1/2号机'), {
   total_purchase_qty: 10,
   total_purchase_cost_cents: 2000
 });
+const sharedBalancesResponse = await listInventoryBalances({
+  request: new Request('http://local.test/api/inventory/balances'),
+  env
+});
+const sharedInventoryBalances = await sharedBalancesResponse.json();
+const sharedInventoryBalance = sharedInventoryBalances.find(row => row.productId === 'p-shared');
+assert.equal(sharedInventoryBalance?.machineId, '总库存', 'shared stock balance should display as total inventory');
 await assert.rejects(
   () => createAdjustment(env, {
     productId: 'p-shared',
@@ -335,6 +342,41 @@ await assert.rejects(
   () => updateProductStatus(env, 'p2', 'unknown'),
   /Invalid product status/
 );
+
+await saveProduct(env, {
+  id: 'p-negative',
+  name: 'Negative Balance Juice',
+  machineId: 'machine-negative',
+  category: 'drink',
+  sellPrice: 5
+});
+await createAdjustment(env, {
+  productId: 'p-negative',
+  machineId: 'machine-negative',
+  quantityOnHand: -2,
+  unitCost: 3
+});
+assert.deepEqual(await balance('p-negative', 'machine-negative'), {
+  quantity_on_hand: -2,
+  avg_cost_cents: 0,
+  inventory_value_cents: 0,
+  total_purchase_qty: 0,
+  total_purchase_cost_cents: 0
+});
+await createPurchases(env, {
+  id: 'po-negative-recover',
+  productId: 'p-negative',
+  quantity: 5,
+  totalPrice: 15,
+  date: '2026-05-05'
+});
+assert.deepEqual(await balance('p-negative', 'machine-negative'), {
+  quantity_on_hand: 3,
+  avg_cost_cents: 300,
+  inventory_value_cents: 900,
+  total_purchase_qty: 5,
+  total_purchase_cost_cents: 1500
+});
 
 await saveProduct(env, {
   id: 'p-bulk-sales',

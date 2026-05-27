@@ -3,6 +3,11 @@ import { json, methodNotAllowed } from '../_shared/http.js';
 import { centsToMoney } from '../_shared/validators.js';
 import { SHARED_STOCK_MACHINE_ID, SHARED_STOCK_MACHINE_LABEL } from '../_shared/stock-scope.js';
 
+function inventoryValueCents(row) {
+  if ((Number(row.quantity_on_hand) || 0) <= 0) return 0;
+  return Math.max(0, Number(row.inventory_value_cents) || 0);
+}
+
 export async function onRequestGet(context) {
   const rows = await all(context.env.DB, `
     SELECT
@@ -39,7 +44,7 @@ export async function onRequestGet(context) {
     quantityOnHand: row.quantity_on_hand,
     avgCost: centsToMoney(Math.max(0, Number(row.avg_cost_cents) || 0)),
     purchaseAvgCost: centsToMoney(row.purchase_avg_cost_cents),
-    inventoryValue: centsToMoney(row.inventory_value_cents)
+    inventoryValue: centsToMoney(inventoryValueCents(row))
   })));
 }
 

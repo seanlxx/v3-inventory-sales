@@ -305,16 +305,24 @@ function movementStatement(db, movement) {
 
 function applyBalanceDelta(balance, delta) {
   const next = { ...balance };
-  next.quantity_on_hand += delta.qtyDelta;
-  next.inventory_value_cents += delta.valueDeltaCents;
+  const previousQty = Number(balance.quantity_on_hand) || 0;
+  const previousValueCents = Math.max(0, Number(balance.inventory_value_cents) || 0);
+  const qtyDelta = Number(delta.qtyDelta) || 0;
+  const valueDeltaCents = Number(delta.valueDeltaCents) || 0;
+  next.quantity_on_hand = previousQty + qtyDelta;
+  next.inventory_value_cents = previousValueCents + valueDeltaCents;
   next.total_purchase_qty += delta.purchaseQtyDelta || 0;
   next.total_purchase_cost_cents += delta.purchaseCostDeltaCents || 0;
   next.updated_at = delta.timestamp;
 
-  if (next.quantity_on_hand === 0) {
+  if (next.quantity_on_hand <= 0) {
     next.avg_cost_cents = 0;
     next.inventory_value_cents = 0;
   } else {
+    if (previousQty < 0 && qtyDelta > 0 && valueDeltaCents > 0) {
+      next.inventory_value_cents = Math.round(next.quantity_on_hand * (valueDeltaCents / qtyDelta));
+    }
+    next.inventory_value_cents = Math.max(0, Number(next.inventory_value_cents) || 0);
     next.avg_cost_cents = Math.round(next.inventory_value_cents / next.quantity_on_hand);
   }
 
@@ -1064,7 +1072,7 @@ export async function createAdjustment(env, payload) {
 
   const machineId = stockMachineIdFor(stringOrNull(payload.machineId) || product.machine_id);
   if (isSharedStockMachine(machineId)) {
-    throw validationError('1/2号机总库存只按入库单和销售扣减计算，不允许盘点调整');
+    throw validationError('总库存只按入库单和销售扣减计算，不允许盘点调整');
   }
   const balanceCache = new Map();
   const current = await getBalance(env, product.id, machineId, balanceCache);

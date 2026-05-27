@@ -44,6 +44,11 @@ function normalizeFeeRate(value) {
   return number > 1 ? number / 100 : number;
 }
 
+function inventoryValueCents(row) {
+  if ((Number(row.quantity_on_hand) || 0) <= 0) return 0;
+  return Math.max(0, Number(row.inventory_value_cents) || 0);
+}
+
 function machineFilterFor(column, machineId) {
   const value = String(machineId || '').trim();
   if (!value) return { sql: '', params: [] };
@@ -352,7 +357,7 @@ async function getLowStock(env, threshold, machineId) {
     quantityOnHand: Number(row.quantity_on_hand) || 0,
     avgCost: centsToMoney(Math.max(0, Number(row.avg_cost_cents) || 0)),
     purchaseAvgCost: centsToMoney(row.purchase_avg_cost_cents),
-    inventoryValue: centsToMoney(row.inventory_value_cents),
+    inventoryValue: centsToMoney(inventoryValueCents(row)),
     lowStockThreshold: threshold,
     isLowStock: true,
     updatedAt: row.updated_at || null
