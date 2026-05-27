@@ -34,7 +34,6 @@ function purchaseCost(balance: InventoryBalance) {
         <colgroup>
           <col class="inventory-table__col--product">
           <col class="inventory-table__col--category">
-          <col class="inventory-table__col--machine">
           <col class="inventory-table__col--stock">
           <col class="inventory-table__col--price">
           <col class="inventory-table__col--value">
@@ -46,8 +45,7 @@ function purchaseCost(balance: InventoryBalance) {
           <tr>
             <th scope="col">商品</th>
             <th scope="col" class="inventory-table__center">分类</th>
-            <th scope="col" class="inventory-table__center">售货机</th>
-            <th scope="col" class="inventory-table__center">现存</th>
+            <th scope="col" class="inventory-table__center">总库存</th>
             <th scope="col" class="inventory-table__center">进货价</th>
             <th scope="col" class="inventory-table__center">库存金额</th>
             <th scope="col" class="inventory-table__center">状态</th>
@@ -57,12 +55,12 @@ function purchaseCost(balance: InventoryBalance) {
         </thead>
         <tbody>
           <tr v-if="props.loading">
-            <td class="inventory-table__state" colspan="9">
+            <td class="inventory-table__state" colspan="8">
               正在加载库存余额
             </td>
           </tr>
           <tr v-else-if="props.error">
-            <td class="inventory-table__state inventory-table__state--error" colspan="9">
+            <td class="inventory-table__state inventory-table__state--error" colspan="8">
               <div class="inventory-table__state-stack">
                 <strong>{{ props.error.message }}</strong>
                 <AppButton variant="secondary" size="sm" @click="emit('retry')">
@@ -72,7 +70,7 @@ function purchaseCost(balance: InventoryBalance) {
             </td>
           </tr>
           <tr v-else-if="props.balances.length === 0">
-            <td class="inventory-table__state" colspan="9">
+            <td class="inventory-table__state" colspan="8">
               没有符合筛选条件的库存余额
             </td>
           </tr>
@@ -88,7 +86,6 @@ function purchaseCost(balance: InventoryBalance) {
             <td class="inventory-table__center">
               <StatusBadge :label="balance.category || '其他'" tone="neutral" />
             </td>
-            <td class="inventory-table__center">{{ balance.machineId }}</td>
             <td class="inventory-table__center">
               <button class="inventory-table__stock-button" type="button" @click="emit('movements', balance)">
                 <StatusBadge :label="`${formatQuantity(balance.quantityOnHand)} 件`" :tone="stockTone(balance)" />
@@ -164,11 +161,7 @@ function purchaseCost(balance: InventoryBalance) {
             <dd>{{ balance.category || '其他' }}</dd>
           </div>
           <div>
-            <dt>售货机</dt>
-            <dd>{{ balance.machineId }}</dd>
-          </div>
-          <div>
-            <dt>现存</dt>
+            <dt>总库存</dt>
             <dd>
               <button class="inventory-table__card-stock" type="button" @click="emit('movements', balance)">
                 <StatusBadge :label="`${formatQuantity(balance.quantityOnHand)} 件`" :tone="stockTone(balance)" />
@@ -221,7 +214,7 @@ function purchaseCost(balance: InventoryBalance) {
 
 .inventory-table__table {
   width: 100%;
-  min-width: 1018px;
+  min-width: 930px;
   border-collapse: collapse;
   table-layout: fixed;
 }
@@ -232,10 +225,6 @@ function purchaseCost(balance: InventoryBalance) {
 
 .inventory-table__col--category {
   width: 72px;
-}
-
-.inventory-table__col--machine {
-  width: 76px;
 }
 
 .inventory-table__col--stock {

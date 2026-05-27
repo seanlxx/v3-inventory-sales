@@ -14,8 +14,7 @@ const DEFAULT_STOCK_MACHINES = ['1号机', '2号机', '三号机'] as const
 function productMachines(product: Product): string[] {
   return [
     product.machineId,
-    product.stockMachineId,
-    ...Object.keys(product.inventoryByMachine ?? {})
+    product.stockMachineId
   ].filter((machine): machine is string => Boolean(machine))
 }
 
@@ -27,8 +26,7 @@ function matchesSearch(product: Product, search: string) {
 
 function matchesMachine(product: Product, machineId: string) {
   if (machineId === 'all') return true
-  if (product.machineId === machineId || product.stockMachineId === machineId) return true
-  return Object.prototype.hasOwnProperty.call(product.inventoryByMachine ?? {}, machineId)
+  return product.machineId === machineId || product.stockMachineId === machineId
 }
 
 function normalizeProductPayload(payload: ProductMutationPayload): ProductMutationPayload {
@@ -62,7 +60,7 @@ export function useProducts() {
   const machineOptions = computed(() => {
     const machines = new Set<string>(DEFAULT_STOCK_MACHINES)
     products.value.forEach(product => {
-      Object.keys(product.inventoryByMachine ?? {}).forEach(machine => machines.add(machine))
+      productMachines(product).forEach(machine => machines.add(machine))
     })
     return Array.from(machines).sort((left, right) => left.localeCompare(right, 'zh-CN'))
   })

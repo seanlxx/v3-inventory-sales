@@ -6,6 +6,7 @@ const open = defineModel<boolean>('open', { default: false })
 
 const props = defineProps<{
   balance?: InventoryBalance | null
+  balances: readonly InventoryBalance[]
   machines: readonly string[]
   submitting?: boolean
 }>()
@@ -15,19 +16,35 @@ const emit = defineEmits<{
 }>()
 
 const toMachineId = shallowRef('')
+const fromMachineId = shallowRef('')
 const quantity = shallowRef('')
 const reason = shallowRef('')
 const formError = shallowRef('')
 
 const targetMachines = computed(() =>
-  props.machines.filter(machine => machine && machine !== props.balance?.machineId)
+  props.machines.filter(machine => machine && machine !== fromMachineId.value)
+)
+
+const machineBalances = computed(() =>
+  props.balances
+    .filter(balance => balance.productId === props.balance?.productId)
+    .sort((left, right) => left.machineId.localeCompare(right.machineId, 'zh-CN'))
+)
+
+const selectedMachineBalance = computed(() =>
+  machineBalances.value.find(balance => balance.machineId === fromMachineId.value) || null
 )
 
 const displayCost = computed(() =>
-  Number(props.balance?.purchaseAvgCost) || Number(props.balance?.avgCost) || 0
+  Number(selectedMachineBalance.value?.purchaseAvgCost)
+  || Number(selectedMachineBalance.value?.avgCost)
+  || Number(props.balance?.purchaseAvgCost)
+  || Number(props.balance?.avgCost)
+  || 0
 )
 
-watch(() => [props.balance?.productId, props.balance?.machineId, props.machines.join('|')], () => {
+watch(() => [props.balance?.productId, props.machines.join('|'), machineBalances.value.map(balance => balance.machineId).join('|')], () => {
+  fromMachineId.value = machineBalances.value[0]?.machineId || ''
   toMachineId.value = targetMachines.value[0] || ''
   quantity.value = ''
   reason.value = ''
@@ -41,11 +58,15 @@ function submitTransfer() {
     formError.value = '调拨数量必须大于 0'
     return
   }
-  if (qty > Number(props.balance.quantityOnHand || 0)) {
-    formError.value = `当前可调拨 ${formatQuantity(props.balance.quantityOnHand)} 件`
+  if (!selectedMachineBalance.value) {
+    formError.value = '请选择调出机台'
     return
   }
-  if (!toMachineId.value || toMachineId.value === props.balance.machineId) {
+  if (qty > Number(selectedMachineBalance.value.quantityOnHand || 0)) {
+    formError.value = `当前可调拨 ${formatQuantity(selectedMachineBalance.value.quantityOnHand)} 件`
+    return
+  }
+  if (!toMachineId.value || toMachineId.value === fromMachineId.value) {
     formError.value = '请选择不同的调入机台'
     return
   }
@@ -58,7 +79,7 @@ function submitTransfer() {
   formError.value = ''
   emit('submit', {
     productId: props.balance.productId,
-    fromMachineId: props.balance.stockMachineId || props.balance.machineId,
+    fromMachineId: selectedMachineBalance.value.stockMachineId || selectedMachineBalance.value.machineId,
     toMachineId: toMachineId.value,
     quantity: Math.round(qty),
     reason: cleanReason
@@ -70,23 +91,32 @@ function submitTransfer() {
   <AppDialog
     v-model:open="open"
     title="机间调拨"
-    :description="props.balance ? `${props.balance.productName} · ${props.balance.machineId}` : '机间调拨'"
+    :description="props.balance ? `${props.balance.productName} · 按实际机台调拨` : '机间调拨'"
   >
     <form class="transfer-dialog" @submit.prevent="submitTransfer">
       <div v-if="props.balance" class="transfer-dialog__summary">
         <div>
-          <span>调出机台</span>
-          <strong>{{ props.balance.machineId }}</strong>
+          <span>总库存</span>
+          <strong>{{ formatQuantity(props.balance.quantityOnHand) }} 件</strong>
         </div>
         <div>
-          <span>当前库存</span>
-          <strong>{{ formatQuantity(props.balance.quantityOnHand) }} 件</strong>
+          <span>调出机台库存</span>
+          <strong>{{ selectedMachineBalance ? `${formatQuantity(selectedMachineBalance.quantityOnHand)} 件` : '—' }}</strong>
         </div>
         <div>
           <span>成本</span>
           <strong>{{ displayCost > 0 ? formatMoney(displayCost) : '—' }}</strong>
         </div>
       </div>
+
+      <label class="transfer-dialog__field">
+        <span class="transfer-dialog__label">调出机台</span>
+        <select v-model="fromMachineId" class="transfer-dialog__select">
+          <option v-for="machineBalance in machineBalances" :key="machineBalance.machineId" :value="machineBalance.machineId">
+            {{ machineBalance.machineId }}（{{ formatQuantity(machineBalance.quantityOnHand) }} 件）
+          </option>
+        </select>
+      </label>
 
       <label class="transfer-dialog__field">
         <span class="transfer-dialog__label">调入机台</span>
@@ -119,7 +149,7 @@ function submitTransfer() {
         <AppButton type="button" variant="secondary" @click="open = false">
           取消
         </AppButton>
-        <AppButton type="submit" :loading="props.submitting" :disabled="!props.balance || targetMachines.length === 0">
+        <AppButton type="submit" :loading="props.submitting" :disabled="!props.balance || !selectedMachineBalance || targetMachines.length === 0">
           提交调拨
         </AppButton>
       </div>

@@ -17,8 +17,6 @@ const emit = defineEmits<{
   retry: []
 }>()
 
-const STOCK_MACHINES = ['1号机', '2号机', '三号机'] as const
-
 function stockToneForQuantity(stock: number) {
   if (stock <= 0) return 'danger'
   if (stock <= 5) return 'warning'
@@ -27,10 +25,6 @@ function stockToneForQuantity(stock: number) {
 
 function stockTone(product: Product) {
   return stockToneForQuantity(Number(product.currentStock) || 0)
-}
-
-function machineStock(product: Product, machineId: string) {
-  return Number(product.inventoryByMachine?.[machineId]) || 0
 }
 
 function purchaseCost(product: Product) {
@@ -50,26 +44,18 @@ function purchaseCost(product: Product) {
             <th scope="col" class="product-table__th--price product-table__center">售价</th>
             <th scope="col" class="product-table__th--cost product-table__center">进货价</th>
             <th scope="col" class="product-table__th--stock product-table__center">总库存</th>
-            <th
-              v-for="machine in STOCK_MACHINES"
-              :key="machine"
-              scope="col"
-              class="product-table__th--machine-stock product-table__center"
-            >
-              {{ machine }}库存
-            </th>
             <th scope="col" class="product-table__th--status product-table__center">状态</th>
             <th scope="col" class="product-table__th--actions product-table__center">操作</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="props.loading">
-            <td class="product-table__state" colspan="11">
+            <td class="product-table__state" colspan="8">
               正在加载商品
             </td>
           </tr>
           <tr v-else-if="props.error">
-            <td class="product-table__state product-table__state--error" colspan="11">
+            <td class="product-table__state product-table__state--error" colspan="8">
               <div class="product-table__state-stack">
                 <strong>{{ props.error.message }}</strong>
                 <AppButton variant="secondary" size="sm" @click="emit('retry')">
@@ -79,7 +65,7 @@ function purchaseCost(product: Product) {
             </td>
           </tr>
           <tr v-else-if="props.products.length === 0">
-            <td class="product-table__state" colspan="11">
+            <td class="product-table__state" colspan="8">
               没有符合筛选条件的商品
             </td>
           </tr>
@@ -105,18 +91,6 @@ function purchaseCost(product: Product) {
             <td class="product-table__center">
               <button class="product-table__stock-button" type="button" @click="emit('movements', product)">
                 <StatusBadge :label="`${formatQuantity(product.currentStock)} 件`" :tone="stockTone(product)" />
-              </button>
-            </td>
-            <td
-              v-for="machine in STOCK_MACHINES"
-              :key="`${product.id}:${machine}`"
-              class="product-table__center"
-            >
-              <button class="product-table__stock-button" type="button" @click="emit('movements', product)">
-                <StatusBadge
-                  :label="`${formatQuantity(machineStock(product, machine))} 件`"
-                  :tone="stockToneForQuantity(machineStock(product, machine))"
-                />
               </button>
             </td>
             <td class="product-table__center">
@@ -195,19 +169,6 @@ function purchaseCost(product: Product) {
               库存 {{ formatQuantity(product.currentStock) }}
             </button>
           </div>
-          <div class="product-table__card-stock-grid" aria-label="按机库存">
-            <button
-              v-for="machine in STOCK_MACHINES"
-              :key="machine"
-              class="product-table__machine-stock"
-              type="button"
-              @click="emit('movements', product)"
-            >
-              <span>{{ machine }}</span>
-              <strong>{{ formatQuantity(machineStock(product, machine)) }} 件</strong>
-            </button>
-          </div>
-
           <div class="product-table__card-actions">
             <AppButton size="sm" variant="secondary" :disabled="product.status === 'archived'" @click="emit('edit', product)">
               编辑
@@ -249,7 +210,7 @@ function purchaseCost(product: Product) {
 
 .product-table__table {
   width: 100%;
-  min-width: 1180px;
+  min-width: 900px;
   border-collapse: collapse;
   table-layout: fixed;
 }
@@ -281,10 +242,6 @@ function purchaseCost(product: Product) {
 
 .product-table__th--stock {
   width: 120px;
-}
-
-.product-table__th--machine-stock {
-  width: 96px;
 }
 
 .product-table__th--status {
@@ -478,47 +435,6 @@ tbody tr:hover {
     color: var(--mobile-muted);
     font-size: 12px;
     font-weight: 700;
-  }
-
-  .product-table__card-stock-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: var(--space-2);
-  }
-
-  .product-table__machine-stock {
-    min-width: 0;
-    min-height: 44px;
-    display: grid;
-    align-content: center;
-    gap: 2px;
-    border: 1px solid var(--mobile-divider);
-    border-radius: var(--radius-2);
-    padding: 6px var(--space-2);
-    background: var(--color-surface-subtle);
-    color: var(--mobile-muted);
-    cursor: pointer;
-    font: inherit;
-    text-align: left;
-  }
-
-  .product-table__machine-stock span,
-  .product-table__machine-stock strong {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .product-table__machine-stock span {
-    font-size: 11px;
-    font-weight: 700;
-  }
-
-  .product-table__machine-stock strong {
-    color: var(--mobile-text);
-    font-size: 12px;
-    font-weight: 800;
   }
 
   .product-table__card-stock {

@@ -6,6 +6,7 @@ const open = defineModel<boolean>('open', { default: false })
 
 const props = defineProps<{
   balance?: InventoryBalance | null
+  balances: readonly InventoryBalance[]
   submitting?: boolean
 }>()
 
@@ -14,21 +15,45 @@ const emit = defineEmits<{
 }>()
 
 const targetQuantity = shallowRef('')
+const machineId = shallowRef('')
 const note = shallowRef('')
 const formError = shallowRef('')
 
-watch(() => props.balance, balance => {
-  targetQuantity.value = balance ? String(balance.quantityOnHand) : ''
+const machineBalances = computed(() =>
+  props.balances
+    .filter(balance => balance.productId === props.balance?.productId)
+    .sort((left, right) => left.machineId.localeCompare(right.machineId, 'zh-CN'))
+)
+
+const selectedMachineBalance = computed(() =>
+  machineBalances.value.find(balance => balance.machineId === machineId.value) || null
+)
+
+watch(() => [props.balance?.productId, machineBalances.value.map(balance => balance.machineId).join('|')], () => {
+  machineId.value = machineBalances.value[0]?.machineId || ''
+  targetQuantity.value = selectedMachineBalance.value ? String(selectedMachineBalance.value.quantityOnHand) : ''
   note.value = ''
   formError.value = ''
 }, { immediate: true })
 
+watch(selectedMachineBalance, balance => {
+  targetQuantity.value = balance ? String(balance.quantityOnHand) : ''
+})
+
 const displayCost = computed(() =>
-  Number(props.balance?.purchaseAvgCost) || Number(props.balance?.avgCost) || 0
+  Number(selectedMachineBalance.value?.purchaseAvgCost)
+  || Number(selectedMachineBalance.value?.avgCost)
+  || Number(props.balance?.purchaseAvgCost)
+  || Number(props.balance?.avgCost)
+  || 0
 )
 
 function submitAdjustment() {
   if (!props.balance) return
+  if (!selectedMachineBalance.value) {
+    formError.value = '请选择盘点机台'
+    return
+  }
   const nextQuantity = Number(targetQuantity.value)
   if (!Number.isFinite(nextQuantity) || nextQuantity < 0) {
     formError.value = '目标库存必须是不小于 0 的数字'
@@ -37,7 +62,7 @@ function submitAdjustment() {
 
   const payload: InventoryAdjustmentPayload = {
     productId: props.balance.productId,
-    machineId: props.balance.stockMachineId || props.balance.machineId,
+    machineId: selectedMachineBalance.value.stockMachineId || selectedMachineBalance.value.machineId,
     quantityOnHand: nextQuantity,
     note: note.value.trim()
   }
@@ -56,18 +81,27 @@ function submitAdjustment() {
     <form class="stock-adjustment" @submit.prevent="submitAdjustment">
       <div v-if="props.balance" class="stock-adjustment__summary">
         <div>
-          <span>当前余额</span>
+          <span>总库存</span>
           <strong>{{ formatQuantity(props.balance.quantityOnHand) }} 件</strong>
+        </div>
+        <div>
+          <span>机台账面</span>
+          <strong>{{ selectedMachineBalance ? `${formatQuantity(selectedMachineBalance.quantityOnHand)} 件` : '—' }}</strong>
         </div>
         <div>
           <span>进货价</span>
           <strong>{{ displayCost > 0 ? formatMoney(displayCost) : '—' }}</strong>
         </div>
-        <div>
-          <span>库存金额</span>
-          <strong>{{ formatMoney(props.balance.inventoryValue) }}</strong>
-        </div>
       </div>
+
+      <label class="stock-adjustment__field">
+        <span class="stock-adjustment__label">盘点机台</span>
+        <select v-model="machineId" class="stock-adjustment__select">
+          <option v-for="machineBalance in machineBalances" :key="machineBalance.machineId" :value="machineBalance.machineId">
+            {{ machineBalance.machineId }}（{{ formatQuantity(machineBalance.quantityOnHand) }} 件）
+          </option>
+        </select>
+      </label>
 
       <AppInput
         v-model="targetQuantity"
@@ -91,7 +125,7 @@ function submitAdjustment() {
         <AppButton type="button" variant="secondary" @click="open = false">
           取消
         </AppButton>
-        <AppButton type="submit" :loading="props.submitting" :disabled="!props.balance">
+        <AppButton type="submit" :loading="props.submitting" :disabled="!props.balance || !selectedMachineBalance">
           提交盘点
         </AppButton>
       </div>
@@ -129,6 +163,29 @@ function submitAdjustment() {
   font-variant-numeric: tabular-nums;
 }
 
+.stock-adjustment__field {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.stock-adjustment__label {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.stock-adjustment__select {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-height);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2);
+  padding: 0 var(--space-3);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
 .stock-adjustment__notice {
   margin: 0;
   border: 1px solid rgb(15 118 110 / 26%);
@@ -153,6 +210,10 @@ function submitAdjustment() {
   .stock-adjustment__actions {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .stock-adjustment__select {
+    min-height: var(--control-height-mobile);
   }
 }
 </style>

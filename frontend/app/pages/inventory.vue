@@ -85,7 +85,6 @@ onMounted(async () => {
   <div class="inventory-page">
     <InventoryFilters
       :filters="filters"
-      :machines="machineOptions"
       :categories="categoryOptions"
       :result-count="filteredBalances.length"
       :loading="loading"
@@ -118,7 +117,7 @@ onMounted(async () => {
     <AppDrawer
       v-model:open="mobileTimelineOpen"
       title="库存流水"
-      :description="selectedBalance ? `${selectedBalance.productName} · ${selectedBalance.machineId}` : '库存流水'"
+      :description="selectedBalance ? `${selectedBalance.productName} · 总库存` : '库存流水'"
     >
       <StockMovementTimeline
         :balance="selectedBalance"
@@ -132,6 +131,7 @@ onMounted(async () => {
     <StockAdjustmentDialog
       v-model:open="adjustmentOpen"
       :balance="adjustingBalance"
+      :balances="balances"
       :submitting="adjusting"
       @submit="submitAdjustment"
     />
@@ -139,6 +139,7 @@ onMounted(async () => {
     <TransferDialog
       v-model:open="transferOpen"
       :balance="transferBalance"
+      :balances="balances"
       :machines="machineOptions"
       :submitting="transferring"
       @submit="submitTransfer"

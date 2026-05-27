@@ -21,7 +21,58 @@ const defaultFilters: InventoryListFilters = {
 function matchesSearch(balance: InventoryBalance, search: string) {
   const keyword = search.trim().toLowerCase()
   if (!keyword) return true
-  return `${balance.productName} ${balance.productId} ${balance.machineId} ${balance.stockMachineId || ''} ${balance.category || ''}`.toLowerCase().includes(keyword)
+  return `${balance.productName} ${balance.productId} ${balance.category || ''}`.toLowerCase().includes(keyword)
+}
+
+function latestUpdatedAt(left?: string, right?: string) {
+  if (!left) return right
+  if (!right) return left
+  return new Date(left).getTime() >= new Date(right).getTime() ? left : right
+}
+
+function groupBalancesByProduct(rows: readonly InventoryBalance[]) {
+  const grouped = new Map<string, InventoryBalance>()
+
+  for (const row of rows) {
+    const existing = grouped.get(row.productId)
+    const quantity = Number(row.quantityOnHand) || 0
+    const value = Number(row.inventoryValue) || 0
+    const purchaseAvgCost = Number(row.purchaseAvgCost) || Number(existing?.purchaseAvgCost) || 0
+    const lowStockThreshold = Number(row.lowStockThreshold ?? existing?.lowStockThreshold ?? 5) || 5
+
+    if (!existing) {
+      grouped.set(row.productId, {
+        productId: row.productId,
+        productName: row.productName,
+        machineId: '总库存',
+        category: row.category || '其他',
+        quantityOnHand: quantity,
+        avgCost: quantity > 0 ? value / quantity : 0,
+        purchaseAvgCost,
+        inventoryValue: value,
+        lowStockThreshold,
+        isLowStock: quantity <= lowStockThreshold,
+        updatedAt: row.updatedAt
+      })
+      continue
+    }
+
+    const nextQuantity = Number(existing.quantityOnHand || 0) + quantity
+    const nextValue = Number(existing.inventoryValue || 0) + value
+    existing.quantityOnHand = nextQuantity
+    existing.inventoryValue = nextValue
+    existing.avgCost = nextQuantity > 0 ? nextValue / nextQuantity : 0
+    existing.purchaseAvgCost = Number(existing.purchaseAvgCost) || purchaseAvgCost
+    existing.lowStockThreshold = lowStockThreshold
+    existing.isLowStock = nextQuantity <= lowStockThreshold
+    existing.updatedAt = latestUpdatedAt(existing.updatedAt, row.updatedAt)
+  }
+
+  return Array.from(grouped.values())
+    .sort((left, right) =>
+      (left.category || '其他').localeCompare(right.category || '其他', 'zh-CN')
+      || left.productName.localeCompare(right.productName, 'zh-CN')
+    )
 }
 
 export function useInventory() {
@@ -49,18 +100,19 @@ export function useInventory() {
     return Array.from(machines).sort((left, right) => left.localeCompare(right, 'zh-CN'))
   })
 
+  const totalBalances = computed(() => groupBalancesByProduct(balances.value))
+
   const categoryOptions = computed(() => {
-    const categories = new Set(balances.value.map(balance => balance.category || '其他'))
+    const categories = new Set(totalBalances.value.map(balance => balance.category || '其他'))
     ;['饮料', '零食', '日用品', '其他'].forEach(category => categories.add(category))
     return Array.from(categories).sort((left, right) => left.localeCompare(right, 'zh-CN'))
   })
 
   const filteredBalances = computed(() =>
-    balances.value.filter(balance => {
-      const matchesMachine = filters.machineId === 'all' || balance.machineId === filters.machineId
+    totalBalances.value.filter(balance => {
       const matchesCategory = filters.category === 'all' || (balance.category || '其他') === filters.category
       const matchesLowStock = !filters.lowStock || !!balance.isLowStock
-      return matchesMachine && matchesCategory && matchesLowStock && matchesSearch(balance, filters.search)
+      return matchesCategory && matchesLowStock && matchesSearch(balance, filters.search)
     })
   )
 
@@ -86,12 +138,15 @@ export function useInventory() {
     movementsLoading.value = true
     movementsError.value = null
     try {
+      const query: Record<string, string | number | boolean | null | undefined> = {
+        productId: selectedBalance.value?.productId,
+        limit: 80
+      }
+      if (selectedBalance.value?.stockMachineId) {
+        query.machineId = selectedBalance.value.stockMachineId
+      }
       movements.value = await request<StockMovement[]>('/inventory/movements', {
-        query: {
-          productId: selectedBalance.value?.productId,
-          machineId: selectedBalance.value?.stockMachineId || selectedBalance.value?.machineId,
-          limit: 80
-        }
+        query
       })
     } catch (caught) {
       movementsError.value = normalizeApiError(caught)

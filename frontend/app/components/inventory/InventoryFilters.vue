@@ -3,7 +3,6 @@ import type { InventoryListFilters } from '~/types/inventory'
 
 const props = defineProps<{
   filters: InventoryListFilters
-  machines: readonly string[]
   categories: readonly string[]
   resultCount: number
   loading?: boolean
@@ -28,24 +27,10 @@ function updateFilter(key: keyof InventoryListFilters, event: Event) {
         :model-value="props.filters.search"
         label="搜索"
         type="search"
-        placeholder="商品、编号、售货机、分类"
+        placeholder="商品、编号、分类"
         @update:model-value="emit('updateFilters', { search: String($event) })"
       />
     </div>
-
-    <label class="inventory-filters__field">
-      <span class="inventory-filters__label">售货机</span>
-      <select
-        class="inventory-filters__select"
-        :value="props.filters.machineId"
-        @change="updateFilter('machineId', $event)"
-      >
-        <option value="all">全部机器</option>
-        <option v-for="machine in props.machines" :key="machine" :value="machine">
-          {{ machine }}
-        </option>
-      </select>
-    </label>
 
     <label class="inventory-filters__field">
       <span class="inventory-filters__label">分类</span>
@@ -71,7 +56,7 @@ function updateFilter(key: keyof InventoryListFilters, event: Event) {
     </label>
 
     <div class="inventory-filters__actions">
-      <StatusBadge :label="`${props.resultCount} 条余额`" tone="info" />
+      <StatusBadge :label="`${props.resultCount} 个商品`" tone="info" />
       <AppButton variant="secondary" @click="emit('cycleCount')">
         现场盘点
       </AppButton>
@@ -85,7 +70,7 @@ function updateFilter(key: keyof InventoryListFilters, event: Event) {
 <style scoped>
 .inventory-filters {
   display: grid;
-  grid-template-columns: minmax(220px, 1.3fr) minmax(140px, 0.65fr) minmax(140px, 0.65fr) auto auto;
+  grid-template-columns: minmax(220px, 1.3fr) minmax(140px, 0.65fr) auto auto;
   gap: var(--space-3);
   align-items: end;
   min-width: 0;

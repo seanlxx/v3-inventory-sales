@@ -36,6 +36,10 @@ function quantityDeltaLabel(movement: StockMovement) {
   const delta = Number(movement.qtyDelta) || 0
   return `${delta > 0 ? '+' : ''}${formatQuantity(delta)}`
 }
+
+const balanceDescription = computed(() =>
+  props.balance ? `${props.balance.productName} · 总库存` : '选择一条库存余额查看流水'
+)
 </script>
 
 <template>
@@ -44,7 +48,7 @@ function quantityDeltaLabel(movement: StockMovement) {
       <div>
         <h2 class="movement-timeline__title">库存流水</h2>
         <p class="movement-timeline__description">
-          {{ props.balance ? `${props.balance.productName} · ${props.balance.machineId}` : '选择一条库存余额查看流水' }}
+          {{ balanceDescription }}
         </p>
       </div>
       <StatusBadge label="stock_movements" tone="info" />
