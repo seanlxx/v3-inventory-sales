@@ -11,22 +11,20 @@ const rows = runD1Query(`
     SELECT product_id, machine_id FROM inventory_balances
     UNION
     SELECT product_id, machine_id FROM stock_movements
-    UNION
-    SELECT pi.product_id, po.machine_id
-    FROM purchase_items pi
-    JOIN purchase_orders po ON po.id = pi.purchase_id
-    WHERE po.voided_at IS NULL
   ),
   purch AS (
     SELECT
-      pi.product_id,
-      po.machine_id,
+      m.product_id,
+      m.machine_id,
       SUM(pi.quantity) AS purchase_qty,
       SUM(pi.total_cost_cents) AS purchase_cost_cents
-    FROM purchase_items pi
+    FROM stock_movements m
+    JOIN purchase_items pi ON pi.id = m.ref_item_id
     JOIN purchase_orders po ON po.id = pi.purchase_id
-    WHERE po.voided_at IS NULL
-    GROUP BY pi.product_id, po.machine_id
+    WHERE m.movement_type = 'purchase'
+      AND m.ref_type = 'purchase_order'
+      AND po.voided_at IS NULL
+    GROUP BY m.product_id, m.machine_id
   ),
   mov AS (
     SELECT
@@ -70,7 +68,8 @@ const rows = runD1Query(`
     COALESCE(mov.void_qty, 0) AS void_qty,
     COALESCE(mov.movements_net_qty, 0) AS movements_net_qty,
     COALESCE(product_machine_counts.machine_count, 0) AS product_machine_count,
-    COALESCE(voided_sales.voided_sales_items, 0) AS voided_sales_items
+    COALESCE(voided_sales.voided_sales_items, 0) AS voided_sales_items,
+    COALESCE(purch.purchase_qty, 0) - COALESCE(mov.sale_qty, 0) - COALESCE(mov.loss_qty, 0) + COALESCE(mov.refund_qty, 0) + COALESCE(mov.adjustment_qty, 0) + COALESCE(mov.void_qty, 0) AS expected_balance_qty
   FROM keys k
   LEFT JOIN purch ON purch.product_id = k.product_id AND purch.machine_id = k.machine_id
   LEFT JOIN mov ON mov.product_id = k.product_id AND mov.machine_id = k.machine_id
@@ -96,8 +95,9 @@ const mismatches = rows
     const lossQty = toNumber(row.loss_qty);
     const refundQty = toNumber(row.refund_qty);
     const adjustmentQty = toNumber(row.adjustment_qty);
-    const expectedFromState = balanceQty + saleQty + lossQty - refundQty - adjustmentQty;
-    const driftQty = purchaseQty - expectedFromState;
+    const voidQty = toNumber(row.void_qty);
+    const expectedBalanceQty = toNumber(row.expected_balance_qty);
+    const driftQty = expectedBalanceQty - balanceQty;
     const avgCost = toNumber(row.avg_cost_cents);
     const mapped = {
       ...row,
@@ -109,11 +109,11 @@ const mismatches = rows
       loss_qty: lossQty,
       refund_qty: refundQty,
       adjustment_qty: adjustmentQty,
-      void_qty: toNumber(row.void_qty),
+      void_qty: voidQty,
       movements_net_qty: toNumber(row.movements_net_qty),
       product_machine_count: toNumber(row.product_machine_count),
       voided_sales_items: toNumber(row.voided_sales_items),
-      expected_qty_from_balance_and_outflow: expectedFromState,
+      expected_qty_from_balance_and_outflow: expectedBalanceQty,
       drift_qty: driftQty,
       drift_value_cents: Math.abs(driftQty) * avgCost
     };

@@ -1,7 +1,6 @@
 import { all } from '../_shared/d1.js';
 import { json, methodNotAllowed } from '../_shared/http.js';
 import { centsToMoney } from '../_shared/validators.js';
-import { SHARED_PRODUCT_STOCK_MACHINE_SQL, SHARED_STOCK_MACHINE_ID, SHARED_STOCK_MACHINE_LABEL, stockMachineIdFor } from '../_shared/stock-scope.js';
 
 const DEFAULT_LOW_STOCK_THRESHOLD = 5;
 
@@ -23,14 +22,14 @@ export async function onRequestGet(context) {
 
   addFilter(conditions, params, 'product_id = ?', url.searchParams.get('productId'));
   const machineId = url.searchParams.get('machineId');
-  addFilter(conditions, params, 'machine_id = ?', machineId ? stockMachineIdFor(machineId) : machineId);
+  addFilter(conditions, params, 'machine_id = ?', machineId);
   addFilter(conditions, params, 'category = ?', url.searchParams.get('category'));
 
   const search = url.searchParams.get('search');
   if (search) {
-    conditions.push('(product_name LIKE ? OR product_id LIKE ? OR machine_id LIKE ? OR display_machine_id LIKE ? OR category LIKE ?)');
+    conditions.push('(product_name LIKE ? OR product_id LIKE ? OR machine_id LIKE ? OR category LIKE ?)');
     const keyword = `%${search}%`;
-    params.push(keyword, keyword, keyword, keyword, keyword);
+    params.push(keyword, keyword, keyword, keyword);
   }
 
   if (url.searchParams.get('lowStock') === '1') {
@@ -50,7 +49,6 @@ export async function onRequestGet(context) {
         p.category,
         p.status,
         b.machine_id,
-        CASE WHEN b.machine_id = '${SHARED_STOCK_MACHINE_ID}' THEN '${SHARED_STOCK_MACHINE_LABEL}' ELSE b.machine_id END AS display_machine_id,
         b.quantity_on_hand,
         b.avg_cost_cents,
         COALESCE(pc.purchase_avg_cost_cents, 0) AS purchase_avg_cost_cents,
@@ -79,8 +77,7 @@ export async function onRequestGet(context) {
         p.name AS product_name,
         p.category,
         p.status,
-        p.stock_machine_id AS machine_id,
-        CASE WHEN p.stock_machine_id = '${SHARED_STOCK_MACHINE_ID}' THEN '${SHARED_STOCK_MACHINE_LABEL}' ELSE p.stock_machine_id END AS display_machine_id,
+        p.machine_id AS machine_id,
         0 AS quantity_on_hand,
         0 AS avg_cost_cents,
         COALESCE(pc.purchase_avg_cost_cents, 0) AS purchase_avg_cost_cents,
@@ -88,8 +85,7 @@ export async function onRequestGet(context) {
         NULL AS updated_at
       FROM (
         SELECT
-          p.*,
-          ${SHARED_PRODUCT_STOCK_MACHINE_SQL} AS stock_machine_id
+          p.*
         FROM products p
       ) p
       LEFT JOIN (
@@ -109,7 +105,7 @@ export async function onRequestGet(context) {
         SELECT 1
         FROM inventory_balances b
         WHERE b.product_id = p.id
-          AND b.machine_id = p.stock_machine_id
+          AND b.machine_id = p.machine_id
       )
     )
     SELECT
@@ -117,7 +113,6 @@ export async function onRequestGet(context) {
       product_name,
       category,
       machine_id,
-      display_machine_id,
       quantity_on_hand,
       avg_cost_cents,
       purchase_avg_cost_cents,
@@ -132,7 +127,7 @@ export async function onRequestGet(context) {
   return json(200, rows.map(row => ({
     productId: row.product_id,
     productName: row.product_name,
-    machineId: row.display_machine_id || row.machine_id,
+    machineId: row.machine_id,
     stockMachineId: row.machine_id,
     category: row.category || '其他',
     quantityOnHand: Number(row.quantity_on_hand) || 0,

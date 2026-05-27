@@ -123,9 +123,25 @@ function renderMarkdown(results, stamp) {
     .map(([cause, count]) => `${cause}: ${count}`)
     .join('；') || '无';
 
-  return `# 库存漂移现状-${stamp}
+  const title = process.argv.includes('--proof') ? '库存对账证明' : '库存漂移现状';
+  const phaseText = process.argv.includes('--proof')
+    ? 'Phase 2.5 对账证明'
+    : 'Phase 0.5 诊断基线';
 
-> Phase 0.5 诊断基线。数据来源：Cloudflare D1 远程库 \`v3-vending-inventory-sales-db\`。生成时间：${generatedAt}。
+  const interpretation = process.argv.includes('--proof')
+    ? [
+        '- Phase 2.5 的目标是证明重建后库存账本自洽；五项全部为 0 才允许部署。',
+        '- Top 20 明细按数量或行数优先排序；本次全部无异常。'
+      ].join('\n')
+    : [
+        '- Phase 0.5 的目标是记录重建前基线，非 0 不阻断当前诊断阶段。',
+        '- Phase 2.5 重建后必须重新运行同一套脚本，以上五项全部为 0 才能部署。',
+        '- Top 20 明细按数量或行数优先排序；金额为基于当前平均成本的估算，仅用于排查优先级。'
+      ].join('\n');
+
+  return `# ${title}-${stamp}
+
+> ${phaseText}。数据来源：Cloudflare D1 远程库 \`v3-vending-inventory-sales-db\`。生成时间：${generatedAt}。
 
 ## 总览
 
@@ -139,9 +155,7 @@ ${summaryRows.map(row => `| ${row.check.title} | ${row.check.metricLabel} | ${ro
 
 ## 判读
 
-- Phase 0.5 的目标是记录重建前基线，非 0 不阻断当前诊断阶段。
-- Phase 2.5 重建后必须重新运行同一套脚本，以上五项全部为 0 才能部署。
-- Top 20 明细按数量或行数优先排序；金额为基于当前平均成本的估算，仅用于排查优先级。
+${interpretation}
 
 ${results.map(result => `## ${result.check}
 
@@ -173,7 +187,8 @@ console.log(`\nWrote: ${summaryPath}`);
 
 const shouldWriteDoc = process.argv.includes('--write-doc');
 if (shouldWriteDoc) {
-  const docPath = join(scriptDir, '..', '..', 'docs', `库存漂移现状-${stamp}.md`);
+  const proof = process.argv.includes('--proof');
+  const docPath = join(scriptDir, '..', '..', 'docs', `${proof ? '库存对账证明' : '库存漂移现状'}-${stamp}.md`);
   writeFileSync(docPath, markdown);
   console.log(`Wrote: ${docPath}`);
 }

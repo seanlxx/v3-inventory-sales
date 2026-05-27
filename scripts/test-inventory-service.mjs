@@ -249,18 +249,19 @@ assert.deepEqual(await balance('p1', 'machine-a'), {
 await saveProduct(env, {
   id: 'p-shared',
   name: 'Shared Pool Drink',
-  machineId: '1号机',
+  machineId: '1/2号机',
   category: 'drink',
   sellPrice: 4
 });
 await createPurchases(env, {
   id: 'po-shared',
   productId: 'p-shared',
+  machineId: '2号机',
   quantity: 10,
   totalPrice: 20,
   date: '2026-05-04'
 });
-assert.deepEqual(await balance('p-shared', '1/2号机'), {
+assert.deepEqual(await balance('p-shared', '2号机'), {
   quantity_on_hand: 10,
   avg_cost_cents: 200,
   inventory_value_cents: 2000,
@@ -274,7 +275,7 @@ const sharedSale = await createSalesOrder(env, {
   items: [{ productId: 'p-shared', quantity: 3 }]
 }, 'sale');
 assert.equal(sharedSale.machineId, '2号机', 'sales order should keep the actual vending machine');
-assert.deepEqual(await balance('p-shared', '1/2号机'), {
+assert.deepEqual(await balance('p-shared', '2号机'), {
   quantity_on_hand: 7,
   avg_cost_cents: 200,
   inventory_value_cents: 1400,
@@ -286,16 +287,20 @@ const sharedBalancesResponse = await listInventoryBalances({
   env
 });
 const sharedInventoryBalances = await sharedBalancesResponse.json();
-const sharedInventoryBalance = sharedInventoryBalances.find(row => row.productId === 'p-shared');
-assert.equal(sharedInventoryBalance?.machineId, '总库存', 'shared stock balance should display as total inventory');
-await assert.rejects(
-  () => createAdjustment(env, {
-    productId: 'p-shared',
-    machineId: '1号机',
-    quantityOnHand: 9
-  }),
-  /不允许盘点调整/
-);
+const sharedInventoryBalance = sharedInventoryBalances.find(row => row.productId === 'p-shared' && row.machineId === '2号机');
+assert.equal(sharedInventoryBalance?.machineId, '2号机', 'shared product purchase should write real machine inventory');
+await createAdjustment(env, {
+  productId: 'p-shared',
+  machineId: '2号机',
+  quantityOnHand: 9
+});
+assert.deepEqual(await balance('p-shared', '2号机'), {
+  quantity_on_hand: 9,
+  avg_cost_cents: 200,
+  inventory_value_cents: 1800,
+  total_purchase_qty: 10,
+  total_purchase_cost_cents: 2000
+});
 
 await createAdjustment(env, {
   productId: 'p1',
@@ -421,6 +426,15 @@ async function balance(productId, machineId) {
     FROM inventory_balances
     WHERE product_id = ? AND machine_id = ?
   `).bind(productId, machineId).first();
+  if (!row) {
+    return {
+      quantity_on_hand: 0,
+      avg_cost_cents: 0,
+      inventory_value_cents: 0,
+      total_purchase_qty: 0,
+      total_purchase_cost_cents: 0
+    };
+  }
   return {
     quantity_on_hand: row.quantity_on_hand,
     avg_cost_cents: row.avg_cost_cents,

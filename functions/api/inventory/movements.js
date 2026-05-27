@@ -1,7 +1,6 @@
 import { all } from '../_shared/d1.js';
 import { json, methodNotAllowed } from '../_shared/http.js';
 import { centsToMoney } from '../_shared/validators.js';
-import { stockMachineIdFor } from '../_shared/stock-scope.js';
 
 function addFilter(conditions, params, sql, value) {
   if (value === null || value === undefined || value === '') return;
@@ -16,7 +15,7 @@ export async function onRequestGet(context) {
 
   addFilter(conditions, params, 'm.product_id = ?', url.searchParams.get('productId'));
   const machineId = url.searchParams.get('machineId');
-  addFilter(conditions, params, 'm.machine_id = ?', machineId ? stockMachineIdFor(machineId) : machineId);
+  addFilter(conditions, params, 'm.machine_id = ?', machineId);
   addFilter(conditions, params, 'm.movement_type = ?', url.searchParams.get('movementType'));
   addFilter(conditions, params, 'm.ref_type = ?', url.searchParams.get('refType'));
   addFilter(conditions, params, 'm.ref_id = ?', url.searchParams.get('refId'));

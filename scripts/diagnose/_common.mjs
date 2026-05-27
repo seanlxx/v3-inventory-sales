@@ -54,7 +54,7 @@ export function runD1Query(sql) {
       '-ExecutionPolicy',
       'Bypass',
       '-Command',
-      `$sql = Get-Content -LiteralPath '${escaped}' -Raw; & npx wrangler d1 execute v3-vending-inventory-sales-db --remote --json --command $sql`
+      `$sql = Get-Content -LiteralPath '${escaped}' -Raw; & npx.cmd wrangler d1 execute v3-vending-inventory-sales-db --remote --json --command $sql`
     ], { encoding: 'utf8', maxBuffer: 1024 * 1024 * 80, env });
     return parseWranglerJson(raw).flatMap(item => item.results || []);
   } finally {

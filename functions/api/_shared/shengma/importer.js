@@ -5,6 +5,11 @@ import {
   SHENGMA_LOCAL_MACHINE_NAME
 } from './constants.js';
 import { normalizeProductName } from './mapper.js';
+import {
+  applyBalanceDelta,
+  getBalance as getInventoryBalance,
+  upsertBalanceStatement
+} from '../inventory-balance.js';
 
 const EMPTY_SUMMARY = {
   salesImported: 0,
@@ -62,21 +67,7 @@ async function findProduct(db, item) {
 }
 
 async function getBalance(db, productId) {
-  return await first(db, `
-    SELECT *
-    FROM inventory_balances
-    WHERE product_id = ? AND machine_id = ?
-    LIMIT 1
-  `, [productId, SHENGMA_LOCAL_MACHINE_NAME]) || {
-    product_id: productId,
-    machine_id: SHENGMA_LOCAL_MACHINE_NAME,
-    quantity_on_hand: 0,
-    avg_cost_cents: 0,
-    inventory_value_cents: 0,
-    total_purchase_qty: 0,
-    total_purchase_cost_cents: 0,
-    updated_at: nowIso()
-  };
+  return await getInventoryBalance(db, productId, SHENGMA_LOCAL_MACHINE_NAME);
 }
 
 async function getCachedBalance(env, cache, productId) {
@@ -86,53 +77,12 @@ async function getCachedBalance(env, cache, productId) {
   return cache.get(productId);
 }
 
-function upsertBalanceStatement(db, balance) {
-  return db.prepare(`
-    INSERT INTO inventory_balances (
-      product_id, machine_id, quantity_on_hand, avg_cost_cents, inventory_value_cents,
-      total_purchase_qty, total_purchase_cost_cents, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(product_id, machine_id) DO UPDATE SET
-      quantity_on_hand = excluded.quantity_on_hand,
-      avg_cost_cents = excluded.avg_cost_cents,
-      inventory_value_cents = excluded.inventory_value_cents,
-      total_purchase_qty = excluded.total_purchase_qty,
-      total_purchase_cost_cents = excluded.total_purchase_cost_cents,
-      updated_at = excluded.updated_at
-  `).bind(
-    balance.product_id,
-    balance.machine_id,
-    balance.quantity_on_hand,
-    balance.avg_cost_cents,
-    balance.inventory_value_cents,
-    balance.total_purchase_qty,
-    balance.total_purchase_cost_cents,
-    balance.updated_at
-  );
-}
-
 function applyAdjustmentToBalance(balance, qtyDelta, unitCostCents, timestamp) {
-  const previousQty = Number(balance.quantity_on_hand) || 0;
-  const previousValueCents = Math.max(0, Number(balance.inventory_value_cents) || 0);
-  const nextQty = previousQty + qtyDelta;
-  const valueDeltaCents = qtyDelta * unitCostCents;
-  const next = {
-    ...balance,
-    quantity_on_hand: nextQty,
-    inventory_value_cents: previousValueCents + valueDeltaCents,
-    updated_at: timestamp
-  };
-  if (next.quantity_on_hand <= 0) {
-    next.avg_cost_cents = 0;
-    next.inventory_value_cents = 0;
-  } else {
-    if (previousQty < 0 && qtyDelta > 0 && valueDeltaCents > 0) {
-      next.inventory_value_cents = Math.round(next.quantity_on_hand * (valueDeltaCents / qtyDelta));
-    }
-    next.inventory_value_cents = Math.max(0, Number(next.inventory_value_cents) || 0);
-    next.avg_cost_cents = Math.round(next.inventory_value_cents / next.quantity_on_hand);
-  }
-  return next;
+  return applyBalanceDelta(balance, {
+    qtyDelta,
+    valueDeltaCents: qtyDelta * unitCostCents,
+    timestamp
+  });
 }
 
 async function ensureProduct(env, item, statements, summary, timestamp) {

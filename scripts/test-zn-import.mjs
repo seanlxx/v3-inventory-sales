@@ -436,8 +436,8 @@ await envReconcile.DB.prepare(`
     product_id, machine_id, quantity_on_hand, avg_cost_cents, inventory_value_cents,
     total_purchase_qty, total_purchase_cost_cents, updated_at
   ) VALUES
-    ('broken-water', '1/2号机', 9, 60, 540, 10, 600, ?),
-    ('broken-dp', '1/2号机', 10, 400, 4000, 10, 4000, ?)
+    ('broken-water', '1号机', 9, 60, 540, 10, 600, ?),
+    ('broken-dp', '1号机', 10, 400, 4000, 10, 4000, ?)
 `).bind(timestamp, timestamp).run();
 await envReconcile.DB.prepare(`
   INSERT INTO sales_orders (
@@ -503,7 +503,7 @@ const fixedBalances = envReconcile.DB.query(`
   SELECT product_id, quantity_on_hand
   FROM inventory_balances
   WHERE product_id IN ('broken-dp', 'broken-water')
-    AND machine_id = '1/2号机'
+    AND machine_id = '1号机'
   ORDER BY product_id
 `);
 assert.deepEqual(
@@ -512,7 +512,7 @@ assert.deepEqual(
     ['broken-dp', 9],
     ['broken-water', 9]
   ],
-  '历史错单校正应同步恢复旧库存影响并扣减两种商品'
+  '历史错单校正应按真实销售机台恢复旧库存影响并扣减两种商品'
 );
 
 console.log('\n✅ 多商品错单校正测试通过：重复导入能修正已存在的一单多商品错误明细');

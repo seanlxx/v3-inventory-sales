@@ -3,7 +3,12 @@ import { centsToMoney, newId, nowIso, yearMonthFromDate } from '../validators.js
 import { computeReceivedAmountCents } from '../money.js';
 import { ZN_INTEGRATION, mapZnDeviceToMachine } from './constants.js';
 import { normalizeProductName } from '../shengma/mapper.js';
-import { stockMachineIdFor } from '../stock-scope.js';
+import {
+  applyBalanceDelta as applyBalanceDeltaToRow,
+  getBalance,
+  normalizeMachineId,
+  upsertBalanceStatement
+} from '../inventory-balance.js';
 
 const EMPTY_SUMMARY = {
   ordersImported: 0,
@@ -17,6 +22,7 @@ const EMPTY_SUMMARY = {
 };
 
 const COST_MATCH_THRESHOLD = 0.72;
+const ZN_PRODUCT_MACHINE_ID = '1/2号机';
 
 function newSummary() {
   return { ...EMPTY_SUMMARY };
@@ -133,7 +139,7 @@ function normalizeMultiItemLineAmounts(lines) {
 async function patchProductMetadata(env, product, line, statements, timestamp) {
   const barcode = normalizeBarcode(line.vendorBarcode);
   const normalized = normalizeProductName(line.vendorProductName);
-  const productMachineId = stockMachineIdFor(product.product_machine_id || product.machine_id);
+  const productMachineId = normalizeMachineId(product.product_machine_id || product.machine_id, ZN_PRODUCT_MACHINE_ID);
   const patches = [];
   const params = [];
   if (barcode && !product.external_id) {
@@ -165,7 +171,10 @@ async function patchProductMetadata(env, product, line, statements, timestamp) {
 }
 
 async function findOrCreateProduct(env, machineId, line, statements, summary, timestamp, costCandidateCache) {
-  const stockMachineId = stockMachineIdFor(machineId);
+  const stockMachineId = normalizeMachineId(machineId);
+  const productMachineId = stockMachineId === '1号机' || stockMachineId === '2号机'
+    ? ZN_PRODUCT_MACHINE_ID
+    : stockMachineId;
   const barcode = normalizeBarcode(line.vendorBarcode);
   const normalized = normalizeProductName(line.vendorProductName);
 
@@ -175,7 +184,7 @@ async function findOrCreateProduct(env, machineId, line, statements, summary, ti
       SELECT * FROM products
       WHERE machine_id = ? AND external_id = ? AND status = 'active'
       LIMIT 1
-    `, [stockMachineId, barcode]);
+    `, [productMachineId, barcode]);
   }
   if (!product && normalized) {
     product = await first(env.DB, `
@@ -184,7 +193,7 @@ async function findOrCreateProduct(env, machineId, line, statements, summary, ti
         AND (normalized_name = ? OR name = ?)
         AND status = 'active'
       LIMIT 1
-    `, [stockMachineId, normalized, line.vendorProductName]);
+    `, [productMachineId, normalized, line.vendorProductName]);
   }
   if (product) return await patchProductMetadata(env, product, line, statements, timestamp);
 
@@ -194,7 +203,7 @@ async function findOrCreateProduct(env, machineId, line, statements, summary, ti
 
   product = {
     id: newId(),
-    machine_id: stockMachineId,
+    machine_id: productMachineId,
     name: line.vendorProductName || (barcode || '未知商品'),
     category: '其他',
     sell_price_cents: Math.max(0, Number(line.unitPriceCents) || 0),
@@ -219,26 +228,8 @@ async function findOrCreateProduct(env, machineId, line, statements, summary, ti
   return product;
 }
 
-async function getBalance(env, productId, machineId) {
-  const stockMachineId = stockMachineIdFor(machineId);
-  return await first(env.DB, `
-    SELECT * FROM inventory_balances
-    WHERE product_id = ? AND machine_id = ?
-    LIMIT 1
-  `, [productId, stockMachineId]) || {
-    product_id: productId,
-    machine_id: stockMachineId,
-    quantity_on_hand: 0,
-    avg_cost_cents: 0,
-    inventory_value_cents: 0,
-    total_purchase_qty: 0,
-    total_purchase_cost_cents: 0,
-    updated_at: nowIso()
-  };
-}
-
 async function loadPurchaseCostCandidates(env, machineId, cache) {
-  const stockMachineId = stockMachineIdFor(machineId);
+  const stockMachineId = normalizeMachineId(machineId);
   if (cache.has(stockMachineId)) return cache.get(stockMachineId);
   const rows = await all(env.DB, `
     SELECT
@@ -255,7 +246,7 @@ async function loadPurchaseCostCandidates(env, machineId, cache) {
     JOIN purchase_orders o ON o.id = i.purchase_id
     JOIN products p ON p.id = i.product_id
     WHERE o.voided_at IS NULL
-      AND p.machine_id = ?
+      AND o.machine_id = ?
     GROUP BY p.id, o.machine_id, p.machine_id, p.name, p.normalized_name, p.external_id
     HAVING SUM(i.quantity) > 0 AND SUM(i.total_cost_cents) > 0
   `, [stockMachineId]);
@@ -304,49 +295,11 @@ function receivedAmountForOrder(lines, lineAmountTotal, fees) {
 }
 
 function applyBalanceDelta(balance, qtyDelta, valueDeltaCents, timestamp) {
-  const previousQty = Number(balance.quantity_on_hand) || 0;
-  const previousValueCents = Math.max(0, Number(balance.inventory_value_cents) || 0);
-  const nextQty = previousQty + qtyDelta;
-  const next = {
-    ...balance,
-    quantity_on_hand: nextQty,
-    inventory_value_cents: previousValueCents + valueDeltaCents,
-    updated_at: timestamp
-  };
-
-  if (nextQty <= 0) {
-    next.inventory_value_cents = 0;
-    next.avg_cost_cents = 0;
-  } else {
-    if (previousQty < 0 && qtyDelta > 0 && valueDeltaCents > 0) {
-      next.inventory_value_cents = Math.round(nextQty * (valueDeltaCents / qtyDelta));
-    }
-    next.inventory_value_cents = Math.max(0, Number(next.inventory_value_cents) || 0);
-    next.avg_cost_cents = Math.round(next.inventory_value_cents / nextQty);
-  }
-
-  return next;
+  return applyBalanceDeltaToRow(balance, { qtyDelta, valueDeltaCents, timestamp });
 }
 
 function upsertBalanceStmt(env, balance) {
-  return env.DB.prepare(`
-    INSERT INTO inventory_balances (
-      product_id, machine_id, quantity_on_hand, avg_cost_cents, inventory_value_cents,
-      total_purchase_qty, total_purchase_cost_cents, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(product_id, machine_id) DO UPDATE SET
-      quantity_on_hand = excluded.quantity_on_hand,
-      avg_cost_cents = excluded.avg_cost_cents,
-      inventory_value_cents = excluded.inventory_value_cents,
-      total_purchase_qty = excluded.total_purchase_qty,
-      total_purchase_cost_cents = excluded.total_purchase_cost_cents,
-      updated_at = excluded.updated_at
-  `).bind(
-    balance.product_id, balance.machine_id, balance.quantity_on_hand,
-    balance.avg_cost_cents, balance.inventory_value_cents,
-    balance.total_purchase_qty, balance.total_purchase_cost_cents,
-    balance.updated_at
-  );
+  return upsertBalanceStatement(env.DB, balance);
 }
 
 function groupLines(lines) {
@@ -392,7 +345,7 @@ async function rebuildExistingOrder(env, existing, lines, fees, summary, timesta
 
   for (const line of lines) {
     if (!line.vendorProductName) continue;
-    const stockMachineId = stockMachineIdFor(existing.machine_id);
+    const stockMachineId = normalizeMachineId(existing.machine_id);
     const product = await findOrCreateProduct(env, existing.machine_id, line, statements, summary, timestamp, costCandidateCache);
     const quantity = Math.max(1, Number(line.quantity) || 1);
     const unitPriceCents = Math.max(0, Number(line.unitPriceCents) || 0);
@@ -599,7 +552,7 @@ async function reconcileExistingOrder(env, existing, lines, fees, summary, times
 }
 
 async function importOneOrder(env, machineId, vendorOrderNo, lines, summary, warnings, balanceCache, costCandidateCache, timestamp) {
-  const stockMachineId = stockMachineIdFor(machineId);
+  const stockMachineId = normalizeMachineId(machineId);
   const orderId = `zn:${vendorOrderNo}`.slice(0, 120);
 
   // 订单级聚合（同一订单号多行 Excel 通常重复列出相同手续费，取首行而非求和）
