@@ -12,7 +12,7 @@
 
 | 类别 | 特点 | 路径 |
 | --- | --- | --- |
-| **项目专属（v3 specific）** | 包含 v3 仓库的具体文件路径、命令、表名、断点 | `desktop-ui-fix/` · `mobile-ui-fix/` · `pages-deploy-troubleshoot/` |
+| **项目专属（v3 specific）** | 包含 v3 仓库的具体文件路径、命令、表名、断点 | `desktop-ui-fix/` · `mobile-ui-fix/` · `pages-deploy-troubleshoot/` · `inventory-restructure/` · `inventory-drift-diagnose/` · `zn-excel-import/` |
 | **通用设计知识（generic design）** | 来自社区开源 skill，提供 UI / 设计的通用原则与组件知识 | `ui-design-brain/` · `color-system/` · `typography-scale/` · `spacing-system/` · `visual-hierarchy/` · `layout-grid/` · `responsive-design/` · `data-visualization/` · `dark-mode-design/` |
 
 > **协作模式：** 通用设计 skill 提供"应该怎么做"的设计原则，项目专属 skill 提供"在 v3 里要改哪个文件"的具体落点。两者结合 = 既懂设计、又懂代码位置。
@@ -46,6 +46,33 @@
 | 用途 | 排查 push 到 GitHub 后 Cloudflare Pages 自动部署失败的问题 |
 | 触发关键词 | "部署失败"、"构建报错"、"Pages 构建日志"、"push 后没上线"、"生产环境没更新"、"Cloudflare 报错"、"wrangler pages deploy" |
 | 覆盖范围 | 构建失败、绑定缺失、迁移未应用、环境变量缺失等常见场景的诊断与修复流程 |
+
+### 2.4 `inventory-restructure`
+
+| 项 | 内容 |
+| --- | --- |
+| 用途 | 推进 1 号机/2 号机销售-商品-库存重构（`docs/重构计划-1-2号机.md` 的可执行索引） |
+| 触发关键词 | "重构计划"、"Phase 0/0.5/1/2/2.5/3/4/5"、"按机库存"、"1·2 号机折叠"、"删 stock-scope"、"重建余额"、"机间调拨"、"盘点 UI"、"总库存与进货不匹配" |
+| 覆盖范围 | 阶段总览、6 个决策点（D1-D6）、每个 Phase 的文件清单、Phase 2.5 五项零漂门槛、漂移根因索引（R1-R8） |
+| 配套 skill | `inventory-drift-diagnose`、`zn-excel-import` |
+
+### 2.5 `inventory-drift-diagnose`
+
+| 项 | 内容 |
+| --- | --- |
+| 用途 | 诊断库存漂移（总库存与进货不匹配、'1/2号机' 折叠泄漏、负库存、作废未反冲、同名重复商品） |
+| 触发关键词 | "库存漂移"、"库存对不上"、"进货 vs 库存对账"、"负库存核查"、"重建余额验证"、"Phase 0.5/2.5 诊断"、"对账证明" |
+| 覆盖范围 | 5 个诊断脚本的实现规范（balance-vs-movements / purchase-vs-balance / stock-scope-leakage / void-unwind / duplicate-product）+ Phase 0.5/2.5 强制门槛 |
+| 配套 skill | `inventory-restructure`、`zn-excel-import` |
+
+### 2.6 `zn-excel-import`
+
+| 项 | 内容 |
+| --- | --- |
+| 用途 | 修改 zn 平台 Excel 导入链路（订单明细 + 交易账单两份 Excel 的字段对齐、幂等键、批次约束） |
+| 触发关键词 | "zn Excel"、"订单明细"、"交易账单"、"导入失败"、"字段映射"、"订单号关联"、"手续费"、"算法服务费"、"预估到账"、"设备编号"、"sheetjs/xlsx 解析" |
+| 覆盖范围 | 字段映射表、设备-机型映射、`pickField` 前缀匹配规则、幂等键设计、reconcile/rebuild 分支、IMPORT_BATCH_SIZE = 80 约束 |
+| 配套 skill | `inventory-restructure`、`inventory-drift-diagnose` |
 
 ---
 
@@ -92,6 +119,10 @@
 | "Cloudflare Pages 部署失败" | `pages-deploy-troubleshoot` |
 | "新增一个商品筛选弹窗" | `ui-design-brain`（查 Modal / Drawer 组件最佳实践） |
 | "想做暗色模式" | `dark-mode-design` + `color-system` |
+| "总库存与进货不匹配 / 库存漂移" | `inventory-drift-diagnose` + `inventory-restructure` |
+| "按重构计划走 Phase 1 / 删 stock-scope.js" | `inventory-restructure` |
+| "订单明细字段对不上 / 交易账单怎么导" | `zn-excel-import` |
+| "重建余额后跑 5 项对账" | `inventory-drift-diagnose` |
 
 ---
 
@@ -126,6 +157,6 @@
 | --- | --- | --- |
 | `ui-design-brain/` | https://github.com/carmahhawwari/ui-design-brain | MIT |
 | `color-system/` 等 8 个 | https://github.com/Owl-Listener/designer-skills | MIT |
-| `desktop-ui-fix/` · `mobile-ui-fix/` · `pages-deploy-troubleshoot/` | 本项目原创 | 跟随仓库 |
+| `desktop-ui-fix/` · `mobile-ui-fix/` · `pages-deploy-troubleshoot/` · `inventory-restructure/` · `inventory-drift-diagnose/` · `zn-excel-import/` | 本项目原创 | 跟随仓库 |
 
 > 上游仓库后续如果有更新，按需手工 pull，不做自动同步（避免 v3 已经针对项目调整过的 skill 被覆盖）。

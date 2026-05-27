@@ -106,6 +106,9 @@
 | 手机端 / 375 / 390 / 430px / 横向溢出 / iPhone 安全区 | `mobile-ui-fix` | 移动端 UI 修复 |
 | 电脑端 / 1280 / 1440 / 1920px / 侧栏比例 / 桌面排版 | `desktop-ui-fix` | 桌面端 UI 修复 |
 | push 后没上线 / Pages 构建失败 / D1 表不存在 / 绑定缺失 | `pages-deploy-troubleshoot` | Cloudflare Pages 部署排查 |
+| 重构计划 / Phase 0~5 / 按机库存 / 1·2 号机折叠 / 删 stock-scope / 机间调拨 | `inventory-restructure` | 1/2 号机销售-商品-库存重构（`docs/重构计划-1-2号机.md` 索引） |
+| 总库存与进货不匹配 / 库存漂移 / 5 项对账 / Phase 0.5·2.5 诊断 / 重建余额验证 | `inventory-drift-diagnose` | 库存漂移定位与对账证明 |
+| zn Excel / 订单明细 / 交易账单 / 设备编号映射 / 手续费·算法服务费 / pickField | `zn-excel-import` | zn 平台 Excel 导入字段对齐与幂等 |
 
 #### 通用设计知识 skill（社区开源，写 / 改任何 UI 前查）
 
