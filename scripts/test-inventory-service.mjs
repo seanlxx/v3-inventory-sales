@@ -7,7 +7,9 @@ import { fileURLToPath } from 'node:url';
 import {
   archiveProduct,
   createAdjustment,
+  createCycleCount,
   createPurchases,
+  createTransfer,
   listProducts,
   listSales,
   createSalesOrder,
@@ -92,6 +94,8 @@ env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0007_shengma_integrati
 env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0008_zn_order_fees.sql'), 'utf8'));
 env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0009_sales_received_amount.sql'), 'utf8'));
 env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0011_money_columns_align.sql'), 'utf8'));
+env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0013_stock_transfers.sql'), 'utf8'));
+env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0014_stock_movement_transfer_types.sql'), 'utf8'));
 
 await saveProduct(env, {
   id: 'p1',
@@ -289,6 +293,11 @@ const sharedBalancesResponse = await listInventoryBalances({
 const sharedInventoryBalances = await sharedBalancesResponse.json();
 const sharedInventoryBalance = sharedInventoryBalances.find(row => row.productId === 'p-shared' && row.machineId === '2号机');
 assert.equal(sharedInventoryBalance?.machineId, '2号机', 'shared product purchase should write real machine inventory');
+assert.equal(
+  sharedInventoryBalances.some(row => row.productId === 'p-shared' && row.machineId === '1/2号机'),
+  false,
+  'inventory balances API should not expose folded shared machine rows'
+);
 await createAdjustment(env, {
   productId: 'p-shared',
   machineId: '2号机',
@@ -301,6 +310,78 @@ assert.deepEqual(await balance('p-shared', '2号机'), {
   total_purchase_qty: 10,
   total_purchase_cost_cents: 2000
 });
+
+const transfer = await createTransfer(env, {
+  id: 'tr-shared',
+  productId: 'p-shared',
+  fromMachineId: '2号机',
+  toMachineId: '1号机',
+  quantity: 4,
+  reason: '现场补货'
+});
+assert.equal(transfer.quantity, 4);
+assert.deepEqual(await balance('p-shared', '2号机'), {
+  quantity_on_hand: 5,
+  avg_cost_cents: 200,
+  inventory_value_cents: 1000,
+  total_purchase_qty: 10,
+  total_purchase_cost_cents: 2000
+});
+assert.deepEqual(await balance('p-shared', '1号机'), {
+  quantity_on_hand: 4,
+  avg_cost_cents: 200,
+  inventory_value_cents: 800,
+  total_purchase_qty: 0,
+  total_purchase_cost_cents: 0
+});
+assert.equal(await rowCount('stock_transfers'), 1, 'transfer should write stock_transfers');
+assert.equal(await movementTypeCount('transfer_out'), 1, 'transfer should write outbound movement');
+assert.equal(await movementTypeCount('transfer_in'), 1, 'transfer should write inbound movement');
+await assert.rejects(
+  () => createTransfer(env, {
+    productId: 'p-shared',
+    fromMachineId: '2号机',
+    toMachineId: '1号机',
+    quantity: 99,
+    reason: 'oversized transfer'
+  }),
+  /库存不足/
+);
+
+const count = await createCycleCount(env, {
+  id: 'cc-shared',
+  machineId: '1号机',
+  reason: '收工盘点',
+  items: [{ productId: 'p-shared', observedQty: 6 }]
+});
+assert.equal(count.changedCount, 1);
+assert.deepEqual(await balance('p-shared', '1号机'), {
+  quantity_on_hand: 6,
+  avg_cost_cents: 200,
+  inventory_value_cents: 1200,
+  total_purchase_qty: 0,
+  total_purchase_cost_cents: 0
+});
+assert.equal(await refTypeCount('cycle_count'), 1, 'cycle count should write adjustment movements');
+await assert.rejects(
+  () => createCycleCount(env, {
+    machineId: '1号机',
+    reason: 'wrong machine count',
+    items: [{ productId: 'p1', observedQty: 2 }]
+  }),
+  /不能盘点到 1号机/
+);
+await assert.rejects(
+  () => createCycleCount(env, {
+    machineId: '1号机',
+    reason: 'duplicate product count',
+    items: [
+      { productId: 'p-shared', observedQty: 6 },
+      { productId: 'p-shared', observedQty: 7 }
+    ]
+  }),
+  /重复商品/
+);
 
 await createAdjustment(env, {
   productId: 'p1',
@@ -446,6 +527,20 @@ async function balance(productId, machineId) {
 
 async function rowCount(table) {
   const row = await env.DB.prepare(`SELECT COUNT(*) AS count FROM ${table}`).first();
+  return Number(row.count) || 0;
+}
+
+async function movementTypeCount(type) {
+  const row = await env.DB.prepare('SELECT COUNT(*) AS count FROM stock_movements WHERE movement_type = ?')
+    .bind(type)
+    .first();
+  return Number(row.count) || 0;
+}
+
+async function refTypeCount(type) {
+  const row = await env.DB.prepare('SELECT COUNT(*) AS count FROM stock_movements WHERE ref_type = ?')
+    .bind(type)
+    .first();
   return Number(row.count) || 0;
 }
 

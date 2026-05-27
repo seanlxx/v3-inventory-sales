@@ -74,9 +74,9 @@ function renderTopTable(result) {
 
   if (result.check === 'purchase-vs-balance') {
     return [
-      '| 商品 | 机台 | 进货 | 库存 | 销售 | 报损 | 退货 | 调整 | 漂移 | 估算金额 | 根因 |',
-      '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |',
-      ...rows.map(row => `| ${productLabel(row)} | ${row.machine_id || '-'} | ${row.purchase_qty} | ${row.balance_qty} | ${row.sale_qty} | ${row.loss_qty} | ${row.refund_qty} | ${row.adjustment_qty} | ${row.drift_qty} | ${formatMoney(row.drift_value_cents)} | ${row.suspected_root_cause} |`)
+      '| 商品 | 机台 | 进货 | 库存 | 销售 | 报损 | 退货 | 调出 | 调入 | 调整 | 漂移 | 估算金额 | 根因 |',
+      '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |',
+      ...rows.map(row => `| ${productLabel(row)} | ${row.machine_id || '-'} | ${row.purchase_qty} | ${row.balance_qty} | ${row.sale_qty} | ${row.loss_qty} | ${row.refund_qty} | ${row.transfer_out_qty || 0} | ${row.transfer_in_qty || 0} | ${row.adjustment_qty} | ${row.drift_qty} | ${formatMoney(row.drift_value_cents)} | ${row.suspected_root_cause} |`)
     ].join('\n') + '\n';
   }
 

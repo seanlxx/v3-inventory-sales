@@ -12,6 +12,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   movements: [balance: InventoryBalance]
   adjust: [balance: InventoryBalance]
+  transfer: [balance: InventoryBalance]
   retry: []
 }>()
 
@@ -112,6 +113,9 @@ function purchaseCost(balance: InventoryBalance) {
                 <AppButton size="sm" variant="secondary" @click="emit('movements', balance)">
                   流水
                 </AppButton>
+                <AppButton size="sm" variant="secondary" @click="emit('transfer', balance)">
+                  调拨
+                </AppButton>
                 <AppButton size="sm" @click="emit('adjust', balance)">
                   盘点
                 </AppButton>
@@ -189,6 +193,9 @@ function purchaseCost(balance: InventoryBalance) {
           <AppButton size="sm" variant="secondary" @click="emit('movements', balance)">
             流水
           </AppButton>
+          <AppButton size="sm" variant="secondary" @click="emit('transfer', balance)">
+            调拨
+          </AppButton>
           <AppButton size="sm" @click="emit('adjust', balance)">
             盘点
           </AppButton>
@@ -214,7 +221,7 @@ function purchaseCost(balance: InventoryBalance) {
 
 .inventory-table__table {
   width: 100%;
-  min-width: 958px;
+  min-width: 1018px;
   border-collapse: collapse;
   table-layout: fixed;
 }
@@ -252,7 +259,7 @@ function purchaseCost(balance: InventoryBalance) {
 }
 
 .inventory-table__col--actions {
-  width: 126px;
+  width: 186px;
 }
 
 .inventory-table__table th,

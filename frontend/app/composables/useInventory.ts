@@ -1,8 +1,12 @@
 import type { ApiError } from '~/types/api'
 import type {
+  CycleCountPayload,
+  CycleCountResult,
   InventoryAdjustmentPayload,
   InventoryBalance,
   InventoryListFilters,
+  InventoryTransferPayload,
+  InventoryTransferResult,
   StockMovement
 } from '~/types/inventory'
 import type { Product } from '~/types/product'
@@ -31,13 +35,16 @@ export function useInventory() {
   const loading = shallowRef(false)
   const movementsLoading = shallowRef(false)
   const adjusting = shallowRef(false)
+  const transferring = shallowRef(false)
+  const cycleCounting = shallowRef(false)
   const error = shallowRef<ApiError | null>(null)
   const movementsError = shallowRef<ApiError | null>(null)
 
   const machineOptions = computed(() => {
     const machines = new Set(balances.value.map(balance => balance.machineId).filter(Boolean))
     if (machines.size === 0) {
-      machines.add('总库存')
+      machines.add('1号机')
+      machines.add('2号机')
     }
     return Array.from(machines).sort((left, right) => left.localeCompare(right, 'zh-CN'))
   })
@@ -115,6 +122,50 @@ export function useInventory() {
     }
   }
 
+  async function createTransfer(payload: InventoryTransferPayload) {
+    transferring.value = true
+    error.value = null
+    try {
+      const saved = await request<InventoryTransferResult, InventoryTransferPayload>('/inventory/transfer', {
+        method: 'POST',
+        body: payload
+      })
+      toastStore.show('机间调拨已提交', 'success')
+      await loadBalances()
+      if (selectedBalance.value?.productId === payload.productId) {
+        await loadMovements(selectedBalance.value)
+      }
+      return saved
+    } catch (caught) {
+      error.value = normalizeApiError(caught)
+      throw error.value
+    } finally {
+      transferring.value = false
+    }
+  }
+
+  async function createCycleCount(payload: CycleCountPayload) {
+    cycleCounting.value = true
+    error.value = null
+    try {
+      const saved = await request<CycleCountResult, CycleCountPayload>('/inventory/cycle-count', {
+        method: 'POST',
+        body: payload
+      })
+      toastStore.show(saved.changedCount > 0 ? `盘点已提交，调整 ${saved.changedCount} 项` : '盘点已提交，无库存差异', 'success')
+      await loadBalances()
+      if (selectedBalance.value && payload.items.some(item => item.productId === selectedBalance.value?.productId)) {
+        await loadMovements(selectedBalance.value)
+      }
+      return saved
+    } catch (caught) {
+      error.value = normalizeApiError(caught)
+      throw error.value
+    } finally {
+      cycleCounting.value = false
+    }
+  }
+
   return {
     balances,
     filteredBalances,
@@ -126,11 +177,15 @@ export function useInventory() {
     loading,
     movementsLoading,
     adjusting,
+    transferring,
+    cycleCounting,
     error,
     movementsError,
     updateFilters,
     loadBalances,
     loadMovements,
-    createAdjustment
+    createAdjustment,
+    createTransfer,
+    createCycleCount
   }
 }

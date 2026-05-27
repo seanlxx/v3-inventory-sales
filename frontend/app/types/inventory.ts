@@ -1,4 +1,12 @@
-export type StockMovementType = 'purchase' | 'sale' | 'refund' | 'loss' | 'adjustment' | 'void'
+export type StockMovementType =
+  | 'purchase'
+  | 'sale'
+  | 'refund'
+  | 'loss'
+  | 'adjustment'
+  | 'void'
+  | 'transfer_out'
+  | 'transfer_in'
 
 export type InventoryBalance = {
   productId: string
@@ -45,4 +53,48 @@ export type InventoryAdjustmentPayload = Record<string, unknown> & {
   quantityOnHand: number
   unitCost?: number
   note?: string
+}
+
+export type InventoryTransferPayload = {
+  productId: string
+  fromMachineId: string
+  toMachineId: string
+  quantity: number
+  reason: string
+}
+
+export type InventoryTransferResult = InventoryTransferPayload & {
+  id: string
+  productName: string
+  unitCost: number
+  createdAt: string
+}
+
+export type CycleCountItemPayload = {
+  productId: string
+  observedQty: number
+}
+
+export type CycleCountPayload = {
+  machineId: string
+  reason: string
+  items: CycleCountItemPayload[]
+}
+
+export type CycleCountResultItem = {
+  productId: string
+  productName: string
+  previousQty: number
+  observedQty: number
+  qtyDelta: number
+  unitCost: number
+}
+
+export type CycleCountResult = {
+  id: string
+  machineId: string
+  changedCount: number
+  items: CycleCountResultItem[]
+  reason: string
+  createdAt: string
 }

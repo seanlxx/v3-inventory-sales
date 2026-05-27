@@ -77,7 +77,10 @@ export async function onRequestGet(context) {
         p.name AS product_name,
         p.category,
         p.status,
-        p.machine_id AS machine_id,
+        CASE
+          WHEN p.machine_id IN ('1/2号机', '1/2号机总库存', '总库存') THEN '1号机'
+          ELSE p.machine_id
+        END AS machine_id,
         0 AS quantity_on_hand,
         0 AS avg_cost_cents,
         COALESCE(pc.purchase_avg_cost_cents, 0) AS purchase_avg_cost_cents,
@@ -105,8 +108,19 @@ export async function onRequestGet(context) {
         SELECT 1
         FROM inventory_balances b
         WHERE b.product_id = p.id
-          AND b.machine_id = p.machine_id
+          AND b.machine_id = CASE
+            WHEN p.machine_id IN ('1/2号机', '1/2号机总库存', '总库存') THEN '1号机'
+            ELSE p.machine_id
+          END
       )
+        AND NOT (
+          p.machine_id IN ('1/2号机', '1/2号机总库存', '总库存')
+          AND EXISTS (
+            SELECT 1
+            FROM inventory_balances b
+            WHERE b.product_id = p.id
+          )
+        )
     )
     SELECT
       product_id,

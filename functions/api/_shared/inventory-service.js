@@ -208,6 +208,18 @@ async function getPurchaseAvgCostCents(env, productId, cache = new Map()) {
   return cents;
 }
 
+function requiredRealMachineId(value, label) {
+  const raw = stringOrNull(value);
+  if (!raw) throw validationError(`缺少${label}`);
+  const machineId = normalizeMachineId(raw);
+  if (isLegacySharedMachine(machineId)) throw validationError(`${label}必须选择具体售货机`);
+  return machineId;
+}
+
+function payloadProductId(payload) {
+  return stringOrNull(payload?.productId) || stringOrNull(payload?.product_id);
+}
+
 function upsertProductStatement(db, product) {
   return db.prepare(`
     INSERT INTO products (
@@ -977,7 +989,7 @@ export async function updateSalesOrder(env, id, payload) {
 }
 
 export async function createAdjustment(env, payload) {
-  const productId = stringOrNull(payload.productId);
+  const productId = payloadProductId(payload);
   const product = productId ? await getProduct(env, productId) : null;
   if (!product) throw new Error('Product not found');
 
@@ -1004,12 +1016,187 @@ export async function createAdjustment(env, payload) {
     ref_id: adjustmentId,
     ref_item_id: null,
     voids_movement_id: null,
+    reason: stringOrNull(payload.reason) || stringOrNull(payload.note),
     created_at: timestamp
   }, qtyDelta * unitCostCents, statements);
 
   await env.DB.batch(statements);
   const [saved] = await listProducts(env, { id: product.id, includeArchived: true });
   return saved;
+}
+
+export async function createTransfer(env, payload) {
+  const productId = payloadProductId(payload);
+  const product = productId ? await getProduct(env, productId) : null;
+  if (!product) throw validationError('商品不存在');
+  if (product.status !== 'active') throw validationError('商品已下架，不能调拨');
+
+  const fromMachineId = requiredRealMachineId(
+    payload?.fromMachineId ?? payload?.from_machine_id,
+    '调出机台'
+  );
+  const toMachineId = requiredRealMachineId(
+    payload?.toMachineId ?? payload?.to_machine_id,
+    '调入机台'
+  );
+  if (fromMachineId === toMachineId) throw validationError('调出机台和调入机台不能相同');
+  if (!productCanServeMachine(product.machine_id, fromMachineId) || !productCanServeMachine(product.machine_id, toMachineId)) {
+    throw validationError(`${product.name} 属于 ${product.machine_id}，不能在 ${fromMachineId} 与 ${toMachineId} 之间调拨`);
+  }
+
+  const qty = quantity(payload?.quantity);
+  if (qty <= 0) throw validationError('调拨数量必须大于 0');
+  const reason = stringOrNull(payload?.reason);
+  if (!reason) throw validationError('请填写调拨原因');
+
+  const timestamp = nowIso();
+  const transferId = stringOrNull(payload?.id) || newId();
+  const balanceCache = new Map();
+  const sourceBalance = await getBalance(env, product.id, fromMachineId, balanceCache);
+  if (qty > (Number(sourceBalance.quantity_on_hand) || 0)) {
+    throw validationError(`${product.name} 调出库存不足：当前 ${sourceBalance.quantity_on_hand}，本次 ${qty}`);
+  }
+
+  const unitCostCents = Math.max(
+    0,
+    Number(sourceBalance.avg_cost_cents) || await getPurchaseAvgCostCents(env, product.id) || 0
+  );
+  const transferValueCents = qty * unitCostCents;
+  const statements = [
+    env.DB.prepare(`
+      INSERT INTO stock_transfers (
+        id, product_id, from_machine_id, to_machine_id, quantity,
+        unit_cost_cents, reason, created_at, voided_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
+    `).bind(
+      transferId,
+      product.id,
+      fromMachineId,
+      toMachineId,
+      qty,
+      unitCostCents,
+      reason,
+      timestamp
+    )
+  ];
+
+  await applyMovement(env, balanceCache, {
+    id: `stock_transfer:${transferId}:${product.id}:out`,
+    product_id: product.id,
+    machine_id: fromMachineId,
+    movement_type: 'transfer_out',
+    qty_delta: -qty,
+    unit_cost_cents: unitCostCents,
+    ref_type: 'stock_transfer',
+    ref_id: transferId,
+    ref_item_id: `${transferId}:out`,
+    voids_movement_id: null,
+    reason: `调拨至 ${toMachineId}: ${reason}`,
+    created_at: timestamp
+  }, -transferValueCents, statements);
+
+  await applyMovement(env, balanceCache, {
+    id: `stock_transfer:${transferId}:${product.id}:in`,
+    product_id: product.id,
+    machine_id: toMachineId,
+    movement_type: 'transfer_in',
+    qty_delta: qty,
+    unit_cost_cents: unitCostCents,
+    ref_type: 'stock_transfer',
+    ref_id: transferId,
+    ref_item_id: `${transferId}:in`,
+    voids_movement_id: null,
+    reason: `调拨自 ${fromMachineId}: ${reason}`,
+    created_at: timestamp
+  }, transferValueCents, statements);
+
+  await env.DB.batch(statements);
+  return {
+    id: transferId,
+    productId: product.id,
+    productName: product.name,
+    fromMachineId,
+    toMachineId,
+    quantity: qty,
+    unitCost: centsToMoney(unitCostCents),
+    reason,
+    createdAt: timestamp
+  };
+}
+
+export async function createCycleCount(env, payload) {
+  const machineId = requiredRealMachineId(payload?.machineId ?? payload?.machine_id, '盘点机台');
+  const rawItems = Array.isArray(payload?.items) ? payload.items : [];
+  if (!rawItems.length) throw validationError('缺少盘点明细');
+  const reason = stringOrNull(payload?.reason) || stringOrNull(payload?.note);
+  if (!reason) throw validationError('请填写盘点原因');
+
+  const timestamp = nowIso();
+  const countId = stringOrNull(payload?.id) || newId();
+  const balanceCache = new Map();
+  const purchaseCostCache = new Map();
+  const statements = [];
+  const changedItems = [];
+  const seenProductIds = new Set();
+
+  for (let index = 0; index < rawItems.length; index += 1) {
+    const item = rawItems[index] || {};
+    const productId = payloadProductId(item);
+    if (!productId) throw validationError('盘点明细缺少商品');
+    if (seenProductIds.has(productId)) throw validationError('盘点明细中包含重复商品');
+    seenProductIds.add(productId);
+    const product = await getProduct(env, productId);
+    if (!product) throw validationError('盘点明细中包含不存在的商品');
+    if (product.status !== 'active') throw validationError(`${product.name} 已下架，不能盘点`);
+
+    const current = await getBalance(env, product.id, machineId, balanceCache);
+    if (!productCanServeMachine(product.machine_id, machineId) && Number(current.quantity_on_hand) === 0) {
+      throw validationError(`${product.name} 属于 ${product.machine_id}，不能盘点到 ${machineId}`);
+    }
+
+    const observedQty = quantity(item.observedQty ?? item.observed_qty ?? item.quantityOnHand);
+    if (observedQty < 0) throw validationError(`${product.name} 实盘数量不能小于 0`);
+    const qtyDelta = observedQty - (Number(current.quantity_on_hand) || 0);
+    if (qtyDelta === 0) continue;
+
+    const unitCostCents = Math.max(
+      0,
+      Number(current.avg_cost_cents) || await getPurchaseAvgCostCents(env, product.id, purchaseCostCache) || 0
+    );
+    const refItemId = `${countId}:${index}`;
+    await applyMovement(env, balanceCache, {
+      id: `cycle_count:${countId}:${product.id}:${index}`,
+      product_id: product.id,
+      machine_id: machineId,
+      movement_type: 'adjustment',
+      qty_delta: qtyDelta,
+      unit_cost_cents: unitCostCents,
+      ref_type: 'cycle_count',
+      ref_id: countId,
+      ref_item_id: refItemId,
+      voids_movement_id: null,
+      reason,
+      created_at: timestamp
+    }, qtyDelta * unitCostCents, statements);
+    changedItems.push({
+      productId: product.id,
+      productName: product.name,
+      previousQty: Number(current.quantity_on_hand) || 0,
+      observedQty,
+      qtyDelta,
+      unitCost: centsToMoney(unitCostCents)
+    });
+  }
+
+  if (statements.length) await env.DB.batch(statements);
+  return {
+    id: countId,
+    machineId,
+    changedCount: changedItems.length,
+    items: changedItems,
+    reason,
+    createdAt: timestamp
+  };
 }
 
 export async function voidDocument(env, payload) {

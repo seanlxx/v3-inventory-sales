@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import type { InventoryAdjustmentPayload, InventoryBalance } from '~/types/inventory'
+import type { CycleCountPayload, InventoryAdjustmentPayload, InventoryBalance, InventoryTransferPayload } from '~/types/inventory'
 
 definePageMeta({
   title: '库存'
 })
 
 const {
+  balances,
   filteredBalances,
   filters,
   machineOptions,
@@ -15,17 +16,24 @@ const {
   loading,
   movementsLoading,
   adjusting,
+  transferring,
+  cycleCounting,
   error,
   movementsError,
   updateFilters,
   loadBalances,
   loadMovements,
-  createAdjustment
+  createAdjustment,
+  createTransfer,
+  createCycleCount
 } = useInventory()
 
 const adjustmentOpen = shallowRef(false)
+const transferOpen = shallowRef(false)
+const cycleCountOpen = shallowRef(false)
 const mobileTimelineOpen = shallowRef(false)
 const adjustingBalance = shallowRef<InventoryBalance | null>(null)
+const transferBalance = shallowRef<InventoryBalance | null>(null)
 
 async function openMovements(balance: InventoryBalance) {
   mobileTimelineOpen.value = true
@@ -37,9 +45,28 @@ function openAdjustment(balance: InventoryBalance) {
   adjustmentOpen.value = true
 }
 
+function openTransfer(balance: InventoryBalance) {
+  transferBalance.value = balance
+  transferOpen.value = true
+}
+
+function openCycleCount() {
+  cycleCountOpen.value = true
+}
+
 async function submitAdjustment(payload: InventoryAdjustmentPayload) {
   await createAdjustment(payload)
   adjustmentOpen.value = false
+}
+
+async function submitTransfer(payload: InventoryTransferPayload) {
+  await createTransfer(payload)
+  transferOpen.value = false
+}
+
+async function submitCycleCount(payload: CycleCountPayload) {
+  await createCycleCount(payload)
+  cycleCountOpen.value = false
 }
 
 async function retryMovements() {
@@ -64,6 +91,7 @@ onMounted(async () => {
       :loading="loading"
       @update-filters="updateFilters"
       @refresh="loadBalances"
+      @cycle-count="openCycleCount"
     />
 
     <div class="inventory-page__body">
@@ -73,6 +101,7 @@ onMounted(async () => {
         :error="error"
         @movements="openMovements"
         @adjust="openAdjustment"
+        @transfer="openTransfer"
         @retry="loadBalances"
       />
 
@@ -105,6 +134,23 @@ onMounted(async () => {
       :balance="adjustingBalance"
       :submitting="adjusting"
       @submit="submitAdjustment"
+    />
+
+    <TransferDialog
+      v-model:open="transferOpen"
+      :balance="transferBalance"
+      :machines="machineOptions"
+      :submitting="transferring"
+      @submit="submitTransfer"
+    />
+
+    <CycleCountDialog
+      v-model:open="cycleCountOpen"
+      :balances="balances"
+      :machines="machineOptions"
+      :initial-machine-id="filters.machineId"
+      :submitting="cycleCounting"
+      @submit="submitCycleCount"
     />
   </div>
 </template>

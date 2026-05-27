@@ -33,6 +33,8 @@ const rows = runD1Query(`
       SUM(CASE WHEN movement_type = 'sale' THEN ABS(qty_delta) ELSE 0 END) AS sale_qty,
       SUM(CASE WHEN movement_type = 'loss' THEN ABS(qty_delta) ELSE 0 END) AS loss_qty,
       SUM(CASE WHEN movement_type = 'refund' THEN qty_delta ELSE 0 END) AS refund_qty,
+      SUM(CASE WHEN movement_type = 'transfer_out' THEN ABS(qty_delta) ELSE 0 END) AS transfer_out_qty,
+      SUM(CASE WHEN movement_type = 'transfer_in' THEN qty_delta ELSE 0 END) AS transfer_in_qty,
       SUM(CASE WHEN movement_type = 'adjustment' THEN qty_delta ELSE 0 END) AS adjustment_qty,
       SUM(CASE WHEN movement_type = 'void' THEN qty_delta ELSE 0 END) AS void_qty,
       SUM(qty_delta) AS movements_net_qty
@@ -64,12 +66,21 @@ const rows = runD1Query(`
     COALESCE(mov.sale_qty, 0) AS sale_qty,
     COALESCE(mov.loss_qty, 0) AS loss_qty,
     COALESCE(mov.refund_qty, 0) AS refund_qty,
+    COALESCE(mov.transfer_out_qty, 0) AS transfer_out_qty,
+    COALESCE(mov.transfer_in_qty, 0) AS transfer_in_qty,
     COALESCE(mov.adjustment_qty, 0) AS adjustment_qty,
     COALESCE(mov.void_qty, 0) AS void_qty,
     COALESCE(mov.movements_net_qty, 0) AS movements_net_qty,
     COALESCE(product_machine_counts.machine_count, 0) AS product_machine_count,
     COALESCE(voided_sales.voided_sales_items, 0) AS voided_sales_items,
-    COALESCE(purch.purchase_qty, 0) - COALESCE(mov.sale_qty, 0) - COALESCE(mov.loss_qty, 0) + COALESCE(mov.refund_qty, 0) + COALESCE(mov.adjustment_qty, 0) + COALESCE(mov.void_qty, 0) AS expected_balance_qty
+    COALESCE(purch.purchase_qty, 0)
+      - COALESCE(mov.sale_qty, 0)
+      - COALESCE(mov.loss_qty, 0)
+      + COALESCE(mov.refund_qty, 0)
+      - COALESCE(mov.transfer_out_qty, 0)
+      + COALESCE(mov.transfer_in_qty, 0)
+      + COALESCE(mov.adjustment_qty, 0)
+      + COALESCE(mov.void_qty, 0) AS expected_balance_qty
   FROM keys k
   LEFT JOIN purch ON purch.product_id = k.product_id AND purch.machine_id = k.machine_id
   LEFT JOIN mov ON mov.product_id = k.product_id AND mov.machine_id = k.machine_id
@@ -94,6 +105,8 @@ const mismatches = rows
     const saleQty = toNumber(row.sale_qty);
     const lossQty = toNumber(row.loss_qty);
     const refundQty = toNumber(row.refund_qty);
+    const transferOutQty = toNumber(row.transfer_out_qty);
+    const transferInQty = toNumber(row.transfer_in_qty);
     const adjustmentQty = toNumber(row.adjustment_qty);
     const voidQty = toNumber(row.void_qty);
     const expectedBalanceQty = toNumber(row.expected_balance_qty);
@@ -108,6 +121,8 @@ const mismatches = rows
       sale_qty: saleQty,
       loss_qty: lossQty,
       refund_qty: refundQty,
+      transfer_out_qty: transferOutQty,
+      transfer_in_qty: transferInQty,
       adjustment_qty: adjustmentQty,
       void_qty: voidQty,
       movements_net_qty: toNumber(row.movements_net_qty),

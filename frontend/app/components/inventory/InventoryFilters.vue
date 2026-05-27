@@ -12,6 +12,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   updateFilters: [filters: Partial<InventoryListFilters>]
   refresh: []
+  cycleCount: []
 }>()
 
 function updateFilter(key: keyof InventoryListFilters, event: Event) {
@@ -71,6 +72,9 @@ function updateFilter(key: keyof InventoryListFilters, event: Event) {
 
     <div class="inventory-filters__actions">
       <StatusBadge :label="`${props.resultCount} 条余额`" tone="info" />
+      <AppButton variant="secondary" @click="emit('cycleCount')">
+        现场盘点
+      </AppButton>
       <AppButton variant="secondary" :loading="props.loading" @click="emit('refresh')">
         刷新
       </AppButton>

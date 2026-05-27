@@ -20,12 +20,14 @@ const movementLabels: Record<StockMovementType, string> = {
   refund: '退款',
   loss: '损耗',
   adjustment: '盘点',
-  void: '作废'
+  void: '作废',
+  transfer_out: '调出',
+  transfer_in: '调入'
 }
 
 function movementTone(type: StockMovementType) {
-  if (type === 'purchase' || type === 'refund') return 'success'
-  if (type === 'sale' || type === 'loss') return 'danger'
+  if (type === 'purchase' || type === 'refund' || type === 'transfer_in') return 'success'
+  if (type === 'sale' || type === 'loss' || type === 'transfer_out') return 'danger'
   if (type === 'adjustment') return 'info'
   return 'warning'
 }
