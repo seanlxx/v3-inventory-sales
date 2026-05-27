@@ -10,6 +10,7 @@ export type Product = {
   status: ProductStatus
   imageAssetId?: string | null
   currentStock?: number
+  inventoryByMachine?: Record<string, number>
   avgCost?: number
   purchaseAvgCost?: number
   totalPurchaseQty?: number

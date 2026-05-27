@@ -18,6 +18,16 @@ function updateField(key: DashboardFilterField, event: Event) {
   const target = event.target as HTMLInputElement | HTMLSelectElement
   emit('updateFilters', { [key]: target.value })
 }
+
+function selectAllMachines() {
+  emit('updateFilters', { machineId: 'all' })
+}
+
+function selectFirstMachine() {
+  if (props.filters.machineId !== 'all') return
+  const machineId = props.machines[0]
+  if (machineId) emit('updateFilters', { machineId })
+}
 </script>
 
 <template>
@@ -44,6 +54,31 @@ function updateField(key: DashboardFilterField, event: Event) {
         </option>
       </select>
     </label>
+    <div class="dashboard-filters__field">
+      <span>口径</span>
+      <div class="dashboard-filters__segments" role="group" aria-label="仪表盘口径">
+        <button
+          class="dashboard-filters__segment"
+          :class="{ 'dashboard-filters__segment--active': props.filters.machineId === 'all' }"
+          type="button"
+          :aria-pressed="props.filters.machineId === 'all'"
+          :disabled="props.loading"
+          @click="selectAllMachines"
+        >
+          全机汇总
+        </button>
+        <button
+          class="dashboard-filters__segment"
+          :class="{ 'dashboard-filters__segment--active': props.filters.machineId !== 'all' }"
+          type="button"
+          :aria-pressed="props.filters.machineId !== 'all'"
+          :disabled="props.loading || props.machines.length === 0"
+          @click="selectFirstMachine"
+        >
+          按机切分
+        </button>
+      </div>
+    </div>
     <AppButton variant="secondary" :loading="props.loading" @click="emit('refresh')">
       刷新
     </AppButton>
@@ -54,7 +89,7 @@ function updateField(key: DashboardFilterField, event: Event) {
 .dashboard-filters {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(220px, 1.2fr) minmax(150px, 1fr) auto;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(150px, 1fr) minmax(180px, auto) auto;
   gap: var(--space-3);
   align-items: end;
   padding: var(--space-4);
@@ -81,6 +116,41 @@ function updateField(key: DashboardFilterField, event: Event) {
   padding: 0 var(--space-3);
   background: var(--color-surface);
   color: var(--color-text);
+}
+
+.dashboard-filters__segments {
+  min-height: var(--control-height);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2);
+  padding: 4px;
+  background: var(--color-surface-muted);
+}
+
+.dashboard-filters__segment {
+  min-width: 0;
+  border: 0;
+  border-radius: calc(var(--radius-2) - 2px);
+  padding: 0 var(--space-2);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.dashboard-filters__segment--active {
+  background: var(--color-surface);
+  color: var(--color-primary);
+  box-shadow: var(--shadow-inset);
+}
+
+.dashboard-filters__segment:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 
 .dashboard-filters__control[type="month"] {
@@ -110,6 +180,10 @@ function updateField(key: DashboardFilterField, event: Event) {
   }
 
   .dashboard-filters__control {
+    min-height: var(--control-height-mobile);
+  }
+
+  .dashboard-filters__segments {
     min-height: var(--control-height-mobile);
   }
 

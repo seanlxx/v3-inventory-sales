@@ -362,6 +362,12 @@ assert.deepEqual(await balance('p-shared', '1号机'), {
   total_purchase_qty: 0,
   total_purchase_cost_cents: 0
 });
+const [sharedProduct] = await listProducts(env, { id: 'p-shared' });
+assert.equal(sharedProduct.currentStock, 11, 'shared product total stock should sum real machine balances');
+assert.deepEqual(sharedProduct.inventoryByMachine, {
+  '1号机': 6,
+  '2号机': 5
+}, 'shared product inventory should expose real machines only');
 assert.equal(await refTypeCount('cycle_count'), 1, 'cycle count should write adjustment movements');
 await assert.rejects(
   () => createCycleCount(env, {

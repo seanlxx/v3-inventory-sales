@@ -9,6 +9,7 @@ const {
   filters,
   filteredProducts,
   machineOptions,
+  productMachineOptions,
   categoryOptions,
   selectedProduct,
   productMovements,
@@ -98,7 +99,7 @@ onMounted(() => {
     <ProductFormDialog
       v-model:open="formOpen"
       :product="editingProduct"
-      :machines="machineOptions"
+      :machines="productMachineOptions"
       :categories="categoryOptions"
       :submitting="saving"
       @submit="submitProduct"

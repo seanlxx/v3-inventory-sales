@@ -75,6 +75,12 @@ const trendPoint = report.salesTrend.find(point => point.date === testDate);
 assert.ok(trendPoint, 'dashboard trend should include the seeded date');
 assert.equal(trendPoint.revenue, 90, 'trend revenue should subtract refunds from sale totals');
 assert.equal(trendPoint.quantity, 5, 'trend quantity should sum all order items');
+assert.equal(report.salesTrendByMachine.length, 1, 'filtered dashboard trend should expose selected machine series');
+assert.equal(report.salesTrendByMachine[0].machineId, 'machine-a');
+const machineTrendPoint = report.salesTrendByMachine[0].points.find(point => point.date === testDate);
+assert.ok(machineTrendPoint, 'machine trend should include the seeded date');
+assert.equal(machineTrendPoint.revenue, 90, 'machine trend revenue should subtract refunds from sale totals');
+assert.equal(machineTrendPoint.quantity, 5, 'machine trend quantity should sum all order items');
 
 assert.equal(report.machineRanking[0].machineId, 'machine-a');
 assert.equal(report.machineRanking[0].revenue, 90, 'ranking revenue should subtract refunds from sale totals');

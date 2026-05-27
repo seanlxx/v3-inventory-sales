@@ -196,6 +196,71 @@ async function getSalesTrend(env, days, machineId) {
   });
 }
 
+async function getSalesTrendByMachine(env, days, machineId) {
+  const startDate = dateWindowStart(days);
+  const revenueFilter = machineFilterFor('machine_id', machineId);
+  const quantityFilter = machineFilterFor('o.machine_id', machineId);
+  const rows = await all(env.DB, `
+    WITH revenue_by_machine_date AS (
+      SELECT
+        machine_id,
+        record_date AS date,
+        ${signedSalesSumSql('total_amount_cents')} AS revenue_cents
+      FROM sales_orders
+      WHERE voided_at IS NULL
+        AND type IN ('sale', 'refund')
+        AND record_date >= ?
+        ${revenueFilter.sql}
+      GROUP BY machine_id, record_date
+    ),
+    quantity_by_machine_date AS (
+      SELECT
+        o.machine_id,
+        o.record_date AS date,
+        COALESCE(SUM(i.quantity), 0) AS quantity
+      FROM sales_orders o
+      JOIN sales_items i ON i.sales_order_id = o.id
+      WHERE o.voided_at IS NULL
+        AND o.type = 'sale'
+        AND o.record_date >= ?
+        ${quantityFilter.sql}
+      GROUP BY o.machine_id, o.record_date
+    )
+    SELECT
+      r.machine_id,
+      r.date,
+      r.revenue_cents,
+      COALESCE(q.quantity, 0) AS quantity
+    FROM revenue_by_machine_date r
+    LEFT JOIN quantity_by_machine_date q
+      ON q.machine_id = r.machine_id
+      AND q.date = r.date
+    ORDER BY r.machine_id, r.date
+  `, [startDate, ...revenueFilter.params, startDate, ...quantityFilter.params]);
+
+  const seriesByMachine = new Map();
+  rows.forEach(row => {
+    const machineId = row.machine_id;
+    if (!seriesByMachine.has(machineId)) seriesByMachine.set(machineId, new Map());
+    seriesByMachine.get(machineId).set(row.date, row);
+  });
+  const dates = dateSeries(days);
+
+  return Array.from(seriesByMachine.entries())
+    .sort(([left], [right]) => left.localeCompare(right, 'zh-CN'))
+    .map(([machineId, rowMap]) => ({
+      machineId,
+      points: dates.map(date => {
+        const row = rowMap.get(date) || {};
+        return {
+          date,
+          revenue: centsToMoney(row.revenue_cents),
+          quantity: Number(row.quantity) || 0
+        };
+      })
+    }));
+}
+
 async function getMachineRanking(env, month) {
   const rows = await all(env.DB, `
     WITH revenue_by_machine AS (
@@ -449,6 +514,7 @@ export async function onRequestGet(context) {
     todaySales,
     purchaseCost,
     salesTrend,
+    salesTrendByMachine,
     machineRanking,
     profitBreakdown,
     lowStock
@@ -457,6 +523,7 @@ export async function onRequestGet(context) {
     getTodaySales(context.env, effectiveMachineId),
     getPurchaseCost(context.env, month, effectiveMachineId),
     getSalesTrend(context.env, days, effectiveMachineId),
+    getSalesTrendByMachine(context.env, days, effectiveMachineId),
     getMachineRanking(context.env, month),
     getProfitBreakdown(context.env, month),
     getLowStock(context.env, settings.lowStockThreshold, effectiveMachineId)
@@ -481,6 +548,7 @@ export async function onRequestGet(context) {
       lowStockCount: lowStock.length
     },
     salesTrend,
+    salesTrendByMachine,
     machineRanking,
     profitBreakdown,
     lowStock,

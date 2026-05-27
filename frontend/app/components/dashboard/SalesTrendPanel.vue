@@ -12,11 +12,12 @@ import {
   type ChartData,
   type ChartOptions
 } from 'chart.js'
-import type { SalesTrendPoint } from '~/types/report'
+import type { SalesTrendMachineSeries, SalesTrendPoint } from '~/types/report'
 import { formatMoney, formatQuantity } from '~/utils/format'
 
 const props = defineProps<{
   points: readonly SalesTrendPoint[]
+  machineSeries?: readonly SalesTrendMachineSeries[]
   days: number
   loading?: boolean
 }>()
@@ -28,6 +29,7 @@ const emit = defineEmits<{
 const TREND_DAY_PRESETS = [7, 14, 30] as const
 const MIN_TREND_DAYS = 1
 const MAX_TREND_DAYS = 90
+const MACHINE_SERIES_COLORS = ['#0ea5e9', '#f97316', '#7c3aed', '#0f766e', '#dc2626'] as const
 
 Chart.register(
   CategoryScale,
@@ -52,8 +54,18 @@ const trendRangeLabel = computed(() => `${normalizedDays.value} 天`)
 const customDaysActive = computed(() =>
   !TREND_DAY_PRESETS.some(preset => preset === normalizedDays.value)
 )
+const visibleMachineSeries = computed(() =>
+  (props.machineSeries ?? []).filter(series =>
+    series.machineId
+    && series.points.length === props.points.length
+    && series.points.some(point => (Number(point.revenue) || 0) !== 0 || (Number(point.quantity) || 0) !== 0)
+  )
+)
 const hasTrendData = computed(() =>
   props.points.some(point => (Number(point.revenue) || 0) > 0 || (Number(point.quantity) || 0) > 0)
+  || visibleMachineSeries.value.some(series =>
+    series.points.some(point => (Number(point.revenue) || 0) > 0 || (Number(point.quantity) || 0) > 0)
+  )
 )
 
 const chartSummary = computed(() => {
@@ -70,12 +82,31 @@ const chartData = computed<ChartData<'line'>>(() => {
   const revenueValues = props.points.map(point => Number(point.revenue) || 0)
   const quantityValues = props.points.map(point => Number(point.quantity) || 0)
   const pointRadius = compactChart.value ? 2.5 : 3.5
+  const machineRevenueDatasets = visibleMachineSeries.value.map((series, index) => {
+    const color = MACHINE_SERIES_COLORS[index % MACHINE_SERIES_COLORS.length]
+    return {
+      label: `${series.machineId}销售额`,
+      data: series.points.map(point => Number(point.revenue) || 0),
+      borderColor: color,
+      backgroundColor: 'rgba(255, 255, 255, 0)',
+      borderWidth: 2,
+      borderDash: [4, 3],
+      fill: false,
+      pointBackgroundColor: '#ffffff',
+      pointBorderColor: color,
+      pointBorderWidth: 1.5,
+      pointRadius: compactChart.value ? 2 : 2.75,
+      pointHoverRadius: 4,
+      tension: 0.32,
+      yAxisID: 'y'
+    }
+  })
 
   return {
     labels,
     datasets: [
       {
-        label: '销售额',
+        label: machineRevenueDatasets.length > 1 ? '全机销售额' : '销售额',
         data: revenueValues,
         borderColor: '#0ea5e9',
         backgroundColor: 'rgba(14, 165, 233, 0.16)',
@@ -89,6 +120,7 @@ const chartData = computed<ChartData<'line'>>(() => {
         tension: 0.32,
         yAxisID: 'y'
       },
+      ...machineRevenueDatasets,
       {
         label: '销量',
         data: quantityValues,

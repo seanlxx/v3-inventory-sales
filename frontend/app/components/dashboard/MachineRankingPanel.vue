@@ -22,7 +22,7 @@ function widthFor(item: MachineRankingItem) {
     <header class="machine-ranking__header">
       <div>
         <h2 class="machine-ranking__title">毛利拆分</h2>
-        <p class="machine-ranking__description">1/2号机合并，三号机独立显示</p>
+        <p class="machine-ranking__description">按真实售货机拆分销售额、销量和毛利</p>
       </div>
     </header>
 

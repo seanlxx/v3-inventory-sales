@@ -22,6 +22,9 @@ export function useReports() {
     report.value?.machineRanking.forEach(item => {
       if (item.machineId) machines.add(item.machineId)
     })
+    report.value?.salesTrendByMachine?.forEach(series => {
+      if (series.machineId) machines.add(series.machineId)
+    })
     report.value?.lowStock.forEach(item => {
       if (item.machineId) machines.add(item.machineId)
     })

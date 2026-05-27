@@ -9,10 +9,26 @@ const defaultFilters: ProductListFilters = {
   status: 'active'
 }
 
+const DEFAULT_STOCK_MACHINES = ['1号机', '2号机', '三号机'] as const
+
+function productMachines(product: Product): string[] {
+  return [
+    product.machineId,
+    product.stockMachineId,
+    ...Object.keys(product.inventoryByMachine ?? {})
+  ].filter((machine): machine is string => Boolean(machine))
+}
+
 function matchesSearch(product: Product, search: string) {
   const keyword = search.trim().toLowerCase()
   if (!keyword) return true
-  return `${product.name} ${product.machineId} ${product.category}`.toLowerCase().includes(keyword)
+  return `${product.name} ${productMachines(product).join(' ')} ${product.category}`.toLowerCase().includes(keyword)
+}
+
+function matchesMachine(product: Product, machineId: string) {
+  if (machineId === 'all') return true
+  if (product.machineId === machineId || product.stockMachineId === machineId) return true
+  return Object.prototype.hasOwnProperty.call(product.inventoryByMachine ?? {}, machineId)
 }
 
 function normalizeProductPayload(payload: ProductMutationPayload): ProductMutationPayload {
@@ -44,11 +60,18 @@ export function useProducts() {
   const movementsError = shallowRef<ApiError | null>(null)
 
   const machineOptions = computed(() => {
-    const machines = new Set(products.value.map(product => product.machineId).filter(Boolean))
-    if (machines.size === 0) {
-      machines.add('1号机')
-      machines.add('2号机')
-    }
+    const machines = new Set<string>(DEFAULT_STOCK_MACHINES)
+    products.value.forEach(product => {
+      Object.keys(product.inventoryByMachine ?? {}).forEach(machine => machines.add(machine))
+    })
+    return Array.from(machines).sort((left, right) => left.localeCompare(right, 'zh-CN'))
+  })
+
+  const productMachineOptions = computed(() => {
+    const machines = new Set<string>(DEFAULT_STOCK_MACHINES)
+    products.value.forEach(product => {
+      productMachines(product).forEach(machine => machines.add(machine))
+    })
     return Array.from(machines).sort((left, right) => left.localeCompare(right, 'zh-CN'))
   })
 
@@ -60,10 +83,9 @@ export function useProducts() {
 
   const filteredProducts = computed(() =>
     products.value.filter(product => {
-      const matchesMachine = filters.machineId === 'all' || product.machineId === filters.machineId
       const matchesCategory = filters.category === 'all' || product.category === filters.category
       const matchesStatus = filters.status === 'all' || product.status === filters.status
-      return matchesMachine && matchesCategory && matchesStatus && matchesSearch(product, filters.search)
+      return matchesMachine(product, filters.machineId) && matchesCategory && matchesStatus && matchesSearch(product, filters.search)
     })
   )
 
@@ -165,6 +187,7 @@ export function useProducts() {
     movementsError,
     filteredProducts,
     machineOptions,
+    productMachineOptions,
     categoryOptions,
     updateFilters,
     loadProducts,

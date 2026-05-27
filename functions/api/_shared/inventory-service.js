@@ -1,4 +1,4 @@
-import { all, first, run } from './d1.js';
+import { all, first, placeholders, run } from './d1.js';
 import { putImageAsset, upsertImageAssetStatement } from './image-service.js';
 import {
   centsToMoney,
@@ -52,6 +52,25 @@ function balanceToLegacy(row = {}) {
   };
 }
 
+function inventoryByMachineToLegacy(value) {
+  const source = typeof value === 'string'
+    ? (() => {
+        try {
+          return JSON.parse(value || '{}');
+        } catch {
+          return {};
+        }
+      })()
+    : value;
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
+
+  return Object.fromEntries(
+    Object.entries(source)
+      .map(([machineId, stock]) => [machineId, Number(stock) || 0])
+      .filter(([machineId]) => machineId && !isLegacySharedMachine(machineId))
+  );
+}
+
 function productToLegacy(row) {
   return {
     id: row.id,
@@ -61,6 +80,7 @@ function productToLegacy(row) {
     category: row.category || '其他',
     sellPrice: centsToMoney(row.sell_price_cents),
     status: row.status,
+    inventoryByMachine: inventoryByMachineToLegacy(row.inventory_by_machine),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     ...balanceToLegacy(row)
@@ -295,7 +315,32 @@ export async function listProducts(env, options = {}) {
     GROUP BY p.id
     ORDER BY p.machine_id, p.name
   `, params);
-  return rows.map(productToLegacy);
+  if (rows.length === 0) return [];
+
+  const productIds = rows.map(row => row.id);
+  const balanceRows = [];
+  for (let index = 0; index < productIds.length; index += IN_CLAUSE_BATCH_SIZE) {
+    const batchIds = productIds.slice(index, index + IN_CLAUSE_BATCH_SIZE);
+    balanceRows.push(...await all(env.DB, `
+      SELECT product_id, machine_id, quantity_on_hand
+      FROM inventory_balances
+      WHERE product_id IN (${placeholders(batchIds.length)})
+      ORDER BY product_id, machine_id
+    `, batchIds));
+  }
+  const inventoryByProduct = new Map();
+  balanceRows.forEach(row => {
+    const machineId = normalizeMachineId(row.machine_id);
+    if (!machineId || isLegacySharedMachine(machineId)) return;
+    const inventory = inventoryByProduct.get(row.product_id) || {};
+    inventory[machineId] = Number(row.quantity_on_hand) || 0;
+    inventoryByProduct.set(row.product_id, inventory);
+  });
+
+  return rows.map(row => productToLegacy({
+    ...row,
+    inventory_by_machine: inventoryByProduct.get(row.id) || {}
+  }));
 }
 
 export async function saveProduct(env, payload) {
