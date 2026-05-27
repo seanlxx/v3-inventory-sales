@@ -115,9 +115,21 @@ async function getMonthlySales(env, month, machineId) {
 
   return await first(env.DB, `
     SELECT
-      COALESCE(SUM(total_amount_cents), 0) AS revenue_cents,
-      COALESCE(SUM(received_amount_cents), 0) AS received_cents,
-      COALESCE(SUM(total_cogs_cents), 0) AS cogs_cents,
+      COALESCE(SUM(CASE
+        WHEN type = 'sale' THEN total_amount_cents
+        WHEN type = 'refund' THEN -total_amount_cents
+        ELSE 0
+      END), 0) AS revenue_cents,
+      COALESCE(SUM(CASE
+        WHEN type = 'sale' THEN received_amount_cents
+        WHEN type = 'refund' THEN -received_amount_cents
+        ELSE 0
+      END), 0) AS received_cents,
+      COALESCE(SUM(CASE
+        WHEN type = 'sale' THEN total_cogs_cents
+        WHEN type = 'refund' THEN -total_cogs_cents
+        ELSE 0
+      END), 0) AS cogs_cents,
       COALESCE(SUM(CASE WHEN type = 'refund' THEN total_amount_cents ELSE 0 END), 0) AS refunds_cents
     FROM sales_orders
     WHERE voided_at IS NULL
@@ -131,7 +143,11 @@ async function getTodaySales(env, machineId) {
   const params = [todayDate(), ...machineFilter.params];
 
   return await first(env.DB, `
-    SELECT COALESCE(SUM(total_amount_cents), 0) AS revenue_cents
+    SELECT COALESCE(SUM(CASE
+        WHEN type = 'sale' THEN total_amount_cents
+        WHEN type = 'refund' THEN -total_amount_cents
+        ELSE 0
+      END), 0) AS revenue_cents
     FROM sales_orders
     WHERE voided_at IS NULL
       AND record_date = ?
@@ -162,10 +178,14 @@ async function getSalesTrend(env, days, machineId) {
     WITH revenue_by_date AS (
       SELECT
         record_date AS date,
-        COALESCE(SUM(total_amount_cents), 0) AS revenue_cents
+        COALESCE(SUM(CASE
+          WHEN type = 'sale' THEN total_amount_cents
+          WHEN type = 'refund' THEN -total_amount_cents
+          ELSE 0
+        END), 0) AS revenue_cents
       FROM sales_orders
       WHERE voided_at IS NULL
-        AND type = 'sale'
+        AND type IN ('sale', 'refund')
         AND record_date >= ?
         ${revenueFilter.sql}
       GROUP BY record_date
@@ -207,12 +227,24 @@ async function getMachineRanking(env, month) {
     WITH revenue_by_machine AS (
       SELECT
         machine_id,
-        COALESCE(SUM(total_amount_cents), 0) AS revenue_cents,
-        COALESCE(SUM(received_amount_cents), 0) AS received_cents,
-        COALESCE(SUM(total_cogs_cents), 0) AS cogs_cents
+        COALESCE(SUM(CASE
+          WHEN type = 'sale' THEN total_amount_cents
+          WHEN type = 'refund' THEN -total_amount_cents
+          ELSE 0
+        END), 0) AS revenue_cents,
+        COALESCE(SUM(CASE
+          WHEN type = 'sale' THEN received_amount_cents
+          WHEN type = 'refund' THEN -received_amount_cents
+          ELSE 0
+        END), 0) AS received_cents,
+        COALESCE(SUM(CASE
+          WHEN type = 'sale' THEN total_cogs_cents
+          WHEN type = 'refund' THEN -total_cogs_cents
+          ELSE 0
+        END), 0) AS cogs_cents
       FROM sales_orders
       WHERE voided_at IS NULL
-        AND type = 'sale'
+        AND type IN ('sale', 'refund')
         AND year_month = ?
       GROUP BY machine_id
     ),
@@ -252,16 +284,29 @@ async function getProfitBreakdown(env, month) {
     WITH order_rows AS (
       SELECT
         id,
+        type,
         CASE
           WHEN machine_id IN ('1号机', '2号机', '${SHARED_STOCK_MACHINE_ID}') THEN '${SHARED_STOCK_MACHINE_ID}'
           ELSE machine_id
         END AS display_machine_id,
-        total_amount_cents,
-        received_amount_cents,
-        total_cogs_cents
+        CASE
+          WHEN type = 'sale' THEN total_amount_cents
+          WHEN type = 'refund' THEN -total_amount_cents
+          ELSE 0
+        END AS total_amount_cents,
+        CASE
+          WHEN type = 'sale' THEN received_amount_cents
+          WHEN type = 'refund' THEN -received_amount_cents
+          ELSE 0
+        END AS received_amount_cents,
+        CASE
+          WHEN type = 'sale' THEN total_cogs_cents
+          WHEN type = 'refund' THEN -total_cogs_cents
+          ELSE 0
+        END AS total_cogs_cents
       FROM sales_orders
       WHERE voided_at IS NULL
-        AND type = 'sale'
+        AND type IN ('sale', 'refund')
         AND year_month = ?
     ),
     totals_by_machine AS (
@@ -279,6 +324,7 @@ async function getProfitBreakdown(env, month) {
         COALESCE(SUM(i.quantity), 0) AS quantity
       FROM order_rows o
       JOIN sales_items i ON i.sales_order_id = o.id
+      WHERE o.type = 'sale'
       GROUP BY o.display_machine_id
     )
     SELECT

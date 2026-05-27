@@ -72,14 +72,16 @@ const report = await response.json();
 assert.equal(report.salesTrend.length, trendDays, 'dashboard trend should honor custom day range');
 const trendPoint = report.salesTrend.find(point => point.date === testDate);
 assert.ok(trendPoint, 'dashboard trend should include the seeded date');
-assert.equal(trendPoint.revenue, 120, 'trend revenue should count the order total once');
+assert.equal(trendPoint.revenue, 90, 'trend revenue should subtract refunds from sale totals');
 assert.equal(trendPoint.quantity, 5, 'trend quantity should sum all order items');
 
 assert.equal(report.machineRanking[0].machineId, 'machine-a');
-assert.equal(report.machineRanking[0].revenue, 120, 'ranking revenue should count the order total once');
-assert.equal(report.kpis.monthReceived, 118, 'dashboard should expose received amount after fees');
-assert.equal(report.kpis.monthGrossProfit, 73, 'dashboard gross profit should use received amount minus cogs');
-assert.equal(report.machineRanking[0].profit, 73, 'ranking profit should use received amount minus cogs');
+assert.equal(report.machineRanking[0].revenue, 90, 'ranking revenue should subtract refunds from sale totals');
+assert.equal(report.kpis.monthRevenue, 90, 'dashboard month revenue should subtract refunds from sale totals');
+assert.equal(report.kpis.monthReceived, 88, 'dashboard should expose net received amount after refunds and fees');
+assert.equal(report.kpis.refunds, 30, 'dashboard should still expose refund total separately');
+assert.equal(report.kpis.monthGrossProfit, 52, 'dashboard gross profit should use net received amount minus net cogs');
+assert.equal(report.machineRanking[0].profit, 52, 'ranking profit should use net received amount minus net cogs');
 assert.equal(report.machineRanking[0].quantity, 5, 'ranking quantity should sum all order items');
 
 console.log('dashboard report aggregation tests passed');
@@ -109,8 +111,14 @@ async function seedDashboardRows() {
     ) VALUES (
       'so-multi-item', 'sale', 'machine-a', ?, ?, 12000, 4500, 11800,
       NULL, NULL, NULL, ?, ?
+    ), (
+      'so-refund', 'refund', 'machine-a', ?, ?, 3000, 900, 3000,
+      NULL, NULL, NULL, ?, ?
     )
-  `).bind(testDate, testMonth, testTimestamp, testTimestamp).run();
+  `).bind(
+    testDate, testMonth, testTimestamp, testTimestamp,
+    testDate, testMonth, testTimestamp, testTimestamp
+  ).run();
 
   await env.DB.prepare(`
     INSERT INTO sales_items (

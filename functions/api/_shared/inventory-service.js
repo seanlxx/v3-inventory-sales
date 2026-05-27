@@ -1205,9 +1205,21 @@ export async function monthlyReport(env, options = {}) {
   const salesRows = await all(env.DB, `
     SELECT
       year_month AS month,
-      COALESCE(SUM(total_amount_cents), 0) AS revenue_cents,
-      COALESCE(SUM(received_amount_cents), 0) AS received_cents,
-      COALESCE(SUM(total_cogs_cents), 0) AS cogs_cents,
+      COALESCE(SUM(CASE
+        WHEN type = 'sale' THEN total_amount_cents
+        WHEN type = 'refund' THEN -total_amount_cents
+        ELSE 0
+      END), 0) AS revenue_cents,
+      COALESCE(SUM(CASE
+        WHEN type = 'sale' THEN received_amount_cents
+        WHEN type = 'refund' THEN -received_amount_cents
+        ELSE 0
+      END), 0) AS received_cents,
+      COALESCE(SUM(CASE
+        WHEN type = 'sale' THEN total_cogs_cents
+        WHEN type = 'refund' THEN -total_cogs_cents
+        ELSE 0
+      END), 0) AS cogs_cents,
       COALESCE(SUM(CASE WHEN type = 'refund' THEN total_amount_cents ELSE 0 END), 0) AS refunds_cents,
       COUNT(*) AS sales_count
     FROM sales_orders
