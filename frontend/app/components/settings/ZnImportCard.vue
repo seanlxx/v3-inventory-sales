@@ -1,5 +1,11 @@
 <script setup lang="ts">
 import { useApi } from '~/composables/useApi'
+import {
+  normalizeZnOrderRow,
+  normalizeZnSettlementRow,
+  type ZnOrderRow,
+  type ZnSettlementRow
+} from '~/composables/useZnExcel'
 import { useToastStore } from '~/stores/toast'
 
 type ImportSummary = {
@@ -19,32 +25,32 @@ type ImportResult = {
   warnings: string[]
 }
 
-type ParsedRow = {
-  vendorOrderNo: string
-  title: string
-  status: string
-  deviceCode: string
-  vendorProductName: string
-  vendorBarcode: string
-  unitPrice: number
-  quantity: number
-  lineAmount: number
-  receivedAmount: number
-  refundAmount: number
-  platformFee: number
-  serviceFee: number
-  discount: number
-  date: string
+type SettlementSummary = {
+  settlementsProcessed: number
+  settlementsUpdated: number
+  settlementsSkipped: number
+  settlementsMissing: number
+  warnings: number
 }
+
+type SettlementResult = {
+  summary: SettlementSummary
+  warnings: string[]
+}
+
+type ImportMode = 'orders' | 'settlements'
 
 const api = useApi()
 const toast = useToastStore()
 
+const activeMode = ref<ImportMode>('orders')
 const fileName = ref('')
 const parsing = ref(false)
 const submitting = ref(false)
-const rows = ref<ParsedRow[]>([])
+const rows = ref<ZnOrderRow[]>([])
+const settlementRows = ref<ZnSettlementRow[]>([])
 const result = ref<ImportResult | null>(null)
+const settlementResult = ref<SettlementResult | null>(null)
 const errorMessage = ref('')
 const importProgress = ref('')
 const IMPORT_BATCH_SIZE = 80
@@ -73,7 +79,30 @@ const summaryCount = computed(() => {
   return { total: rows.value.length, devices: Array.from(devices), completed, canceled, refunded, importableRows, importableOrders: importableOrders.size }
 })
 
-function isImportableRow(row: ParsedRow) {
+const settlementSummaryCount = computed(() => {
+  if (settlementRows.value.length === 0) return null
+  const devices = new Set<string>()
+  const orders = new Set<string>()
+  let incomeRows = 0
+  let expenseRows = 0
+  for (const row of settlementRows.value) {
+    if (row.deviceCode) devices.add(row.deviceCode)
+    if (row.vendorOrderNo) orders.add(row.vendorOrderNo)
+    if (row.incomeType === '收入' || !row.incomeType) incomeRows += 1
+    else expenseRows += 1
+  }
+  return {
+    total: settlementRows.value.length,
+    devices: Array.from(devices),
+    orders: orders.size,
+    incomeRows,
+    expenseRows
+  }
+})
+
+const currentRowsCount = computed(() => activeMode.value === 'orders' ? rows.value.length : settlementRows.value.length)
+
+function isImportableRow(row: ZnOrderRow) {
   return row.status === '已完成'
     && row.refundAmount <= 0
     && !!row.vendorProductName
@@ -91,9 +120,9 @@ function mergeSummary(target: ImportSummary, next: ImportSummary) {
   target.warnings += next.warnings || 0
 }
 
-function chunkRowsByOrder(sourceRows: ParsedRow[], batchSize: number) {
-  const batches: ParsedRow[][] = []
-  let current: ParsedRow[] = []
+function chunkRowsByOrder(sourceRows: ZnOrderRow[], batchSize: number) {
+  const batches: ZnOrderRow[][] = []
+  let current: ZnOrderRow[] = []
   const currentOrders = new Set<string>()
   let lastOrderNo = ''
   for (const row of sourceRows) {
@@ -111,47 +140,11 @@ function chunkRowsByOrder(sourceRows: ParsedRow[], batchSize: number) {
   return batches
 }
 
-function pickField(row: Record<string, unknown>, names: string[]): string {
-  for (const key of Object.keys(row)) {
-    const trimmed = key.trim()
-    if (names.some(name => trimmed.startsWith(name))) {
-      const value = row[key]
-      if (value === null || value === undefined) return ''
-      return String(value).trim()
-    }
-  }
-  return ''
-}
-
-function toNumber(value: string): number {
-  if (!value) return 0
-  const n = Number(value.replace(/,/g, ''))
-  return Number.isFinite(n) ? n : 0
-}
-
-function normalizeRow(raw: Record<string, unknown>): ParsedRow | null {
-  const vendorOrderNo = pickField(raw, ['订单号'])
-  const title = pickField(raw, ['标题'])
-  const status = pickField(raw, ['状态'])
-  const deviceCode = pickField(raw, ['设备编号'])
-  const vendorProductName = pickField(raw, ['商品名称'])
-  const vendorBarcode = pickField(raw, ['商品条码'])
-  const unitPrice = toNumber(pickField(raw, ['商品单价']))
-  const quantity = Math.max(1, Number(pickField(raw, ['商品数量'])) || 1)
-  const lineAmount = toNumber(pickField(raw, ['销售额', '价格']))
-  const receivedAmount = toNumber(pickField(raw, ['预估到帐金额', '预估到账金额', '到账金额']))
-  const refundAmount = toNumber(pickField(raw, ['退款金额']))
-  const platformFee = toNumber(pickField(raw, ['手续费']))
-  const serviceFee = toNumber(pickField(raw, ['算法服务费']))
-  const discount = toNumber(pickField(raw, ['优惠金额']))
-  const date = pickField(raw, ['创建时间', '扣款时间'])
-
-  if (!vendorOrderNo && !deviceCode && !vendorProductName) return null
-  return {
-    vendorOrderNo, title, status, deviceCode, vendorProductName, vendorBarcode,
-    unitPrice, quantity, lineAmount, receivedAmount, refundAmount,
-    platformFee, serviceFee, discount, date
-  }
+function setMode(mode: ImportMode) {
+  activeMode.value = mode
+  fileName.value = ''
+  errorMessage.value = ''
+  importProgress.value = ''
 }
 
 async function onFileChange(event: Event) {
@@ -162,7 +155,9 @@ async function onFileChange(event: Event) {
   parsing.value = true
   errorMessage.value = ''
   result.value = null
-  rows.value = []
+  settlementResult.value = null
+  if (activeMode.value === 'orders') rows.value = []
+  else settlementRows.value = []
   fileName.value = file.name
 
   try {
@@ -174,11 +169,19 @@ async function onFileChange(event: Event) {
     const sheet = workbook.Sheets[sheetName]
     if (!sheet) throw new Error('Excel 文件 sheet 内容为空')
     const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' })
-    const parsed = json
-      .map(normalizeRow)
-      .filter((row): row is ParsedRow => row !== null)
-    if (parsed.length === 0) throw new Error('未解析出任何订单行，请检查表头')
-    rows.value = parsed
+    if (activeMode.value === 'orders') {
+      const parsed = json
+        .map(normalizeZnOrderRow)
+        .filter((row): row is ZnOrderRow => row !== null)
+      if (parsed.length === 0) throw new Error('未解析出任何订单行，请检查表头')
+      rows.value = parsed
+    } else {
+      const parsed = json
+        .map(normalizeZnSettlementRow)
+        .filter((row): row is ZnSettlementRow => row !== null)
+      if (parsed.length === 0) throw new Error('未解析出任何结算行，请检查表头')
+      settlementRows.value = parsed
+    }
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : 'Excel 解析失败'
     fileName.value = ''
@@ -188,42 +191,62 @@ async function onFileChange(event: Event) {
   }
 }
 
-async function submit() {
+async function submitOrders() {
   if (rows.value.length === 0) return
+  const batches = chunkRowsByOrder(rows.value, IMPORT_BATCH_SIZE)
+  const merged: ImportResult = {
+    summary: {
+      ordersImported: 0,
+      ordersDuplicate: 0,
+      ordersSkipped: 0,
+      linesImported: 0,
+      productsCreated: 0,
+      costsMatched: 0,
+      costsMissing: 0,
+      ordersReconciled: 0,
+      warnings: 0
+    },
+    warnings: []
+  }
+  for (let index = 0; index < batches.length; index += 1) {
+    importProgress.value = `正在导入第 ${index + 1} / ${batches.length} 批...`
+    const response = await api.request<ImportResult>('/integrations/zn/import', {
+      method: 'POST',
+      body: { orders: batches[index] }
+    })
+    mergeSummary(merged.summary, response.summary)
+    merged.warnings.push(...response.warnings)
+  }
+  merged.summary.warnings = merged.warnings.length
+  result.value = merged
+  toast.show(
+    `已导入 ${merged.summary.ordersImported} 单，重复 ${merged.summary.ordersDuplicate}，跳过 ${merged.summary.ordersSkipped}`,
+    'success'
+  )
+}
+
+async function submitSettlements() {
+  if (settlementRows.value.length === 0) return
+  importProgress.value = '正在回写交易账单结算金额...'
+  const response = await api.request<SettlementResult>('/integrations/zn/import-settlement', {
+    method: 'POST',
+    body: { settlements: settlementRows.value }
+  })
+  settlementResult.value = response
+  toast.show(
+    `已更新 ${response.summary.settlementsUpdated} 笔结算，未匹配 ${response.summary.settlementsMissing}`,
+    'success'
+  )
+}
+
+async function submit() {
+  if (currentRowsCount.value === 0) return
   submitting.value = true
   errorMessage.value = ''
   importProgress.value = ''
   try {
-    const batches = chunkRowsByOrder(rows.value, IMPORT_BATCH_SIZE)
-    const merged: ImportResult = {
-      summary: {
-        ordersImported: 0,
-        ordersDuplicate: 0,
-        ordersSkipped: 0,
-        linesImported: 0,
-        productsCreated: 0,
-        costsMatched: 0,
-        costsMissing: 0,
-        ordersReconciled: 0,
-        warnings: 0
-      },
-      warnings: []
-    }
-    for (let index = 0; index < batches.length; index += 1) {
-      importProgress.value = `正在导入第 ${index + 1} / ${batches.length} 批...`
-      const response = await api.request<ImportResult>('/integrations/zn/import', {
-        method: 'POST',
-        body: { orders: batches[index] }
-      })
-      mergeSummary(merged.summary, response.summary)
-      merged.warnings.push(...response.warnings)
-    }
-    merged.summary.warnings = merged.warnings.length
-    result.value = merged
-    toast.show(
-      `已导入 ${merged.summary.ordersImported} 单，重复 ${merged.summary.ordersDuplicate}，跳过 ${merged.summary.ordersSkipped}`,
-      'success'
-    )
+    if (activeMode.value === 'orders') await submitOrders()
+    else await submitSettlements()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '导入失败'
     toast.show(errorMessage.value, 'danger')
@@ -234,9 +257,11 @@ async function submit() {
 }
 
 function reset() {
-  rows.value = []
+  if (activeMode.value === 'orders') rows.value = []
+  else settlementRows.value = []
   fileName.value = ''
   result.value = null
+  settlementResult.value = null
   errorMessage.value = ''
   importProgress.value = ''
 }
@@ -249,6 +274,27 @@ function reset() {
     </template>
 
     <div class="zn-import">
+      <div class="zn-import__tabs" role="tablist" aria-label="zn Excel 导入类型">
+        <button
+          type="button"
+          :class="['zn-import__tab', { 'zn-import__tab--active': activeMode === 'orders' }]"
+          :aria-selected="activeMode === 'orders'"
+          role="tab"
+          @click="setMode('orders')"
+        >
+          订单明细
+        </button>
+        <button
+          type="button"
+          :class="['zn-import__tab', { 'zn-import__tab--active': activeMode === 'settlements' }]"
+          :aria-selected="activeMode === 'settlements'"
+          role="tab"
+          @click="setMode('settlements')"
+        >
+          交易账单
+        </button>
+      </div>
+
       <div class="zn-import__upload">
         <label class="zn-import__file">
           <input
@@ -257,10 +303,13 @@ function reset() {
             :disabled="parsing || submitting"
             @change="onFileChange"
           >
-          <span>{{ fileName || '选择订单明细 .xlsx' }}</span>
+          <span>{{ fileName || (activeMode === 'orders' ? '选择订单明细 .xlsx' : '选择交易账单 .xlsx') }}</span>
         </label>
-        <p class="zn-import__hint">
+        <p v-if="activeMode === 'orders'" class="zn-import__hint">
           支持 zn 平台后台 → 账户信息 → 订单明细 导出的原始 Excel；只导入「已完成」状态、无退款的订单。
+        </p>
+        <p v-else class="zn-import__hint">
+          支持 zn 平台后台 → 账户信息 → 交易账单 导出的原始 Excel；按订单号回写手续费、算法服务费与实收金额。
         </p>
       </div>
 
@@ -271,7 +320,7 @@ function reset() {
         {{ importProgress }}
       </p>
 
-      <section v-if="summaryCount" class="zn-import__summary">
+      <section v-if="activeMode === 'orders' && summaryCount" class="zn-import__summary">
         <div class="zn-import__summary-item">
           <span>总行数</span>
           <strong>{{ summaryCount.total }}</strong>
@@ -302,12 +351,35 @@ function reset() {
         </div>
       </section>
 
-      <div v-if="rows.length > 0" class="zn-import__actions">
+      <section v-if="activeMode === 'settlements' && settlementSummaryCount" class="zn-import__summary">
+        <div class="zn-import__summary-item">
+          <span>总行数</span>
+          <strong>{{ settlementSummaryCount.total }}</strong>
+        </div>
+        <div class="zn-import__summary-item">
+          <span>订单数</span>
+          <strong>{{ settlementSummaryCount.orders }}</strong>
+        </div>
+        <div class="zn-import__summary-item">
+          <span>收入行</span>
+          <strong>{{ settlementSummaryCount.incomeRows }}</strong>
+        </div>
+        <div class="zn-import__summary-item">
+          <span>支出 / 其他</span>
+          <strong>{{ settlementSummaryCount.expenseRows }}</strong>
+        </div>
+        <div class="zn-import__summary-item">
+          <span>设备数</span>
+          <strong>{{ settlementSummaryCount.devices.length }}</strong>
+        </div>
+      </section>
+
+      <div v-if="currentRowsCount > 0" class="zn-import__actions">
         <AppButton type="button" variant="secondary" :disabled="submitting" @click="reset">
           重新选择
         </AppButton>
         <AppButton type="button" :loading="submitting" @click="submit">
-          确认导入 {{ rows.length }} 行
+          {{ activeMode === 'orders' ? `确认导入 ${rows.length} 行` : `确认回写 ${settlementRows.length} 行` }}
         </AppButton>
       </div>
 
@@ -360,6 +432,40 @@ function reset() {
           </ul>
         </details>
       </section>
+
+      <section v-if="settlementResult" class="zn-import__result">
+        <h3>结算回写完成</h3>
+        <div class="zn-import__summary">
+          <div class="zn-import__summary-item">
+            <span>已处理</span>
+            <strong>{{ settlementResult.summary.settlementsProcessed }}</strong>
+          </div>
+          <div class="zn-import__summary-item">
+            <span>已更新</span>
+            <strong>{{ settlementResult.summary.settlementsUpdated }}</strong>
+          </div>
+          <div class="zn-import__summary-item">
+            <span>已跳过</span>
+            <strong>{{ settlementResult.summary.settlementsSkipped }}</strong>
+          </div>
+          <div class="zn-import__summary-item">
+            <span>未匹配</span>
+            <strong>{{ settlementResult.summary.settlementsMissing }}</strong>
+          </div>
+          <div class="zn-import__summary-item">
+            <span>警告</span>
+            <strong>{{ settlementResult.summary.warnings }}</strong>
+          </div>
+        </div>
+        <details v-if="settlementResult.warnings.length > 0" class="zn-import__warnings">
+          <summary>警告明细（{{ settlementResult.warnings.length }}）</summary>
+          <ul>
+            <li v-for="(warning, index) in settlementResult.warnings" :key="index">
+              {{ warning }}
+            </li>
+          </ul>
+        </details>
+      </section>
     </div>
   </SettingsSection>
 </template>
@@ -374,6 +480,34 @@ function reset() {
 .zn-import__upload {
   display: grid;
   gap: var(--space-2);
+}
+
+.zn-import__tabs {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(360px, 100%);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2);
+  padding: 3px;
+  background: var(--color-surface-subtle);
+}
+
+.zn-import__tab {
+  min-height: 36px;
+  border: 0;
+  border-radius: calc(var(--radius-2) - 3px);
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.zn-import__tab--active {
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-sm);
 }
 
 .zn-import__file {

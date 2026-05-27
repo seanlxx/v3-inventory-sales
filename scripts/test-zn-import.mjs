@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import * as XLSX from '../output/xlsx-inspect/node_modules/xlsx/xlsx.mjs';
 
 import { listSales } from '../functions/api/_shared/inventory-service.js';
+import { importZnSettlement } from '../functions/api/integrations/zn/import-settlement.js';
 import { runZnImport } from '../functions/api/_shared/zn/importer.js';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -49,6 +50,7 @@ env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0006_v3_structured_inv
 env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0007_shengma_integration.sql'), 'utf8'));
 env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0008_zn_order_fees.sql'), 'utf8'));
 env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0009_sales_received_amount.sql'), 'utf8'));
+env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0011_money_columns_align.sql'), 'utf8'));
 
 // --- 解析真实 Excel（与前端 ZnImportCard 同样的字段提取逻辑） ---
 function pickField(row, names) {
@@ -169,6 +171,57 @@ console.log('金额汇总:', receivedTotals);
 assert(receivedTotals.received_amount_cents > 0, '应写入到账金额');
 assert(receivedTotals.received_amount_cents < receivedTotals.total_amount_cents, '到账金额应小于含手续费前销售额');
 assert(receivedTotals.total_cogs_cents > 0, '应按现有进货价写入销售成本');
+
+const settlementOrderBefore = env.DB.queryOne(`
+  SELECT id, external_id, total_amount_cents, platform_fee_cents, service_fee_cents, received_amount_cents
+  FROM sales_orders
+  WHERE source = 'zn' AND external_id = ?
+`, 'visionpaySFTS20260525083347733X');
+const settlementResult = await importZnSettlement(env, {
+  settlements: [
+    {
+      vendorOrderNo: settlementOrderBefore.external_id,
+      grossAmount: 6.5,
+      platformFee: 0.12,
+      serviceFee: 0.23,
+      refundAmount: 0,
+      expense: 0.35,
+      incomeType: '收入',
+      settledAt: '2026-05-25 08:33:47'
+    },
+    {
+      vendorOrderNo: 'not-exists-order',
+      grossAmount: 9.9,
+      platformFee: 0.1,
+      serviceFee: 0,
+      incomeType: '收入'
+    },
+    {
+      vendorOrderNo: settlementOrderBefore.external_id,
+      grossAmount: 6.5,
+      platformFee: 0.99,
+      serviceFee: 0,
+      incomeType: '支出'
+    }
+  ]
+});
+assert.equal(settlementResult.summary.settlementsProcessed, 2, '结算导入只处理收入行');
+assert.equal(settlementResult.summary.settlementsUpdated, 1, '结算导入应更新已存在订单');
+assert.equal(settlementResult.summary.settlementsMissing, 1, '找不到的结算订单应计入 missing');
+assert.equal(settlementResult.summary.settlementsSkipped, 1, '支出行应跳过');
+const settlementOrderAfter = env.DB.queryOne(`
+  SELECT platform_fee_cents, service_fee_cents, received_amount_cents
+  FROM sales_orders
+  WHERE id = ?
+`, settlementOrderBefore.id);
+assert.equal(settlementOrderAfter.platform_fee_cents, 12, '交易账单手续费应覆盖订单明细预估值');
+assert.equal(settlementOrderAfter.service_fee_cents, 23, '交易账单算法服务费应覆盖订单明细预估值');
+assert.equal(settlementOrderAfter.received_amount_cents, 615, '交易账单实收应按 gross-refund-fee-service 计算');
+assert.equal(
+  env.DB.queryOne('SELECT COUNT(*) AS n FROM external_settlement_imports').n,
+  1,
+  '结算导入应写入幂等表'
+);
 
 const dongpengImportedSales = env.DB.queryOne(`
   SELECT COALESCE(SUM(si.quantity), 0) AS quantity
@@ -306,6 +359,7 @@ envChunked.DB.exec(readFileSync(join(projectRoot, 'migrations', '0006_v3_structu
 envChunked.DB.exec(readFileSync(join(projectRoot, 'migrations', '0007_shengma_integration.sql'), 'utf8'));
 envChunked.DB.exec(readFileSync(join(projectRoot, 'migrations', '0008_zn_order_fees.sql'), 'utf8'));
 envChunked.DB.exec(readFileSync(join(projectRoot, 'migrations', '0009_sales_received_amount.sql'), 'utf8'));
+envChunked.DB.exec(readFileSync(join(projectRoot, 'migrations', '0011_money_columns_align.sql'), 'utf8'));
 await seedCostProducts(envChunked);
 
 function chunkByOrder(sourceRows, batchSize) {
@@ -362,6 +416,7 @@ envReconcile.DB.exec(readFileSync(join(projectRoot, 'migrations', '0006_v3_struc
 envReconcile.DB.exec(readFileSync(join(projectRoot, 'migrations', '0007_shengma_integration.sql'), 'utf8'));
 envReconcile.DB.exec(readFileSync(join(projectRoot, 'migrations', '0008_zn_order_fees.sql'), 'utf8'));
 envReconcile.DB.exec(readFileSync(join(projectRoot, 'migrations', '0009_sales_received_amount.sql'), 'utf8'));
+envReconcile.DB.exec(readFileSync(join(projectRoot, 'migrations', '0011_money_columns_align.sql'), 'utf8'));
 const brokenOrderStart = orders.findIndex(row => row.vendorOrderNo === 'visionpaySFTS20260525083347733X');
 const brokenOrderRows = brokenOrderStart >= 0
   ? orders.slice(brokenOrderStart, brokenOrderStart + 2)
@@ -373,25 +428,25 @@ await envReconcile.DB.prepare(`
     id, machine_id, name, category, sell_price_cents, status,
     created_at, updated_at, normalized_name, external_id
   ) VALUES
-    ('broken-water', '1号机', '冰露矿泉水(550ml)', '饮料', 100, 'active', ?, ?, '冰露矿泉水550ml', '6928804013740'),
-    ('broken-dp', '1号机', '东鹏补水啦电解质水柠檬味1L', '饮料', 550, 'active', ?, ?, '东鹏补水啦电解质水柠檬味1l', '6934502302277')
+    ('broken-water', '1/2号机', '冰露矿泉水(550ml)', '饮料', 100, 'active', ?, ?, '冰露矿泉水550ml', '6928804013740'),
+    ('broken-dp', '1/2号机', '东鹏补水啦电解质水柠檬味1L', '饮料', 550, 'active', ?, ?, '东鹏补水啦电解质水柠檬味1l', '6934502302277')
 `).bind(timestamp, timestamp, timestamp, timestamp).run();
 await envReconcile.DB.prepare(`
   INSERT INTO inventory_balances (
     product_id, machine_id, quantity_on_hand, avg_cost_cents, inventory_value_cents,
     total_purchase_qty, total_purchase_cost_cents, updated_at
   ) VALUES
-    ('broken-water', '1号机', 9, 60, 540, 10, 600, ?),
-    ('broken-dp', '1号机', 10, 400, 4000, 10, 4000, ?)
+    ('broken-water', '1/2号机', 9, 60, 540, 10, 600, ?),
+    ('broken-dp', '1/2号机', 10, 400, 4000, 10, 4000, ?)
 `).bind(timestamp, timestamp).run();
 await envReconcile.DB.prepare(`
   INSERT INTO sales_orders (
     id, type, machine_id, record_date, year_month, total_amount_cents, total_cogs_cents,
-    platform_fee_cents, service_fee_cents, discount_cents, received_amount_cents,
+    platform_fee_cents, service_fee_cents, discount_cents, refund_amount_cents, received_amount_cents,
     note, image_asset_id, voided_at, created_at, updated_at, external_id, source
   ) VALUES (
     'zn:visionpaySFTS20260525083347733X', 'sale', '1号机', '2026-05-25', '2026-05',
-    650, 60, 4, 0, 0, 646, '历史错误导入', NULL, NULL, ?, ?,
+    650, 60, 4, 0, 0, 0, 646, '历史错误导入', NULL, NULL, ?, ?,
     'visionpaySFTS20260525083347733X', 'zn'
   )
 `).bind(timestamp, timestamp).run();
@@ -447,6 +502,8 @@ assert.deepEqual(
 const fixedBalances = envReconcile.DB.query(`
   SELECT product_id, quantity_on_hand
   FROM inventory_balances
+  WHERE product_id IN ('broken-dp', 'broken-water')
+    AND machine_id = '1/2号机'
   ORDER BY product_id
 `);
 assert.deepEqual(
@@ -467,8 +524,8 @@ async function seedCostProducts(targetEnv) {
       id, machine_id, name, category, sell_price_cents, status,
       created_at, updated_at, normalized_name, external_id
     ) VALUES
-      ('cost-dp-1', '1号机', '东鹏特饮维生素功能饮料', '饮料', 600, 'active', ?, ?, '东鹏特饮维生素功能饮料', NULL),
-      ('cost-water-2', '2号机', '怡宝饮用纯净水1.55L', '饮料', 350, 'active', ?, ?, '怡宝饮用纯净水155l', '6901285991271')
+      ('cost-dp-1', '1/2号机', '东鹏特饮维生素功能饮料', '饮料', 600, 'active', ?, ?, '东鹏特饮维生素功能饮料', NULL),
+      ('cost-water-2', '1/2号机', '怡宝饮用纯净水1.55L', '饮料', 350, 'active', ?, ?, '怡宝饮用纯净水155l', '6901285991271')
   `).bind(timestamp, timestamp, timestamp, timestamp).run();
   await targetEnv.DB.prepare(`
     INSERT INTO purchase_orders (

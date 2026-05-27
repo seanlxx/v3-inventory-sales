@@ -1,5 +1,6 @@
 import { all, first } from '../d1.js';
 import { centsToMoney, newId, nowIso, yearMonthFromDate } from '../validators.js';
+import { computeReceivedAmountCents } from '../money.js';
 import { ZN_INTEGRATION, mapZnDeviceToMachine } from './constants.js';
 import { normalizeProductName } from '../shengma/mapper.js';
 import { stockMachineIdFor } from '../stock-scope.js';
@@ -294,7 +295,12 @@ function findPurchaseCostCandidate(candidates, line, product) {
 function receivedAmountForOrder(lines, lineAmountTotal, fees) {
   const explicit = Math.max(0, Number(lines.find(line => Number(line.receivedAmountCents) > 0)?.receivedAmountCents) || 0);
   if (explicit > 0) return explicit;
-  return Math.max(0, lineAmountTotal - fees.platformFeeCents - fees.serviceFeeCents);
+  return computeReceivedAmountCents({
+    grossAmountCents: lineAmountTotal,
+    refundAmountCents: fees.refundAmountCents,
+    platformFeeCents: fees.platformFeeCents,
+    serviceFeeCents: fees.serviceFeeCents
+  });
 }
 
 function applyBalanceDelta(balance, qtyDelta, valueDeltaCents, timestamp) {
@@ -449,6 +455,7 @@ async function rebuildExistingOrder(env, existing, lines, fees, summary, timesta
         platform_fee_cents = ?,
         service_fee_cents = ?,
         discount_cents = ?,
+        refund_amount_cents = ?,
         received_amount_cents = ?,
         updated_at = ?
     WHERE id = ?
@@ -458,6 +465,7 @@ async function rebuildExistingOrder(env, existing, lines, fees, summary, timesta
     fees.platformFeeCents,
     fees.serviceFeeCents,
     fees.discountCents,
+    fees.refundAmountCents || 0,
     receivedAmountCents,
     timestamp,
     existing.id
@@ -491,6 +499,9 @@ async function reconcileExistingOrder(env, existing, lines, fees, summary, times
   }
   if (Number(existing.discount_cents || 0) !== fees.discountCents) {
     patches.push('discount_cents = ?'); params.push(fees.discountCents);
+  }
+  if (Number(existing.refund_amount_cents || 0) !== (fees.refundAmountCents || 0)) {
+    patches.push('refund_amount_cents = ?'); params.push(fees.refundAmountCents || 0);
   }
   if (lineAmountTotal > 0 && Number(existing.total_amount_cents || 0) !== lineAmountTotal) {
     patches.push('total_amount_cents = ?'); params.push(lineAmountTotal);
@@ -595,6 +606,7 @@ async function importOneOrder(env, machineId, vendorOrderNo, lines, summary, war
   const platformFeeCents = Math.max(0, Number(lines[0]?.platformFeeCents) || 0);
   const serviceFeeCents = Math.max(0, Number(lines[0]?.serviceFeeCents) || 0);
   const discountCents = Math.max(0, Number(lines[0]?.discountCents) || 0);
+  const refundAmountCents = Math.max(0, Number(lines[0]?.refundAmountCents) || 0);
 
   const existing = await first(env.DB, `
     SELECT * FROM sales_orders
@@ -604,7 +616,7 @@ async function importOneOrder(env, machineId, vendorOrderNo, lines, summary, war
   if (existing) {
     summary.ordersDuplicate += 1;
     await reconcileExistingOrder(env, existing, lines, {
-      platformFeeCents, serviceFeeCents, discountCents
+      platformFeeCents, serviceFeeCents, discountCents, refundAmountCents
     }, summary, timestamp, costCandidateCache);
     return;
   }
@@ -680,18 +692,19 @@ async function importOneOrder(env, machineId, vendorOrderNo, lines, summary, war
   }
   const receivedAmountCents = receivedAmountForOrder(lines, totalAmount, {
     platformFeeCents,
-    serviceFeeCents
+    serviceFeeCents,
+    refundAmountCents
   });
 
   statements.unshift(env.DB.prepare(`
     INSERT INTO sales_orders (
       id, type, machine_id, record_date, year_month, total_amount_cents, total_cogs_cents,
-      platform_fee_cents, service_fee_cents, discount_cents, received_amount_cents,
+      platform_fee_cents, service_fee_cents, discount_cents, refund_amount_cents, received_amount_cents,
       note, image_asset_id, voided_at, created_at, updated_at, external_id, source
-    ) VALUES (?, 'sale', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)
+    ) VALUES (?, 'sale', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)
   `).bind(orderId, machineId, orderDate, yearMonthFromDate(orderDate),
           totalAmount, totalCogs,
-          platformFeeCents, serviceFeeCents, discountCents, receivedAmountCents,
+          platformFeeCents, serviceFeeCents, discountCents, refundAmountCents, receivedAmountCents,
           'zn 平台 Excel 导入',
           timestamp, timestamp, vendorOrderNo, ZN_INTEGRATION));
 
@@ -773,6 +786,7 @@ function validatePayload(body) {
       unitPriceCents: toMoneyCents(row.unitPrice),
       lineAmountCents: toMoneyCents(row.lineAmount ?? row.unitPrice),
       receivedAmountCents: toMoneyCents(hasOrderNo ? row.receivedAmount : currentOrder?.receivedAmount),
+      refundAmountCents: toMoneyCents(hasOrderNo ? row.refundAmount : currentOrder?.refundAmount),
       platformFeeCents: toMoneyCents(hasOrderNo ? row.platformFee : currentOrder?.platformFee),
       serviceFeeCents: toMoneyCents(hasOrderNo ? row.serviceFee : currentOrder?.serviceFee),
       discountCents: toMoneyCents(hasOrderNo ? row.discount : currentOrder?.discount),

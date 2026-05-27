@@ -80,6 +80,7 @@ env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0006_v3_structured_inv
 env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0007_shengma_integration.sql'), 'utf8'));
 env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0008_zn_order_fees.sql'), 'utf8'));
 env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0009_sales_received_amount.sql'), 'utf8'));
+env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0011_money_columns_align.sql'), 'utf8'));
 env.DB.exec(`
   INSERT INTO external_sync_runs (id, integration, started_at, status, dry_run, date_start, date_end)
   VALUES (1, 'shengma', 1, 'success', 0, '2026-05-15', '2026-05-15');

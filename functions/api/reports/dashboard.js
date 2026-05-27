@@ -1,5 +1,6 @@
 import { all, first } from '../_shared/d1.js';
 import { json, methodNotAllowed } from '../_shared/http.js';
+import { profitCents, profitRatePercent, signedSalesSumSql } from '../_shared/money.js';
 import { centsToMoney } from '../_shared/validators.js';
 import { SHARED_STOCK_MACHINE_ID, SHARED_STOCK_MACHINE_LABEL, stockMachineIdFor } from '../_shared/stock-scope.js';
 
@@ -115,22 +116,10 @@ async function getMonthlySales(env, month, machineId) {
 
   return await first(env.DB, `
     SELECT
-      COALESCE(SUM(CASE
-        WHEN type = 'sale' THEN total_amount_cents
-        WHEN type = 'refund' THEN -total_amount_cents
-        ELSE 0
-      END), 0) AS revenue_cents,
-      COALESCE(SUM(CASE
-        WHEN type = 'sale' THEN received_amount_cents
-        WHEN type = 'refund' THEN -received_amount_cents
-        ELSE 0
-      END), 0) AS received_cents,
-      COALESCE(SUM(CASE
-        WHEN type = 'sale' THEN total_cogs_cents
-        WHEN type = 'refund' THEN -total_cogs_cents
-        ELSE 0
-      END), 0) AS cogs_cents,
-      COALESCE(SUM(CASE WHEN type = 'refund' THEN total_amount_cents ELSE 0 END), 0) AS refunds_cents
+      ${signedSalesSumSql('total_amount_cents')} AS revenue_cents,
+      ${signedSalesSumSql('received_amount_cents')} AS received_cents,
+      ${signedSalesSumSql('total_cogs_cents')} AS cogs_cents,
+      COALESCE(SUM(refund_amount_cents), 0) AS refunds_cents
     FROM sales_orders
     WHERE voided_at IS NULL
       AND year_month = ?
@@ -143,11 +132,7 @@ async function getTodaySales(env, machineId) {
   const params = [todayDate(), ...machineFilter.params];
 
   return await first(env.DB, `
-    SELECT COALESCE(SUM(CASE
-        WHEN type = 'sale' THEN total_amount_cents
-        WHEN type = 'refund' THEN -total_amount_cents
-        ELSE 0
-      END), 0) AS revenue_cents
+    SELECT ${signedSalesSumSql('total_amount_cents')} AS revenue_cents
     FROM sales_orders
     WHERE voided_at IS NULL
       AND record_date = ?
@@ -178,11 +163,7 @@ async function getSalesTrend(env, days, machineId) {
     WITH revenue_by_date AS (
       SELECT
         record_date AS date,
-        COALESCE(SUM(CASE
-          WHEN type = 'sale' THEN total_amount_cents
-          WHEN type = 'refund' THEN -total_amount_cents
-          ELSE 0
-        END), 0) AS revenue_cents
+        ${signedSalesSumSql('total_amount_cents')} AS revenue_cents
       FROM sales_orders
       WHERE voided_at IS NULL
         AND type IN ('sale', 'refund')
@@ -227,21 +208,9 @@ async function getMachineRanking(env, month) {
     WITH revenue_by_machine AS (
       SELECT
         machine_id,
-        COALESCE(SUM(CASE
-          WHEN type = 'sale' THEN total_amount_cents
-          WHEN type = 'refund' THEN -total_amount_cents
-          ELSE 0
-        END), 0) AS revenue_cents,
-        COALESCE(SUM(CASE
-          WHEN type = 'sale' THEN received_amount_cents
-          WHEN type = 'refund' THEN -received_amount_cents
-          ELSE 0
-        END), 0) AS received_cents,
-        COALESCE(SUM(CASE
-          WHEN type = 'sale' THEN total_cogs_cents
-          WHEN type = 'refund' THEN -total_cogs_cents
-          ELSE 0
-        END), 0) AS cogs_cents
+        ${signedSalesSumSql('total_amount_cents')} AS revenue_cents,
+        ${signedSalesSumSql('received_amount_cents')} AS received_cents,
+        ${signedSalesSumSql('total_cogs_cents')} AS cogs_cents
       FROM sales_orders
       WHERE voided_at IS NULL
         AND type IN ('sale', 'refund')
@@ -274,7 +243,7 @@ async function getMachineRanking(env, month) {
   return rows.map(row => ({
     machineId: row.machine_id,
     revenue: centsToMoney(row.revenue_cents),
-    profit: centsToMoney((Number(row.received_cents) || 0) - (Number(row.cogs_cents) || 0)),
+    profit: centsToMoney(profitCents(row.received_cents, row.cogs_cents)),
     quantity: Number(row.quantity) || 0
   }));
 }
@@ -341,7 +310,7 @@ async function getProfitBreakdown(env, month) {
   return rows.map(row => ({
     machineId: row.display_machine_id,
     revenue: centsToMoney(row.revenue_cents),
-    profit: centsToMoney((Number(row.received_cents) || 0) - (Number(row.cogs_cents) || 0)),
+    profit: centsToMoney(profitCents(row.received_cents, row.cogs_cents)),
     quantity: Number(row.quantity) || 0
   }));
 }
@@ -506,7 +475,7 @@ export async function onRequestGet(context) {
   const monthRevenue = centsToMoney(monthlySales?.revenue_cents);
   const monthReceived = centsToMoney(monthlySales?.received_cents);
   const monthCogs = centsToMoney(monthlySales?.cogs_cents);
-  const monthGrossProfit = Math.round((monthReceived - monthCogs) * 100) / 100;
+  const monthGrossProfit = centsToMoney(profitCents(monthlySales?.received_cents, monthlySales?.cogs_cents));
 
   return json(200, {
     month,
@@ -516,7 +485,7 @@ export async function onRequestGet(context) {
       monthReceived,
       monthCogs,
       monthGrossProfit,
-      profitRate: monthReceived > 0 ? (monthGrossProfit / monthReceived) * 100 : 0,
+      profitRate: profitRatePercent(monthlySales?.received_cents, monthlySales?.cogs_cents),
       purchaseCost: centsToMoney(purchaseCost?.purchase_cents),
       refunds: centsToMoney(monthlySales?.refunds_cents),
       lowStockCount: lowStock.length

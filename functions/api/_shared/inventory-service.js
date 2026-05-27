@@ -838,8 +838,8 @@ export async function createSalesOrder(env, payload, forcedType = null) {
   statements.push(env.DB.prepare(`
     INSERT INTO sales_orders (
       id, type, machine_id, record_date, year_month, total_amount_cents, total_cogs_cents,
-      received_amount_cents, note, image_asset_id, voided_at, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, 0, 0, 0, ?, ?, NULL, ?, ?)
+      refund_amount_cents, received_amount_cents, note, image_asset_id, voided_at, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, 0, 0, 0, 0, ?, ?, NULL, ?, ?)
   `).bind(
     orderId,
     type,
@@ -922,10 +922,18 @@ export async function createSalesOrder(env, payload, forcedType = null) {
     UPDATE sales_orders
     SET total_amount_cents = ?,
         total_cogs_cents = ?,
+        refund_amount_cents = ?,
         received_amount_cents = ?,
         updated_at = ?
     WHERE id = ?
-  `).bind(totalAmountCents, totalCogsCents, totalAmountCents, timestamp, orderId));
+  `).bind(
+    totalAmountCents,
+    totalCogsCents,
+    type === 'refund' ? totalAmountCents : 0,
+    totalAmountCents,
+    timestamp,
+    orderId
+  ));
 
   await env.DB.batch(statements);
 

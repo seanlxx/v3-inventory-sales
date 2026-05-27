@@ -55,6 +55,7 @@ env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0006_v3_structured_inv
 env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0007_shengma_integration.sql'), 'utf8'));
 env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0008_zn_order_fees.sql'), 'utf8'));
 env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0009_sales_received_amount.sql'), 'utf8'));
+env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0011_money_columns_align.sql'), 'utf8'));
 
 const testDate = new Date().toISOString().slice(0, 10);
 const testMonth = testDate.slice(0, 7);
@@ -107,12 +108,12 @@ async function seedDashboardRows() {
   await env.DB.prepare(`
     INSERT INTO sales_orders (
       id, type, machine_id, record_date, year_month, total_amount_cents, total_cogs_cents,
-      received_amount_cents, note, image_asset_id, voided_at, created_at, updated_at
+      refund_amount_cents, received_amount_cents, note, image_asset_id, voided_at, created_at, updated_at
     ) VALUES (
-      'so-multi-item', 'sale', 'machine-a', ?, ?, 12000, 4500, 11800,
+      'so-multi-item', 'sale', 'machine-a', ?, ?, 12000, 4500, 0, 11800,
       NULL, NULL, NULL, ?, ?
     ), (
-      'so-refund', 'refund', 'machine-a', ?, ?, 3000, 900, 3000,
+      'so-refund', 'refund', 'machine-a', ?, ?, 3000, 900, 3000, 3000,
       NULL, NULL, NULL, ?, ?
     )
   `).bind(

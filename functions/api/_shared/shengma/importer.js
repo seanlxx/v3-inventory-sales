@@ -353,8 +353,8 @@ async function importSale(env, sale, product, date, summary, warnings, timestamp
   statements.push(env.DB.prepare(`
     INSERT INTO sales_orders (
       id, type, machine_id, record_date, year_month, total_amount_cents, total_cogs_cents,
-      received_amount_cents, note, image_asset_id, voided_at, created_at, updated_at, external_id, source
-    ) VALUES (?, 'sale', ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)
+      refund_amount_cents, received_amount_cents, note, image_asset_id, voided_at, created_at, updated_at, external_id, source
+    ) VALUES (?, 'sale', ?, ?, ?, ?, ?, 0, ?, ?, NULL, NULL, ?, ?, ?, ?)
   `).bind(
     orderId,
     SHENGMA_LOCAL_MACHINE_NAME,
