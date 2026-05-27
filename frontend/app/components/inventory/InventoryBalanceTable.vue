@@ -78,7 +78,7 @@ function purchaseCost(balance: InventoryBalance) {
             <td>
               <div class="inventory-table__name-cell">
                 <div class="inventory-table__name-copy">
-                  <strong :title="balance.productName">{{ balance.productName.slice(0, 6) + (balance.productName.length > 6 ? '...' : '') }}</strong>
+                  <strong :title="balance.productName">{{ balance.productName }}</strong>
                   <span>{{ balance.productId }}</span>
                 </div>
               </div>
@@ -145,7 +145,7 @@ function purchaseCost(balance: InventoryBalance) {
         <header class="inventory-table__card-header">
           <div class="inventory-table__card-title">
             <div class="inventory-table__name-copy">
-              <strong :title="balance.productName">{{ balance.productName.slice(0, 10) + (balance.productName.length > 10 ? '...' : '') }}</strong>
+              <strong :title="balance.productName">{{ balance.productName }}</strong>
               <span>{{ balance.productId }}</span>
             </div>
           </div>
@@ -214,13 +214,13 @@ function purchaseCost(balance: InventoryBalance) {
 
 .inventory-table__table {
   width: 100%;
-  min-width: 930px;
+  min-width: 980px;
   border-collapse: collapse;
   table-layout: fixed;
 }
 
 .inventory-table__col--product {
-  width: 170px;
+  width: 220px;
 }
 
 .inventory-table__col--category {
@@ -254,10 +254,11 @@ function purchaseCost(balance: InventoryBalance) {
 .inventory-table__table th,
 .inventory-table__table td {
   height: 54px;
-  padding: 0 var(--space-4);
+  padding: var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--color-border);
   text-align: left;
   white-space: nowrap;
+  vertical-align: middle;
 }
 
 .inventory-table__table th {
@@ -288,17 +289,29 @@ function purchaseCost(balance: InventoryBalance) {
 
 .inventory-table__name-copy {
   min-width: 0;
-  display: inline-grid;
+  display: grid;
   gap: 2px;
-  padding: 5px var(--space-3);
+  padding: 6px var(--space-3);
   border-radius: var(--radius-2);
   background: var(--color-info-soft);
   border: 1px solid rgba(15, 118, 110, 0.08);
-  width: min(100%, 160px);
+  width: 100%;
   box-shadow: var(--shadow-inset);
 }
 
-.inventory-table__name-copy strong,
+.inventory-table__name-copy strong {
+  max-width: 100%;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.35;
+  font-size: 13px;
+}
+
 .inventory-table__name-copy span {
   max-width: 100%;
   overflow: hidden;
@@ -418,7 +431,7 @@ tbody tr:last-child td {
   }
 
   .inventory-table__name-copy {
-    width: min(100%, 200px);
+    width: 100%;
   }
 
   .inventory-table__card-grid {

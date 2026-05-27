@@ -73,7 +73,7 @@ function purchaseCost(product: Product) {
             <td>
               <div class="product-table__name-cell">
                 <div class="product-table__name-copy">
-                  <strong :title="product.name">{{ product.name.slice(0, 6) + (product.name.length > 6 ? '...' : '') }}</strong>
+                  <strong :title="product.name">{{ product.name }}</strong>
                   <span>{{ product.id }}</span>
                 </div>
               </div>
@@ -210,13 +210,13 @@ function purchaseCost(product: Product) {
 
 .product-table__table {
   width: 100%;
-  min-width: 900px;
+  min-width: 960px;
   border-collapse: collapse;
   table-layout: fixed;
 }
 
 .product-table__th--product {
-  width: 170px;
+  width: 220px;
 }
 
 .product-table__th--category {
@@ -255,10 +255,11 @@ function purchaseCost(product: Product) {
 .product-table__table th,
 .product-table__table td {
   height: 54px;
-  padding: 0 var(--space-4);
+  padding: var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--color-border);
   text-align: left;
   white-space: nowrap;
+  vertical-align: middle;
 }
 
 .product-table__table th {
@@ -292,17 +293,29 @@ function purchaseCost(product: Product) {
 
 .product-table__name-copy {
   min-width: 0;
-  display: inline-grid;
+  display: grid;
   gap: 2px;
-  padding: 5px var(--space-3);
+  padding: 6px var(--space-3);
   border-radius: var(--radius-2);
   background: var(--color-primary-soft);
   border: 1px solid rgba(37, 99, 235, 0.08);
-  width: min(100%, 160px);
+  width: 100%;
   box-shadow: var(--shadow-inset);
 }
 
-.product-table__name-copy strong,
+.product-table__name-copy strong {
+  max-width: 100%;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.35;
+  font-size: 13px;
+}
+
 .product-table__name-copy span {
   max-width: 100%;
   overflow: hidden;
@@ -406,13 +419,16 @@ tbody tr:hover {
 
   .product-table__card-name {
     min-width: 0;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
     overflow: hidden;
     color: var(--mobile-text);
     font-size: 14px;
     font-weight: 800;
     line-height: 1.35;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    word-break: break-word;
   }
 
   .product-table__card-meta {
