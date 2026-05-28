@@ -106,23 +106,9 @@
 
 ---
 
-## 4. 触发示例（用户说什么 → 加载哪个 skill）
+## 4. 触发示例
 
-| 用户原话 | 自动加载的 skill |
-| --- | --- |
-| "手机上库存页横向溢出了" | `mobile-ui-fix` + `responsive-design` |
-| "1440px 下侧栏比例不对" | `desktop-ui-fix` + `layout-grid` |
-| "把仪表盘做得更好看一点" | `ui-design-brain` + `visual-hierarchy` + `data-visualization` + `desktop-ui-fix` |
-| "调一下整站配色，主色太重" | `color-system` + `ui-design-brain` |
-| "字号层级有点乱，重新排一下" | `typography-scale` + `visual-hierarchy` |
-| "按钮间距不一致" | `spacing-system` + `ui-design-brain` |
-| "Cloudflare Pages 部署失败" | `pages-deploy-troubleshoot` |
-| "新增一个商品筛选弹窗" | `ui-design-brain`（查 Modal / Drawer 组件最佳实践） |
-| "想做暗色模式" | `dark-mode-design` + `color-system` |
-| "总库存与进货不匹配 / 库存漂移" | `inventory-drift-diagnose` + `inventory-restructure` |
-| "按重构计划走 Phase 1 / 删 stock-scope.js" | `inventory-restructure` |
-| "订单明细字段对不上 / 交易账单怎么导" | `zn-excel-import` |
-| "重建余额后跑 5 项对账" | `inventory-drift-diagnose` |
+> 用户原话 → 加载哪个 skill 的对应表见 `AGENTS.md §0.5`，本文件不再重复。
 
 ---
 
