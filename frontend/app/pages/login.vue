@@ -1,52 +1,7 @@
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
-
 definePageMeta({
   layout: false
 })
-
-const { login, status: authStatus, errorMessage: authErrorMessage } = useAuth()
-const route = useRoute()
-const toastStore = useToastStore()
-
-const loginDraft = reactive({
-  username: 'admin',
-  password: ''
-})
-
-const showPassword = ref(false)
-const localError = ref('')
-const isSuccess = ref(false)
-
-const loginPending = computed(() => authStatus.value === 'pending')
-
-async function submitLogin() {
-  localError.value = ''
-  if (!loginDraft.username.trim() || !loginDraft.password) {
-    localError.value = '请输入账号和密码'
-    return
-  }
-
-  try {
-    await login({
-      username: loginDraft.username.trim(),
-      password: loginDraft.password
-    })
-    isSuccess.value = true
-    toastStore.show('登录成功，欢迎回来', 'success')
-    
-    // 获取重定向地址
-    const redirectPath = (route.query.redirect as string) || '/dashboard'
-    
-    // 延迟一小会儿，让登录成功动画播放完毕
-    setTimeout(() => {
-      navigateTo(redirectPath, { replace: true })
-    }, 800)
-  } catch (error: any) {
-    isSuccess.value = false
-    localError.value = error.message || '登录失败，请检查账号和密码'
-  }
-}
 </script>
 
 <template>
@@ -98,129 +53,33 @@ async function submitLogin() {
           <p class="login-card__subtitle">AI-Vending Operations & Inventory System</p>
         </header>
 
-        <!-- 登录表单 -->
+        <!-- 关闭提示 -->
         <main class="login-card__body">
-          <form @submit.prevent="submitLogin" class="login-form">
-            <!-- 账号输入 -->
-            <div class="form-group">
-              <label class="form-label" for="username">
-                <span class="form-label__text">账号</span>
-                <span class="form-label__tag">ADMINISTRATOR</span>
-              </label>
-              <div class="input-wrapper">
-                <span class="input-icon">
-                  <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                    <circle cx="12" cy="7" r="4" />
-                  </svg>
-                </span>
-                <input
-                  id="username"
-                  v-model="loginDraft.username"
-                  class="form-input"
-                  type="text"
-                  placeholder="请输入您的管理账号"
-                  autocomplete="username"
-                  :disabled="loginPending || isSuccess"
-                  required
-                />
-              </div>
+          <section class="login-closed" aria-labelledby="login-closed-title">
+            <div class="login-closed__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="28" height="28" stroke="currentColor" stroke-width="2.25" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="4" y="11" width="16" height="9" rx="2" />
+                <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+                <path d="M12 15v2" />
+              </svg>
             </div>
-
-            <!-- 密码输入 -->
-            <div class="form-group">
-              <label class="form-label" for="password">
-                <span class="form-label__text">密码</span>
-                <span class="form-label__tag">SECURE ACCESS</span>
-              </label>
-              <div class="input-wrapper">
-                <span class="input-icon">
-                  <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                  </svg>
-                </span>
-                <input
-                  id="password"
-                  v-model="loginDraft.password"
-                  class="form-input"
-                  :type="showPassword ? 'text' : 'password'"
-                  placeholder="请输入您的登录密码"
-                  autocomplete="current-password"
-                  :disabled="loginPending || isSuccess"
-                  required
-                />
-                <button
-                  type="button"
-                  class="password-toggle"
-                  @click="showPassword = !showPassword"
-                  :aria-label="showPassword ? '隐藏密码' : '显示密码'"
-                >
-                  <svg v-if="showPassword" viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-                    <line x1="1" y1="1" x2="23" y2="23" />
-                  </svg>
-                  <svg v-else viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                    <circle cx="12" cy="12" r="3" />
-                  </svg>
-                </button>
-              </div>
+            <h2 id="login-closed-title" class="login-closed__title">后台登录已暂时关闭</h2>
+            <p class="login-closed__text">
+              当前线上后台已暂停账号密码登录。请等待管理员重新开放后再访问。
+            </p>
+            <div class="login-closed__status">
+              <span class="status-dot status-dot--paused"></span>
+              <span class="status-text status-text--paused">账号密码入口已停用</span>
             </div>
-
-            <!-- 错误信息反馈 -->
-            <transition name="fade-slide">
-              <div v-if="localError || authErrorMessage" class="login-feedback login-feedback--error" role="alert">
-                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" class="feedback-icon">
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="12" y1="8" x2="12" y2="12" />
-                  <line x1="12" y1="16" x2="12.01" y2="16" />
-                </svg>
-                <span class="feedback-text">{{ localError || authErrorMessage }}</span>
-              </div>
-            </transition>
-
-            <!-- 按钮动作 -->
-            <div class="form-action">
-              <button
-                type="submit"
-                class="login-btn"
-                :class="{
-                  'login-btn--pending': loginPending,
-                  'login-btn--success': isSuccess
-                }"
-                :disabled="loginPending || isSuccess"
-              >
-                <!-- 按钮背景扫描线 -->
-                <span class="login-btn__scan"></span>
-                
-                <!-- 按钮内容 -->
-                <span class="login-btn__content">
-                  <template v-if="isSuccess">
-                    <svg class="success-check" viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                    验证通过，正在载入...
-                  </template>
-                  <template v-else-if="loginPending">
-                    <span class="btn-spinner" aria-hidden="true"></span>
-                    进行密钥握手中...
-                  </template>
-                  <template v-else>
-                    安全登录 SYSTEM ENTRY
-                  </template>
-                </span>
-              </button>
-            </div>
-          </form>
+          </section>
         </main>
 
         <!-- 页脚声明 -->
         <footer class="login-card__footer">
           <p>© 2026 V3 Vending Operations. Encrypted Console.</p>
           <div class="footer-status">
-            <span class="status-dot"></span>
-            <span class="status-text">AI 代理网关已就绪</span>
+            <span class="status-dot status-dot--paused"></span>
+            <span class="status-text status-text--paused">ACCESS PAUSED</span>
           </div>
         </footer>
       </div>
@@ -430,235 +289,52 @@ async function submitLogin() {
   letter-spacing: 1px;
 }
 
-/* 表单与输入框 */
-.login-form {
+.login-closed {
   display: grid;
-  gap: 22px;
+  justify-items: center;
+  gap: var(--space-4);
+  text-align: center;
+  border: 1px solid rgba(239, 68, 68, 0.14);
+  border-radius: var(--radius-3);
+  background: rgba(254, 242, 242, 0.65);
+  padding: 28px 24px;
 }
 
-.form-group {
-  display: grid;
-  gap: 8px;
-}
-
-.form-label {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 2px;
-}
-
-.form-label__text {
-  font-size: 13px;
-  font-weight: 700;
-  color: #374151;
-}
-
-.form-label__tag {
-  font-size: 9px;
-  font-family: var(--font-mono);
-  color: #6b7280;
-  letter-spacing: 0.5px;
-  opacity: 0.8;
-  border: 1px solid rgba(23, 32, 51, 0.08);
-  padding: 1px 5px;
-  border-radius: 3px;
-  background: rgba(23, 32, 51, 0.03);
-}
-
-.input-wrapper {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.input-icon {
-  position: absolute;
-  left: var(--space-4);
-  color: #9ca3af;
-  pointer-events: none;
+.login-closed__icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
   display: inline-flex;
-  transition: color var(--transition-fast);
-}
-
-.form-input {
-  width: 100%;
-  min-height: 48px;
-  background: rgba(255, 255, 255, 0.65);
-  border: 1px solid rgba(23, 32, 51, 0.12);
-  border-radius: var(--radius-2);
-  padding: 0 var(--space-4) 0 46px;
-  color: #172033;
-  font-size: 14px;
-  outline: none;
-  transition: 
-    background-color var(--transition-fast), 
-    border-color var(--transition-fast), 
-    box-shadow var(--transition-fast);
-}
-
-.form-input::placeholder {
-  color: #9ca3af;
-}
-
-.form-input:focus {
-  background: rgba(255, 255, 255, 0.9);
-  border-color: #2563eb;
-  box-shadow: 
-    0 0 0 3px rgba(37, 99, 235, 0.1),
-    0 0 12px rgba(37, 99, 235, 0.15);
-}
-
-.form-input:focus + .input-icon,
-.input-wrapper:focus-within .input-icon {
-  color: #2563eb;
-}
-
-.password-toggle {
-  position: absolute;
-  right: var(--space-4);
-  background: none;
-  border: none;
-  color: #9ca3af;
-  cursor: pointer;
-  padding: 4px;
-  display: inline-flex;
-  transition: color var(--transition-fast);
-}
-
-.password-toggle:hover {
-  color: #172033;
-}
-
-/* 错误提示 */
-.login-feedback {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  background: #fef2f2;
-  border: 1px solid rgba(239, 68, 68, 0.15);
-  border-radius: var(--radius-2);
-  padding: 12px var(--space-4);
-}
-
-.feedback-icon {
-  color: #ef4444;
-  flex-shrink: 0;
-  margin-top: 1px;
-}
-
-.feedback-text {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: #991b1b;
-  line-height: 1.4;
-}
-
-/* 登录按钮 */
-.form-action {
-  margin-top: 8px;
-}
-
-.login-btn {
-  position: relative;
-  width: 100%;
-  min-height: 48px;
-  background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-  border: none;
-  border-radius: var(--radius-2);
-  color: #ffffff;
-  font-weight: 700;
-  font-size: 14px;
-  letter-spacing: 0.5px;
-  cursor: pointer;
-  overflow: hidden;
-  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.2);
-  transition: 
-    transform var(--transition-bounce), 
-    box-shadow var(--transition-fast), 
-    filter var(--transition-fast);
-}
-
-.login-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 
-    0 8px 24px rgba(139, 92, 246, 0.3),
-    0 0 16px rgba(59, 130, 246, 0.2);
-}
-
-.login-btn:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.login-btn:disabled {
-  cursor: not-allowed;
-  filter: saturate(0.7) brightness(0.9);
-}
-
-/* 能量扫描线效果 */
-.login-btn__scan {
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 50%;
-  height: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.25) 50%,
-    transparent 100%
-  );
-  transform: skewX(-25deg);
-  transition: none;
-}
-
-.login-btn:hover:not(:disabled) .login-btn__scan {
-  left: 150%;
-  transition: left 1.5s cubic-bezier(0.19, 1, 0.22, 1);
-}
-
-.login-btn__content {
-  position: relative;
-  z-index: 2;
-  display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-2);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  color: #b91c1c;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(185, 28, 28, 0.08);
 }
 
-/* 各种状态效果 */
-.login-btn--pending {
-  background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
-  color: #64748b;
-  box-shadow: none;
+.login-closed__title {
+  margin: 0;
+  color: #991b1b;
+  font-size: 19px;
+  font-weight: 800;
 }
 
-.login-btn--success {
-  background: linear-gradient(135deg, #059669 0%, #10b981 100%);
-  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.25);
+.login-closed__text {
+  margin: 0;
+  color: #6b1f1f;
+  font-size: 14px;
+  line-height: 1.7;
 }
 
-.success-check {
-  animation: scale-up 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-}
-
-@keyframes scale-up {
-  0% { transform: scale(0.5); opacity: 0; }
-  100% { transform: scale(1); opacity: 1; }
-}
-
-.btn-spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid rgba(100, 116, 139, 0.2);
-  border-right-color: #64748b;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
+.login-closed__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--space-1);
+  border: 1px solid rgba(185, 28, 28, 0.12);
+  border-radius: 999px;
+  background: #ffffff;
+  padding: 5px 10px;
 }
 
 /* 页脚 */
@@ -699,27 +375,24 @@ async function submitLogin() {
   animation: pulse-dot 2s infinite alternate;
 }
 
+.status-dot--paused {
+  background: #ef4444;
+  box-shadow: 0 0 8px #ef4444;
+}
+
 .status-text {
   font-size: 10.5px;
   font-weight: 700;
   color: #10b981;
 }
 
+.status-text--paused {
+  color: #b91c1c;
+}
+
 @keyframes pulse-dot {
   0% { opacity: 0.5; }
   100% { opacity: 1; }
-}
-
-/* 动效过渡 */
-.fade-slide-enter-active,
-.fade-slide-leave-active {
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.fade-slide-enter-from,
-.fade-slide-leave-to {
-  opacity: 0;
-  transform: translateY(-8px);
 }
 
 /* 移动端细微样式调整 */
@@ -737,13 +410,8 @@ async function submitLogin() {
     font-size: 19px;
   }
   
-  .form-input {
-    min-height: var(--control-height-mobile);
-  }
-  
-  .login-btn {
-    min-height: var(--control-height-mobile);
-    border-radius: var(--mobile-button-radius);
+  .login-closed {
+    padding: 24px 18px;
   }
 }
 </style>
