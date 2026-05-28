@@ -187,6 +187,9 @@ async function findOrCreateProduct(env, machineId, line, statements, summary, ti
   }
   if (product) return await patchProductMetadata(env, product, line, statements, summary, timestamp);
 
+  product = await findMergedTargetProduct(env, productMachineId, rawName, normalized, displayName);
+  if (product) return await patchProductMetadata(env, product, line, statements, summary, timestamp);
+
   const candidates = await loadPurchaseCostCandidates(env, stockMachineId, costCandidateCache);
   const purchaseMatch = findPurchaseCostCandidate(candidates, line, null);
   if (purchaseMatch) return await patchProductMetadata(env, purchaseMatch, line, statements, summary, timestamp);
@@ -218,9 +221,42 @@ async function findOrCreateProduct(env, machineId, line, statements, summary, ti
   return product;
 }
 
+async function findMergedTargetProduct(env, productMachineId, rawName, normalizedName, displayName) {
+  const normalized = normalizedName || normalizeProductName(rawName) || normalizeProductName(displayName);
+  const rawLower = normalizeRowText(rawName).toLowerCase();
+  const displayLower = normalizeRowText(displayName).toLowerCase();
+  const mergedRows = await all(env.DB, `
+    SELECT name, external_id, SUBSTR(normalized_name, 8) AS target_normalized_name
+    FROM products
+    WHERE machine_id = ?
+      AND status = 'archived'
+      AND normalized_name LIKE 'merged:%'
+  `, [productMachineId]);
+  const merged = mergedRows.find(row => {
+    const rowName = normalizeRowText(row.name);
+    const rowNameLower = rowName.toLowerCase();
+    const rowExternalId = normalizeRowText(row.external_id);
+    return (rawLower && rowNameLower === rawLower)
+      || (displayLower && rowNameLower === displayLower)
+      || (normalized && rowExternalId === normalized)
+      || (normalized && normalizeProductName(rowName) === normalized)
+      || (normalized && rowExternalId && normalizeProductName(rowExternalId) === normalized);
+  });
+  if (!merged?.target_normalized_name) return null;
+
+  return await first(env.DB, `
+    SELECT *
+    FROM products
+    WHERE machine_id = ?
+      AND status = 'active'
+      AND normalized_name = ?
+    LIMIT 1
+  `, [productMachineId, merged.target_normalized_name]);
+}
+
 async function findZnProduct(env, productMachineId, rawName, normalizedName) {
   const displayName = standardProductName(rawName);
-  return await first(env.DB, `
+  const product = await first(env.DB, `
     SELECT *
     FROM products
     WHERE machine_id = ?
@@ -228,6 +264,7 @@ async function findZnProduct(env, productMachineId, rawName, normalizedName) {
       AND (normalized_name = ? OR external_id = ? OR name = ? OR name = ?)
     LIMIT 1
   `, [productMachineId, normalizedName, normalizedName, rawName, displayName]);
+  return product || await findMergedTargetProduct(env, productMachineId, rawName, normalizedName, displayName);
 }
 
 function productLineKey(productMachineId, normalizedName) {

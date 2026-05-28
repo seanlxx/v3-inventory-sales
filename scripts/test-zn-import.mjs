@@ -452,6 +452,69 @@ assert.equal(preProductsAgain.summary.productsCreated, 0, '商品预导入重复
 assert.equal(preProductsAgain.summary.productsExisting, 1, '商品预导入重复执行应识别已有商品');
 assert.equal(envPreProducts.DB.queryOne('SELECT COUNT(*) AS n FROM products').n, 9, '商品预导入应保持幂等');
 
+const envMergedFallback = { DB: new D1Database() };
+loadBaseSchema(envMergedFallback);
+const mergedFallbackTimestamp = '2026-05-20T00:00:00.000Z';
+await envMergedFallback.DB.prepare(`
+  INSERT INTO products (
+    id, machine_id, name, category, sell_price_cents, status,
+    created_at, updated_at, normalized_name, external_id
+  ) VALUES (
+    'merged-target-product', '1/2号机', '标准商品500ml', '饮料', 300, 'active',
+    ?, ?, '标准商品500ml', '标准商品500ml'
+  )
+`).bind(mergedFallbackTimestamp, mergedFallbackTimestamp).run();
+await envMergedFallback.DB.prepare(`
+  INSERT INTO products (
+    id, machine_id, name, category, sell_price_cents, status,
+    created_at, updated_at, normalized_name, external_id
+  ) VALUES (
+    'merged-archived-product', '1/2号机', '旧名称商品500ml', '饮料', 300, 'archived',
+    ?, ?, 'merged:标准商品500ml', NULL
+  )
+`).bind(mergedFallbackTimestamp, mergedFallbackTimestamp).run();
+await envMergedFallback.DB.prepare(`
+  INSERT INTO inventory_balances (
+    product_id, machine_id, quantity_on_hand, avg_cost_cents, inventory_value_cents,
+    total_purchase_qty, total_purchase_cost_cents, updated_at
+  ) VALUES ('merged-target-product', '1号机', 5, 120, 600, 5, 600, ?)
+`).bind(mergedFallbackTimestamp).run();
+
+const mergedFallbackOrders = [{
+  vendorOrderNo: 'merged-fallback-order-1',
+  title: '',
+  status: '已完成',
+  deviceCode: 'TBN5CFA0261G547T5D3',
+  vendorProductName: '旧名称商品(500ML)',
+  unitPrice: 3,
+  quantity: 1,
+  lineAmount: 3,
+  receivedAmount: 3,
+  refundAmount: 0,
+  platformFee: 0,
+  serviceFee: 0,
+  discount: 0,
+  date: '2026-05-20 12:00:00'
+}];
+const mergedFallbackPreImport = await preImportZnProducts(envMergedFallback, { orders: mergedFallbackOrders });
+assert.equal(mergedFallbackPreImport.summary.productsCreated, 0, '预导入应通过归档旧名称找到合并后的标准商品');
+assert.equal(mergedFallbackPreImport.summary.productsExisting, 1, '预导入应把归档旧名称计为已有商品');
+assert.equal(envMergedFallback.DB.queryOne('SELECT COUNT(*) AS n FROM products').n, 2, '归档旧名称不应导致重复新建商品');
+
+const mergedFallbackImport = await runZnImport(envMergedFallback, { orders: mergedFallbackOrders });
+assert.equal(mergedFallbackImport.summary.productsCreated, 0, '销售导入应通过归档旧名称找到合并后的标准商品');
+assert.equal(mergedFallbackImport.summary.ordersImported, 1, '销售导入应正常导入归档旧名称订单');
+assert.equal(
+  envMergedFallback.DB.queryOne('SELECT product_id FROM sales_items WHERE sales_order_id = ?', 'zn:merged-fallback-order-1').product_id,
+  'merged-target-product',
+  '销售明细应落到合并后的标准商品'
+);
+assert.equal(
+  envMergedFallback.DB.queryOne('SELECT quantity_on_hand FROM inventory_balances WHERE product_id = ? AND machine_id = ?', 'merged-target-product', '1号机').quantity_on_hand,
+  4,
+  '归档旧名称销售应扣减标准商品库存'
+);
+
 const parsedRefundRow = normalizeZnRefundRow({
   '退款订单号': 'refund-test-1',
   '设备名称': '工厂测试47T5D3',
