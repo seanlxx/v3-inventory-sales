@@ -55,21 +55,6 @@ export type InventoryAdjustmentPayload = Record<string, unknown> & {
   note?: string
 }
 
-export type InventoryTransferPayload = {
-  productId: string
-  fromMachineId: string
-  toMachineId: string
-  quantity: number
-  reason: string
-}
-
-export type InventoryTransferResult = InventoryTransferPayload & {
-  id: string
-  productName: string
-  unitCost: number
-  createdAt: string
-}
-
 export type CycleCountItemPayload = {
   productId: string
   observedQty: number

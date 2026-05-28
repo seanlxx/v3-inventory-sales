@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { CycleCountPayload, InventoryAdjustmentPayload, InventoryBalance, InventoryTransferPayload } from '~/types/inventory'
+import type { CycleCountPayload, InventoryAdjustmentPayload, InventoryBalance } from '~/types/inventory'
 
 definePageMeta({
   title: '库存'
@@ -16,7 +16,6 @@ const {
   loading,
   movementsLoading,
   adjusting,
-  transferring,
   cycleCounting,
   error,
   movementsError,
@@ -24,16 +23,13 @@ const {
   loadBalances,
   loadMovements,
   createAdjustment,
-  createTransfer,
   createCycleCount
 } = useInventory()
 
 const adjustmentOpen = shallowRef(false)
-const transferOpen = shallowRef(false)
 const cycleCountOpen = shallowRef(false)
 const mobileTimelineOpen = shallowRef(false)
 const adjustingBalance = shallowRef<InventoryBalance | null>(null)
-const transferBalance = shallowRef<InventoryBalance | null>(null)
 
 async function openMovements(balance: InventoryBalance) {
   mobileTimelineOpen.value = true
@@ -45,11 +41,6 @@ function openAdjustment(balance: InventoryBalance) {
   adjustmentOpen.value = true
 }
 
-function openTransfer(balance: InventoryBalance) {
-  transferBalance.value = balance
-  transferOpen.value = true
-}
-
 function openCycleCount() {
   cycleCountOpen.value = true
 }
@@ -57,11 +48,6 @@ function openCycleCount() {
 async function submitAdjustment(payload: InventoryAdjustmentPayload) {
   await createAdjustment(payload)
   adjustmentOpen.value = false
-}
-
-async function submitTransfer(payload: InventoryTransferPayload) {
-  await createTransfer(payload)
-  transferOpen.value = false
 }
 
 async function submitCycleCount(payload: CycleCountPayload) {
@@ -100,7 +86,6 @@ onMounted(async () => {
         :error="error"
         @movements="openMovements"
         @adjust="openAdjustment"
-        @transfer="openTransfer"
         @retry="loadBalances"
       />
 
@@ -134,15 +119,6 @@ onMounted(async () => {
       :balances="balances"
       :submitting="adjusting"
       @submit="submitAdjustment"
-    />
-
-    <TransferDialog
-      v-model:open="transferOpen"
-      :balance="transferBalance"
-      :balances="balances"
-      :machines="machineOptions"
-      :submitting="transferring"
-      @submit="submitTransfer"
     />
 
     <CycleCountDialog
