@@ -28,6 +28,14 @@ const UNIT_SYNONYMS = [
 const STOPWORDS = ['饮用', '装', '盒', '装版', '版', '款', '正品', '官方', '新品', '促销', '原味', '原装', '1倍半', '倍半'];
 const PUNCT_RE = /[\s\-_/\\()（）【】\[\]·•・,.，。、;:：；！!?？"'"'""]/g;
 const SPEC_RE = /\d+(?:\.\d+)?(?:ml|g|kg|cm|mm|罐|支|包|袋|瓶)?/g;
+const PRODUCT_NAME_ALIASES = {
+  '东鹏补水555ml': '东鹏补水啦555ml',
+  '东鹏补水啦柠檬味555ml': '东鹏补水啦555ml',
+  '东鹏补水电解质饮料柠檬味555ml': '东鹏补水啦555ml',
+  '东鹏补水电解质水柠檬味555ml': '东鹏补水啦555ml',
+  '东鹏补水啦电解质饮料柠檬味555ml': '东鹏补水啦555ml',
+  '东鹏补水啦电解质水柠檬味555ml': '东鹏补水啦555ml'
+};
 
 function toHalfWidth(value) {
   let result = '';
@@ -50,7 +58,8 @@ function normalizeProductName(rawValue) {
   }
   name = name.replace(PUNCT_RE, '');
   for (const word of STOPWORDS) name = name.split(word).join('');
-  return name.trim();
+  const normalized = name.trim();
+  return PRODUCT_NAME_ALIASES[normalized] || normalized;
 }
 
 function bigrams(value) {
@@ -163,7 +172,7 @@ const products = [
   { id: 'p-baoli', name: '宝矿力水特500ml' },
   { id: 'p-cestbon', name: '怡宝纯净水555ml' },
   { id: 'p-wahaha', name: '娃哈哈纯净水596ml' },
-  { id: 'p-dongpeng', name: '东鹏补水啦柠檬味555ml' },
+  { id: 'p-dongpeng', name: '东鹏补水啦 555ml' },
   { id: 'p-kangshifu-tea', name: '康师傅茉莉清茶1L' },
   { id: 'p-kangshifu-noodle', name: '康师傅红烧牛肉面136g' },
   { id: 'p-jianjiao', name: '农夫山泉尖叫多肽型西柚味550ml' }
@@ -175,7 +184,8 @@ const cases = [
   { input: '怡宝饮用纯净水555ml', expectedId: 'p-cestbon' },
   // 用户原报告里失败的样本：
   { input: '娃哈哈纯净水596毫升', expectedId: 'p-wahaha' },                      // 毫升 → ml
-  { input: '东鹏补水啦柠檬味555ml', expectedId: 'p-dongpeng' },                    // 完全相等
+  { input: '东鹏补水啦柠檬味555ml', expectedId: 'p-dongpeng' },                    // 别名 → 标准 555ml
+  { input: '东鹏补水电解质饮料柠檬味555ml', expectedId: 'p-dongpeng' },            // 旧标准名 → 新标准名
   { input: '康师傅茉莉清茶瓶装1L', expectedId: 'p-kangshifu-tea' },                 // 瓶装 + 1L
   { input: '康师傅1倍半红烧牛肉面136克', expectedId: 'p-kangshifu-noodle' },         // 倍半修饰 + 克
   { input: '农夫山泉 尖叫运动饮料•多肽型 西柚味 550ml', expectedId: 'p-jianjiao' }   // 多余空格 / • / 修饰词

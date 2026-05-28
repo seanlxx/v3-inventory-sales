@@ -58,6 +58,14 @@ const STOPWORDS = [
 
 const PUNCT_RE = /[\s\-_/\\()（）【】\[\]·•・,.，。、;:：；！!?？"'"'""]/g
 const SPEC_RE = /\d+(?:\.\d+)?(?:ml|g|kg|cm|mm|罐|支|包|袋|瓶)?/g
+const PRODUCT_NAME_ALIASES: Record<string, string> = {
+  '东鹏补水555ml': '东鹏补水啦555ml',
+  '东鹏补水啦柠檬味555ml': '东鹏补水啦555ml',
+  '东鹏补水电解质饮料柠檬味555ml': '东鹏补水啦555ml',
+  '东鹏补水电解质水柠檬味555ml': '东鹏补水啦555ml',
+  '东鹏补水啦电解质饮料柠檬味555ml': '东鹏补水啦555ml',
+  '东鹏补水啦电解质水柠檬味555ml': '东鹏补水啦555ml'
+}
 
 function toHalfWidth(value: string): string {
   let result = ''
@@ -92,7 +100,8 @@ export function normalizeProductName(rawValue: string): string {
   for (const word of STOPWORDS) {
     name = name.split(word).join('')
   }
-  return name.trim()
+  const normalized = name.trim()
+  return PRODUCT_NAME_ALIASES[normalized] || normalized
 }
 
 function bigrams(value: string): Set<string> {

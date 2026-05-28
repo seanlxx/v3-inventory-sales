@@ -307,11 +307,27 @@ const preProductsResult = await preImportZnProducts(envPreProducts, {
       serviceFee: 0,
       discount: 0,
       date: '2026-05-20 12:00:00'
+    },
+    {
+      vendorOrderNo: 'pre-products-12',
+      title: '',
+      status: '已完成',
+      deviceCode: 'TBN5CFA0261G547T5D3',
+      vendorProductName: '东鹏补水电解质饮料柠檬味555ml',
+      unitPrice: 3.5,
+      quantity: 1,
+      lineAmount: 3.5,
+      receivedAmount: 3.5,
+      refundAmount: 0,
+      platformFee: 0,
+      serviceFee: 0,
+      discount: 0,
+      date: '2026-05-20 12:00:00'
     }
   ]
 });
-assert.equal(preProductsResult.summary.productsParsed, 6, '商品预导入应按标准名称去重并合并旧别名');
-assert.equal(preProductsResult.summary.productsCreated, 6, '商品预导入应先创建缺失商品');
+assert.equal(preProductsResult.summary.productsParsed, 7, '商品预导入应按标准名称去重并合并旧别名');
+assert.equal(preProductsResult.summary.productsCreated, 7, '商品预导入应先创建缺失商品');
 assert.equal(preProductsResult.summary.rowsSkipped, 1, '0 数量商品行应跳过');
 const preProduct = envPreProducts.DB.queryOne('SELECT machine_id, name, normalized_name, external_id FROM products WHERE normalized_name = ?', '冰露饮用纯净水500ml');
 assert.equal(preProduct.machine_id, '1/2号机', 'zn 商品预导入应写入折叠商品机台');
@@ -322,6 +338,7 @@ const preProductNames = envPreProducts.DB.query('SELECT name, normalized_name FR
 assert.deepEqual(
   preProductNames.map(item => [item.name, item.normalized_name]),
   [
+    ['东鹏补水啦555ml', '东鹏补水啦555ml'],
     ['东鹏补水啦电解质水柠檬味1l', '东鹏补水啦电解质水柠檬味1l'],
     ['农夫山泉水溶c100复合果汁饮料445ml', '农夫山泉水溶c100复合果汁饮料445ml'],
     ['冰露饮用纯净水500ml', '冰露饮用纯净水500ml'],
@@ -351,7 +368,7 @@ const preProductsAgain = await preImportZnProducts(envPreProducts, {
 });
 assert.equal(preProductsAgain.summary.productsCreated, 0, '商品预导入重复执行不应重复建商品');
 assert.equal(preProductsAgain.summary.productsExisting, 1, '商品预导入重复执行应识别已有商品');
-assert.equal(envPreProducts.DB.queryOne('SELECT COUNT(*) AS n FROM products').n, 6, '商品预导入应保持幂等');
+assert.equal(envPreProducts.DB.queryOne('SELECT COUNT(*) AS n FROM products').n, 7, '商品预导入应保持幂等');
 
 const parsedRefundRow = normalizeZnRefundRow({
   '退款订单号': 'refund-test-1',
