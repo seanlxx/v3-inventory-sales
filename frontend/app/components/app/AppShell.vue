@@ -29,37 +29,14 @@ const fallbackNavigationItem: NavigationItem = {
 }
 
 const route = useRoute()
-const {
-  username,
-  isAuthenticated,
-  logout
-} = useAuth()
 const { loading } = useApi()
 const toastStore = useToastStore()
-const mounted = shallowRef(false)
 
 const currentNavigationItem = computed(() =>
   navigationItems.find(item => item.to === route.path.replace(/\/$/, '')) ?? fallbackNavigationItem
 )
 
 const mobileNavigationItems = computed(() => navigationItems.filter(item => item.mobile))
-const authReady = computed(() => mounted.value && isAuthenticated.value)
-const authLabel = computed(() => authReady.value ? username.value || '已登录' : '未登录')
-
-function goToLogin() {
-  navigateTo('/login')
-}
-
-// 监听登录态变化，当处于 AppShell 布局下但登录状态失效时，重定向到登录页
-watch(isAuthenticated, (authenticated) => {
-  if (!authenticated && mounted.value) {
-    navigateTo('/login')
-  }
-})
-
-onMounted(() => {
-  mounted.value = true
-})
 </script>
 
 <template>
@@ -119,23 +96,7 @@ onMounted(() => {
             readonly
           />
           <StatusBadge v-if="loading" label="请求中" tone="warning" />
-          <StatusBadge v-else :label="authLabel" :tone="authReady ? 'success' : 'neutral'" />
-          <AppButton
-            v-if="!authReady"
-            variant="primary"
-            size="sm"
-            @click="goToLogin"
-          >
-            登录
-          </AppButton>
-          <AppButton
-            v-else
-            variant="ghost"
-            size="sm"
-            @click="logout"
-          >
-            退出
-          </AppButton>
+          <StatusBadge v-else label="游客访问" tone="neutral" />
           <NuxtLink class="app-shell__settings-link" to="/settings" aria-label="打开设置">
             设置
           </NuxtLink>
@@ -147,10 +108,7 @@ onMounted(() => {
       </div>
 
       <main class="app-shell__content">
-        <slot v-if="authReady" />
-        <div v-else class="app-shell__auth-redirect">
-          正在重定向至安全登录中心...
-        </div>
+        <slot />
       </main>
     </div>
 
@@ -361,16 +319,6 @@ onMounted(() => {
   background: var(--color-surface);
   color: var(--color-text);
   text-decoration: none;
-  font-size: 14px;
-}
-
-.app-shell__auth-redirect {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 200px;
-  color: var(--color-text-muted);
-  font-weight: 600;
   font-size: 14px;
 }
 
