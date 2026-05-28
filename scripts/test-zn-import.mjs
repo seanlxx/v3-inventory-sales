@@ -8,6 +8,8 @@ import * as XLSX from '../output/xlsx-inspect/node_modules/xlsx/xlsx.mjs';
 
 import { listSales } from '../functions/api/_shared/inventory-service.js';
 import { importZnSettlement } from '../functions/api/integrations/zn/import-settlement.js';
+import { importZnRefunds } from '../functions/api/integrations/zn/import-refunds.js';
+import { normalizeZnRefundRow } from '../frontend/app/composables/useZnExcel.ts';
 import { preImportZnProducts, runZnImport } from '../functions/api/_shared/zn/importer.js';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -350,6 +352,170 @@ const preProductsAgain = await preImportZnProducts(envPreProducts, {
 assert.equal(preProductsAgain.summary.productsCreated, 0, '商品预导入重复执行不应重复建商品');
 assert.equal(preProductsAgain.summary.productsExisting, 1, '商品预导入重复执行应识别已有商品');
 assert.equal(envPreProducts.DB.queryOne('SELECT COUNT(*) AS n FROM products').n, 6, '商品预导入应保持幂等');
+
+const parsedRefundRow = normalizeZnRefundRow({
+  '退款订单号': 'refund-test-1',
+  '设备名称': '工厂测试47T5D3',
+  '订单号': 'visionpay-order-1',
+  '订单实付金额': 6,
+  '退款金额(元)': 6,
+  '购买时间': '2026年05月20日12时00分',
+  '支付时间': '2026年05月20日12时01分',
+  '交易号': 'trade-1',
+  '商品名称': '冰露矿泉水550ml',
+  '商品条码': '6928804013740-1',
+  '商品数量': 1,
+  '商品单价': 6,
+  '支付方式': '其他',
+  '订单状态': '已完成',
+  '退款状态': '退款成功',
+  '退款时间': '2026年05月20日12时02分',
+  '退款人': '管理员',
+  '退款备注': '处理客户退款'
+});
+assert.equal(parsedRefundRow?.refundOrderNo, 'refund-test-1', '退款明细应解析退款订单号');
+assert.equal(parsedRefundRow?.deviceName, '工厂测试47T5D3', '退款明细应解析设备名称');
+assert.equal(parsedRefundRow?.originalOrderNo, 'visionpay-order-1', '退款明细应解析原订单号');
+assert.equal(parsedRefundRow?.refundAmount, 6, '退款明细应解析退款金额');
+assert.equal(parsedRefundRow?.vendorProductName, '冰露矿泉水550ml', '退款明细应解析商品名');
+assert.equal(parsedRefundRow?.quantity, 1, '退款明细应解析商品数量');
+
+const envRefunds = { DB: new D1Database() };
+loadBaseSchema(envRefunds);
+const refundTimestamp = '2026-05-20T00:00:00.000Z';
+await envRefunds.DB.prepare(`
+  INSERT INTO products (
+    id, machine_id, name, category, sell_price_cents, status,
+    created_at, updated_at, normalized_name, external_id
+  ) VALUES (
+    'refund-water', '1/2号机', '冰露饮用纯净水500ml', '饮料', 100, 'active',
+    ?, ?, '冰露饮用纯净水500ml', '6928804013740'
+  )
+`).bind(refundTimestamp, refundTimestamp).run();
+await envRefunds.DB.prepare(`
+  INSERT INTO inventory_balances (
+    product_id, machine_id, quantity_on_hand, avg_cost_cents, inventory_value_cents,
+    total_purchase_qty, total_purchase_cost_cents, updated_at
+  ) VALUES ('refund-water', '1号机', 9, 60, 540, 10, 600, ?)
+`).bind(refundTimestamp).run();
+await envRefunds.DB.prepare(`
+  INSERT INTO sales_orders (
+    id, type, machine_id, record_date, year_month, total_amount_cents, total_cogs_cents,
+    platform_fee_cents, service_fee_cents, discount_cents, refund_amount_cents, received_amount_cents,
+    note, image_asset_id, voided_at, created_at, updated_at, external_id, source
+  ) VALUES (
+    'zn:visionpay-refund-original', 'sale', '1号机', '2026-05-20', '2026-05',
+    500, 60, 0, 0, 0, 0, 500, '原销售', NULL, NULL, ?, ?,
+    'visionpay-refund-original', 'zn'
+  )
+`).bind(refundTimestamp, refundTimestamp).run();
+await envRefunds.DB.prepare(`
+  INSERT INTO sales_items (
+    id, sales_order_id, product_id, quantity, unit_price_cents, unit_cost_cents,
+    line_amount_cents, line_cogs_cents, created_at
+  ) VALUES (
+    'zn:visionpay-refund-original:0', 'zn:visionpay-refund-original',
+    'refund-water', 1, 500, 60, 500, 60, ?
+  )
+`).bind(refundTimestamp).run();
+
+const refundRows = [
+  {
+    refundOrderNo: 'refund-full-1',
+    deviceName: '工厂测试47T5D3',
+    originalOrderNo: 'visionpay-refund-original',
+    paidAmount: 5,
+    refundAmount: 5,
+    purchaseTime: '2026年05月20日12时00分',
+    paidAt: '2026年05月20日12时01分',
+    transactionNo: 'trade-full',
+    vendorProductName: '冰露矿泉水550ml',
+    vendorBarcode: '6928804013740-1',
+    quantity: 1,
+    unitPrice: 5,
+    payMethod: '其他',
+    orderStatus: '已完成',
+    refundStatus: '退款成功',
+    refundTime: '2026年05月20日12时02分',
+    operator: '管理员',
+    note: '处理客户退款'
+  },
+  {
+    refundOrderNo: 'refund-partial-1',
+    deviceName: '工厂测试47T5D3',
+    originalOrderNo: 'visionpay-refund-original',
+    paidAmount: 5,
+    refundAmount: 1.5,
+    purchaseTime: '2026年05月20日12时00分',
+    paidAt: '2026年05月20日12时01分',
+    transactionNo: 'trade-partial',
+    vendorProductName: '冰露矿泉水550ml',
+    vendorBarcode: '6928804013740-1',
+    quantity: 1,
+    unitPrice: 5,
+    payMethod: '其他',
+    orderStatus: '已完成',
+    refundStatus: '退款成功',
+    refundTime: '2026年05月20日13时02分',
+    operator: '管理员',
+    note: '补商品差价'
+  },
+  {
+    refundOrderNo: 'refund-missing-1',
+    deviceName: '工厂测试47T5D3',
+    originalOrderNo: 'visionpay-missing',
+    paidAmount: 5,
+    refundAmount: 5,
+    purchaseTime: '2026年05月20日12时00分',
+    paidAt: '2026年05月20日12时01分',
+    transactionNo: 'trade-missing',
+    vendorProductName: '冰露矿泉水550ml',
+    vendorBarcode: '6928804013740-1',
+    quantity: 1,
+    unitPrice: 5,
+    payMethod: '其他',
+    orderStatus: '已完成',
+    refundStatus: '退款成功',
+    refundTime: '2026年05月20日14时02分',
+    operator: '管理员',
+    note: '处理客户退款'
+  }
+];
+
+const refundResult = await importZnRefunds(envRefunds, { refunds: refundRows });
+assert.equal(refundResult.summary.refundsParsed, 3, '退款导入应解析退款单');
+assert.equal(refundResult.summary.refundsImported, 2, '退款导入应写入匹配到原订单的退款');
+assert.equal(refundResult.summary.refundsMissing, 1, '退款导入应报告找不到原订单的退款');
+assert.equal(refundResult.summary.linesImported, 2, '退款导入应写入退款明细行');
+assert.equal(refundResult.summary.stockRestored, 1, '全额退款应回补库存');
+assert.equal(refundResult.summary.amountOnly, 1, '部分退款应只记金额不回补库存');
+const refundOrders = envRefunds.DB.query(`
+  SELECT external_id, total_amount_cents, total_cogs_cents, refund_amount_cents
+  FROM sales_orders
+  WHERE type = 'refund'
+  ORDER BY external_id
+`);
+assert.deepEqual(
+  refundOrders.map(order => [order.external_id, order.total_amount_cents, order.total_cogs_cents, order.refund_amount_cents]),
+  [
+    ['refund:refund-full-1', 500, 60, 500],
+    ['refund:refund-partial-1', 150, 0, 150]
+  ],
+  '退款单应分别记录全额退款和仅金额退款'
+);
+assert.equal(
+  envRefunds.DB.queryOne('SELECT quantity_on_hand FROM inventory_balances WHERE product_id = ? AND machine_id = ?', 'refund-water', '1号机').quantity_on_hand,
+  10,
+  '只有全额退款应回补库存数量'
+);
+assert.equal(
+  envRefunds.DB.queryOne('SELECT COUNT(*) AS n FROM stock_movements WHERE movement_type = ?', 'refund').n,
+  1,
+  '部分退款不应写库存退款流水'
+);
+const refundAgain = await importZnRefunds(envRefunds, { refunds: refundRows.slice(0, 2) });
+assert.equal(refundAgain.summary.refundsImported, 0, '重复退款导入不应再次写入');
+assert.equal(refundAgain.summary.refundsDuplicate, 2, '重复退款导入应识别重复');
 
 const xlsxPath = firstExistingPath([
   process.env.ZN_IMPORT_XLSX,

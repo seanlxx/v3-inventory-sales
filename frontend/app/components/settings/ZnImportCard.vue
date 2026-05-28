@@ -2,8 +2,10 @@
 import { useApi } from '~/composables/useApi'
 import {
   normalizeZnOrderRow,
+  normalizeZnRefundRow,
   normalizeZnSettlementRow,
   type ZnOrderRow,
+  type ZnRefundRow,
   type ZnSettlementRow
 } from '~/composables/useZnExcel'
 import { useToastStore } from '~/stores/toast'
@@ -54,7 +56,24 @@ type SettlementResult = {
   warnings: string[]
 }
 
-type ImportMode = 'orders' | 'settlements'
+type RefundSummary = {
+  refundsParsed: number
+  refundsImported: number
+  refundsDuplicate: number
+  refundsSkipped: number
+  refundsMissing: number
+  linesImported: number
+  stockRestored: number
+  amountOnly: number
+  warnings: number
+}
+
+type RefundResult = {
+  summary: RefundSummary
+  warnings: string[]
+}
+
+type ImportMode = 'orders' | 'settlements' | 'refunds'
 
 const api = useApi()
 const toast = useToastStore()
@@ -65,9 +84,11 @@ const parsing = ref(false)
 const submitting = ref(false)
 const rows = ref<ZnOrderRow[]>([])
 const settlementRows = ref<ZnSettlementRow[]>([])
+const refundRows = ref<ZnRefundRow[]>([])
 const result = ref<ImportResult | null>(null)
 const productResult = ref<ProductImportResult | null>(null)
 const settlementResult = ref<SettlementResult | null>(null)
+const refundResult = ref<RefundResult | null>(null)
 const errorMessage = ref('')
 const importProgress = ref('')
 const IMPORT_BATCH_SIZE = 80
@@ -128,7 +149,68 @@ const settlementSummaryCount = computed(() => {
   }
 })
 
-const currentRowsCount = computed(() => activeMode.value === 'orders' ? rows.value.length : settlementRows.value.length)
+const refundSummaryCount = computed(() => {
+  if (refundRows.value.length === 0) return null
+  const devices = new Set<string>()
+  const refundOrders = new Set<string>()
+  const originalOrders = new Set<string>()
+  let successful = 0
+  let otherStatus = 0
+  let amountOnlyCandidates = 0
+  let fullReturnCandidates = 0
+  let currentRefundNo = ''
+  let currentOriginalNo = ''
+  let currentRefundAmount = 0
+  let currentLineAmount = 0
+  let currentDevice = ''
+  let currentStatus = ''
+
+  function finishCurrent() {
+    if (!currentRefundNo) return
+    refundOrders.add(currentRefundNo)
+    if (currentOriginalNo) originalOrders.add(currentOriginalNo)
+    if (currentDevice) devices.add(currentDevice)
+    if (!currentStatus || currentStatus === '退款成功') successful += 1
+    else otherStatus += 1
+    if (currentRefundAmount > 0 && currentLineAmount > 0 && Math.abs(currentRefundAmount - currentLineAmount) <= 0.01) {
+      fullReturnCandidates += 1
+    } else {
+      amountOnlyCandidates += 1
+    }
+  }
+
+  for (const row of refundRows.value) {
+    if (row.refundOrderNo) {
+      finishCurrent()
+      currentRefundNo = row.refundOrderNo
+      currentOriginalNo = row.originalOrderNo
+      currentRefundAmount = row.refundAmount
+      currentLineAmount = 0
+      currentDevice = row.deviceName
+      currentStatus = row.refundStatus
+    }
+    if (!currentRefundNo) continue
+    currentLineAmount += Math.max(0, row.quantity * row.unitPrice)
+  }
+  finishCurrent()
+
+  return {
+    total: refundRows.value.length,
+    devices: Array.from(devices),
+    refundOrders: refundOrders.size,
+    originalOrders: originalOrders.size,
+    successful,
+    otherStatus,
+    fullReturnCandidates,
+    amountOnlyCandidates
+  }
+})
+
+const currentRowsCount = computed(() => {
+  if (activeMode.value === 'orders') return rows.value.length
+  if (activeMode.value === 'settlements') return settlementRows.value.length
+  return refundRows.value.length
+})
 
 function isImportableRow(row: ZnOrderRow) {
   return row.status === '已完成'
@@ -204,8 +286,10 @@ async function onFileChange(event: Event) {
   result.value = null
   productResult.value = null
   settlementResult.value = null
+  refundResult.value = null
   if (activeMode.value === 'orders') rows.value = []
-  else settlementRows.value = []
+  else if (activeMode.value === 'settlements') settlementRows.value = []
+  else refundRows.value = []
   fileName.value = file.name
 
   try {
@@ -223,12 +307,18 @@ async function onFileChange(event: Event) {
         .filter((row): row is ZnOrderRow => row !== null)
       if (parsed.length === 0) throw new Error('未解析出任何订单行，请检查表头')
       rows.value = parsed
-    } else {
+    } else if (activeMode.value === 'settlements') {
       const parsed = json
         .map(normalizeZnSettlementRow)
         .filter((row): row is ZnSettlementRow => row !== null)
       if (parsed.length === 0) throw new Error('未解析出任何结算行，请检查表头')
       settlementRows.value = parsed
+    } else {
+      const parsed = json
+        .map(normalizeZnRefundRow)
+        .filter((row): row is ZnRefundRow => row !== null)
+      if (parsed.length === 0) throw new Error('未解析出任何退款行，请检查表头')
+      refundRows.value = parsed
     }
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : 'Excel 解析失败'
@@ -322,6 +412,20 @@ async function submitSettlements() {
   )
 }
 
+async function submitRefunds() {
+  if (refundRows.value.length === 0) return
+  importProgress.value = '正在导入退款明细...'
+  const response = await api.request<RefundResult>('/integrations/zn/import-refunds', {
+    method: 'POST',
+    body: { refunds: refundRows.value }
+  })
+  refundResult.value = response
+  toast.show(
+    `已导入 ${response.summary.refundsImported} 笔退款，未匹配 ${response.summary.refundsMissing}`,
+    'success'
+  )
+}
+
 async function submit() {
   if (currentRowsCount.value === 0) return
   submitting.value = true
@@ -329,7 +433,8 @@ async function submit() {
   importProgress.value = ''
   try {
     if (activeMode.value === 'orders') await submitOrders()
-    else await submitSettlements()
+    else if (activeMode.value === 'settlements') await submitSettlements()
+    else await submitRefunds()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '导入失败'
     toast.show(errorMessage.value, 'danger')
@@ -341,11 +446,13 @@ async function submit() {
 
 function reset() {
   if (activeMode.value === 'orders') rows.value = []
-  else settlementRows.value = []
+  else if (activeMode.value === 'settlements') settlementRows.value = []
+  else refundRows.value = []
   fileName.value = ''
   result.value = null
   productResult.value = null
   settlementResult.value = null
+  refundResult.value = null
   errorMessage.value = ''
   importProgress.value = ''
 }
@@ -377,6 +484,15 @@ function reset() {
         >
           交易账单
         </button>
+        <button
+          type="button"
+          :class="['zn-import__tab', { 'zn-import__tab--active': activeMode === 'refunds' }]"
+          :aria-selected="activeMode === 'refunds'"
+          role="tab"
+          @click="setMode('refunds')"
+        >
+          退款明细
+        </button>
       </div>
 
       <div class="zn-import__upload">
@@ -387,13 +503,25 @@ function reset() {
             :disabled="parsing || submitting"
             @change="onFileChange"
           >
-          <span>{{ fileName || (activeMode === 'orders' ? '选择订单明细 .xlsx' : '选择交易账单 .xlsx') }}</span>
+          <span>
+            {{
+              fileName
+                || (activeMode === 'orders'
+                  ? '选择订单明细 .xlsx'
+                  : activeMode === 'settlements'
+                    ? '选择交易账单 .xlsx'
+                    : '选择退款明细 .xlsx')
+            }}
+          </span>
         </label>
         <p v-if="activeMode === 'orders'" class="zn-import__hint">
           支持 zn 平台后台 → 账户信息 → 订单明细 导出的原始 Excel；只导入「已完成」状态、无退款的订单。
         </p>
-        <p v-else class="zn-import__hint">
+        <p v-else-if="activeMode === 'settlements'" class="zn-import__hint">
           支持 zn 平台后台 → 账户信息 → 交易账单 导出的原始 Excel；按订单号回写手续费、算法服务费与实收金额。
+        </p>
+        <p v-else class="zn-import__hint">
+          支持 zn 平台后台 → 退款明细 导出的原始 Excel；全额退款回补库存，部分退款只记退款金额。
         </p>
       </div>
 
@@ -462,6 +590,37 @@ function reset() {
         </div>
       </section>
 
+      <section v-if="activeMode === 'refunds' && refundSummaryCount" class="zn-import__summary">
+        <div class="zn-import__summary-item">
+          <span>总行数</span>
+          <strong>{{ refundSummaryCount.total }}</strong>
+        </div>
+        <div class="zn-import__summary-item">
+          <span>退款单</span>
+          <strong>{{ refundSummaryCount.refundOrders }}</strong>
+        </div>
+        <div class="zn-import__summary-item">
+          <span>原订单</span>
+          <strong>{{ refundSummaryCount.originalOrders }}</strong>
+        </div>
+        <div class="zn-import__summary-item">
+          <span>退款成功</span>
+          <strong>{{ refundSummaryCount.successful }}</strong>
+        </div>
+        <div class="zn-import__summary-item">
+          <span>全额回补</span>
+          <strong>{{ refundSummaryCount.fullReturnCandidates }}</strong>
+        </div>
+        <div class="zn-import__summary-item">
+          <span>仅金额</span>
+          <strong>{{ refundSummaryCount.amountOnlyCandidates }}</strong>
+        </div>
+        <div class="zn-import__summary-item">
+          <span>设备数</span>
+          <strong>{{ refundSummaryCount.devices.length }}</strong>
+        </div>
+      </section>
+
       <div v-if="currentRowsCount > 0" class="zn-import__actions">
         <AppButton type="button" variant="secondary" :disabled="submitting" @click="reset">
           重新选择
@@ -476,7 +635,13 @@ function reset() {
           先新建商品
         </AppButton>
         <AppButton type="button" :loading="submitting" @click="submit">
-          {{ activeMode === 'orders' ? `确认导入 ${rows.length} 行` : `确认回写 ${settlementRows.length} 行` }}
+          {{
+            activeMode === 'orders'
+              ? `确认导入 ${rows.length} 行`
+              : activeMode === 'settlements'
+                ? `确认回写 ${settlementRows.length} 行`
+                : `确认导入 ${refundRows.length} 行`
+          }}
         </AppButton>
       </div>
 
@@ -601,6 +766,52 @@ function reset() {
           </ul>
         </details>
       </section>
+
+      <section v-if="refundResult" class="zn-import__result">
+        <h3>退款导入完成</h3>
+        <div class="zn-import__summary">
+          <div class="zn-import__summary-item">
+            <span>解析退款单</span>
+            <strong>{{ refundResult.summary.refundsParsed }}</strong>
+          </div>
+          <div class="zn-import__summary-item">
+            <span>已导入</span>
+            <strong>{{ refundResult.summary.refundsImported }}</strong>
+          </div>
+          <div class="zn-import__summary-item">
+            <span>重复</span>
+            <strong>{{ refundResult.summary.refundsDuplicate }}</strong>
+          </div>
+          <div class="zn-import__summary-item">
+            <span>未匹配</span>
+            <strong>{{ refundResult.summary.refundsMissing }}</strong>
+          </div>
+          <div class="zn-import__summary-item">
+            <span>明细行</span>
+            <strong>{{ refundResult.summary.linesImported }}</strong>
+          </div>
+          <div class="zn-import__summary-item">
+            <span>回补库存</span>
+            <strong>{{ refundResult.summary.stockRestored }}</strong>
+          </div>
+          <div class="zn-import__summary-item">
+            <span>仅金额</span>
+            <strong>{{ refundResult.summary.amountOnly }}</strong>
+          </div>
+          <div class="zn-import__summary-item">
+            <span>警告</span>
+            <strong>{{ refundResult.summary.warnings }}</strong>
+          </div>
+        </div>
+        <details v-if="refundResult.warnings.length > 0" class="zn-import__warnings">
+          <summary>警告明细（{{ refundResult.warnings.length }}）</summary>
+          <ul>
+            <li v-for="(warning, index) in refundResult.warnings" :key="index">
+              {{ warning }}
+            </li>
+          </ul>
+        </details>
+      </section>
     </div>
   </SettingsSection>
 </template>
@@ -619,8 +830,8 @@ function reset() {
 
 .zn-import__tabs {
   display: inline-grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  width: min(360px, 100%);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: min(480px, 100%);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-2);
   padding: 3px;

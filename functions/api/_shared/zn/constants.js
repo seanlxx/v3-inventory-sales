@@ -11,3 +11,16 @@ export function mapZnDeviceToMachine(deviceCode) {
   const key = String(deviceCode || '').trim();
   return ZN_DEVICE_TO_MACHINE[key] || null;
 }
+
+export function mapZnDeviceLabelToMachine(value) {
+  const text = String(value || '').trim();
+  const direct = mapZnDeviceToMachine(text);
+  if (direct) return direct;
+
+  for (const [deviceCode, machineId] of Object.entries(ZN_DEVICE_TO_MACHINE)) {
+    if (text.includes(deviceCode) || text.includes(deviceCode.slice(-6))) {
+      return machineId;
+    }
+  }
+  return null;
+}

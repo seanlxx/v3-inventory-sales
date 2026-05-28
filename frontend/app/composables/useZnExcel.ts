@@ -29,6 +29,27 @@ export type ZnSettlementRow = {
   settledAt: string
 }
 
+export type ZnRefundRow = {
+  refundOrderNo: string
+  deviceName: string
+  originalOrderNo: string
+  paidAmount: number
+  refundAmount: number
+  purchaseTime: string
+  paidAt: string
+  transactionNo: string
+  vendorProductName: string
+  vendorBarcode: string
+  quantity: number
+  unitPrice: number
+  payMethod: string
+  orderStatus: string
+  refundStatus: string
+  refundTime: string
+  operator: string
+  note: string
+}
+
 export function pickZnField(row: Record<string, unknown>, names: string[]): string {
   for (const key of Object.keys(row)) {
     const trimmed = key.trim()
@@ -96,5 +117,48 @@ export function normalizeZnSettlementRow(raw: Record<string, unknown>): ZnSettle
     payMethod,
     incomeType,
     settledAt
+  }
+}
+
+export function normalizeZnRefundRow(raw: Record<string, unknown>): ZnRefundRow | null {
+  const refundOrderNo = pickZnField(raw, ['退款订单号'])
+  const deviceName = pickZnField(raw, ['设备名称', '设备编号'])
+  const originalOrderNo = pickZnField(raw, ['订单号'])
+  const paidAmount = znNumber(pickZnField(raw, ['订单实付金额']))
+  const refundAmount = znNumber(pickZnField(raw, ['退款金额']))
+  const purchaseTime = pickZnField(raw, ['购买时间'])
+  const paidAt = pickZnField(raw, ['支付时间'])
+  const transactionNo = pickZnField(raw, ['交易号'])
+  const vendorProductName = pickZnField(raw, ['商品名称'])
+  const vendorBarcode = pickZnField(raw, ['商品条码'])
+  const quantity = Math.max(0, Number(pickZnField(raw, ['商品数量'])) || 0)
+  const unitPrice = znNumber(pickZnField(raw, ['商品单价']))
+  const payMethod = pickZnField(raw, ['支付方式'])
+  const orderStatus = pickZnField(raw, ['订单状态'])
+  const refundStatus = pickZnField(raw, ['退款状态'])
+  const refundTime = pickZnField(raw, ['退款时间'])
+  const operator = pickZnField(raw, ['退款人'])
+  const note = pickZnField(raw, ['退款备注'])
+
+  if (!refundOrderNo && !originalOrderNo && !deviceName && !vendorProductName) return null
+  return {
+    refundOrderNo,
+    deviceName,
+    originalOrderNo,
+    paidAmount,
+    refundAmount,
+    purchaseTime,
+    paidAt,
+    transactionNo,
+    vendorProductName,
+    vendorBarcode,
+    quantity,
+    unitPrice,
+    payMethod,
+    orderStatus,
+    refundStatus,
+    refundTime,
+    operator,
+    note
   }
 }
