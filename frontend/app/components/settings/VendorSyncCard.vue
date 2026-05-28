@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useVendorSync } from '~/composables/useVendorSync'
-import type { VendorSyncPayload, VendorSyncRun, VendorSyncScope, VendorSyncSchedulePayload, VendorSyncSummary } from '~/types/vendorSync'
+import type { VendorSyncPayload, VendorSyncRun, VendorSyncScope, VendorSyncSummary } from '~/types/vendorSync'
 import { formatDateTime, formatQuantity } from '~/utils/format'
 
 const {
@@ -8,11 +8,9 @@ const {
   latestRun,
   loading,
   syncing,
-  savingSchedule,
   error,
   loadStatus,
-  sync,
-  saveSchedule
+  sync
 } = useVendorSync()
 
 const today = new Date().toISOString().slice(0, 10)
@@ -23,17 +21,6 @@ const form = reactive({
   includeSales: true
 })
 const formError = shallowRef('')
-
-const scheduleForm = reactive({
-  enabled: false,
-  mode: 'daily' as 'daily' | 'interval',
-  dailyTime: '09:00',
-  intervalMinutes: 60,
-  windowDays: 1,
-  includeInventory: true,
-  includeSales: true
-})
-const scheduleError = shallowRef('')
 
 const credentialsTone = computed(() => status.value.credentials.configured ? 'success' : 'warning')
 const credentialsLabel = computed(() => status.value.credentials.configured ? '已配置' : '未配置')
@@ -50,30 +37,10 @@ const runLabel = computed(() => {
   return '同步中'
 })
 
-const scheduleTone = computed(() => status.value.schedule.enabled ? 'success' : 'neutral')
-const scheduleLabel = computed(() => status.value.schedule.enabled ? '已启用' : '未启用')
-const nextRunDisplay = computed(() => {
-  const ts = status.value.schedule.nextRunAt
-  if (!ts) return '-'
-  return formatDateTime(new Date(ts).toISOString())
-})
-const lastTriggerDisplay = computed(() => {
-  const ts = status.value.schedule.lastTriggerAt
-  if (!ts) return '-'
-  return formatDateTime(new Date(ts).toISOString())
-})
-
 function selectedScope(): VendorSyncScope[] {
   const scope: VendorSyncScope[] = []
   if (form.includeInventory) scope.push('inventory')
   if (form.includeSales) scope.push('sales')
-  return scope
-}
-
-function selectedScheduleScope(): VendorSyncScope[] {
-  const scope: VendorSyncScope[] = []
-  if (scheduleForm.includeInventory) scope.push('inventory')
-  if (scheduleForm.includeSales) scope.push('sales')
   return scope
 }
 
@@ -130,66 +97,8 @@ function runTime(run: VendorSyncRun | null) {
   return formatDateTime(new Date(run.finishedAt || run.startedAt).toISOString())
 }
 
-function applyScheduleFromStatus() {
-  const s = status.value.schedule
-  scheduleForm.enabled = !!s.enabled
-  scheduleForm.mode = s.mode === 'interval' ? 'interval' : 'daily'
-  scheduleForm.dailyTime = s.dailyTime || '09:00'
-  scheduleForm.intervalMinutes = s.intervalMinutes || 60
-  scheduleForm.windowDays = s.windowDays || 1
-  scheduleForm.includeInventory = (s.scope || []).includes('inventory')
-  scheduleForm.includeSales = (s.scope || []).includes('sales')
-  if (!scheduleForm.includeInventory && !scheduleForm.includeSales) {
-    scheduleForm.includeInventory = true
-    scheduleForm.includeSales = true
-  }
-}
-
-function validateSchedule() {
-  scheduleError.value = ''
-  if (scheduleForm.mode === 'daily') {
-    if (!/^([0-1]?\d|2[0-3]):[0-5]\d$/.test(scheduleForm.dailyTime)) {
-      scheduleError.value = '请填写有效的时间（HH:MM，例如 09:00）'
-      return false
-    }
-  } else {
-    const n = Number(scheduleForm.intervalMinutes)
-    if (!Number.isFinite(n) || n < 5 || n > 1440) {
-      scheduleError.value = '间隔必须在 5–1440 分钟之间'
-      return false
-    }
-  }
-  const w = Number(scheduleForm.windowDays)
-  if (!Number.isFinite(w) || w < 1 || w > 31) {
-    scheduleError.value = '同步窗口必须在 1–31 天之间'
-    return false
-  }
-  if (selectedScheduleScope().length === 0) {
-    scheduleError.value = '请至少选择一个同步内容'
-    return false
-  }
-  return true
-}
-
-async function submitSchedule() {
-  if (!validateSchedule()) return
-  const payload: VendorSyncSchedulePayload = {
-    enabled: scheduleForm.enabled,
-    mode: scheduleForm.mode,
-    dailyTime: scheduleForm.dailyTime,
-    intervalMinutes: Number(scheduleForm.intervalMinutes) || 60,
-    scope: selectedScheduleScope(),
-    windowDays: Number(scheduleForm.windowDays) || 1,
-    timezoneOffsetMinutes: -new Date().getTimezoneOffset()
-  }
-  await saveSchedule(payload).catch(() => null)
-}
-
-watch(() => status.value.schedule, applyScheduleFromStatus, { deep: true })
-
 onMounted(async () => {
   await loadStatus()
-  applyScheduleFromStatus()
 })
 </script>
 
@@ -227,85 +136,6 @@ onMounted(async () => {
         <p v-else-if="error" class="vendor-sync__error">
           {{ error.message }}
         </p>
-      </section>
-
-      <section class="vendor-sync__schedule">
-        <header class="vendor-sync__schedule-header">
-          <div>
-            <strong>自动同步</strong>
-            <span>由 Cloudflare Worker 每 5 分钟唤醒一次，到点才会真正运行同步。</span>
-          </div>
-          <StatusBadge :label="scheduleLabel" :tone="scheduleTone" />
-        </header>
-
-        <div class="vendor-sync__schedule-meta">
-          <div>
-            <span>下次运行</span>
-            <strong>{{ nextRunDisplay }}</strong>
-          </div>
-          <div>
-            <span>上次触发</span>
-            <strong>{{ lastTriggerDisplay }}</strong>
-          </div>
-        </div>
-
-        <form class="vendor-sync__form" @submit.prevent="submitSchedule">
-          <label class="vendor-sync__schedule-toggle">
-            <input v-model="scheduleForm.enabled" type="checkbox">
-            <span>启用自动同步</span>
-          </label>
-
-          <div class="vendor-sync__schedule-modes">
-            <label>
-              <input v-model="scheduleForm.mode" type="radio" value="daily">
-              <span>每天定时</span>
-            </label>
-            <label>
-              <input v-model="scheduleForm.mode" type="radio" value="interval">
-              <span>固定间隔</span>
-            </label>
-          </div>
-
-          <div class="vendor-sync__grid">
-            <AppInput
-              v-if="scheduleForm.mode === 'daily'"
-              v-model="scheduleForm.dailyTime"
-              label="每天运行时间"
-              type="time"
-            />
-            <AppInput
-              v-else
-              v-model.number="scheduleForm.intervalMinutes"
-              label="间隔（分钟，5–1440）"
-              type="number"
-            />
-            <AppInput
-              v-model.number="scheduleForm.windowDays"
-              label="同步窗口（天，1–31）"
-              type="number"
-            />
-            <div class="vendor-sync__checks">
-              <label>
-                <input v-model="scheduleForm.includeInventory" type="checkbox">
-                <span>库存/售价/成本</span>
-              </label>
-              <label>
-                <input v-model="scheduleForm.includeSales" type="checkbox">
-                <span>销售</span>
-              </label>
-            </div>
-          </div>
-
-          <p v-if="scheduleError" class="vendor-sync__error">
-            {{ scheduleError }}
-          </p>
-
-          <div class="vendor-sync__actions">
-            <AppButton type="submit" :loading="savingSchedule">
-              保存自动同步设置
-            </AppButton>
-          </div>
-        </form>
       </section>
 
       <form class="vendor-sync__form" @submit.prevent="submit(true)">
@@ -478,79 +308,6 @@ onMounted(async () => {
   padding-left: var(--space-4);
   color: var(--color-text-muted);
   line-height: 1.6;
-}
-
-.vendor-sync__schedule {
-  display: grid;
-  gap: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-2);
-  padding: var(--space-4);
-  background: var(--color-surface-subtle);
-}
-
-.vendor-sync__schedule-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.vendor-sync__schedule-header div {
-  display: grid;
-  gap: 4px;
-}
-
-.vendor-sync__schedule-header span {
-  color: var(--color-text-muted);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.vendor-sync__schedule-meta {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2);
-}
-
-.vendor-sync__schedule-meta div {
-  display: grid;
-  gap: 4px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-2);
-  padding: var(--space-3);
-  background: var(--color-surface);
-}
-
-.vendor-sync__schedule-meta span {
-  color: var(--color-text-muted);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.vendor-sync__schedule-meta strong {
-  font-variant-numeric: tabular-nums;
-}
-
-.vendor-sync__schedule-toggle,
-.vendor-sync__schedule-modes label {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--color-text-muted);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.vendor-sync__schedule-toggle input {
-  width: 18px;
-  height: 18px;
-}
-
-.vendor-sync__schedule-modes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
 }
 
 @media (max-width: 900px) {

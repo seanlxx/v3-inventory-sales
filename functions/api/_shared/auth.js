@@ -89,7 +89,6 @@ export function isPublicApiRequest(request) {
   if (request.method === 'OPTIONS') return true;
   const path = new URL(request.url).pathname;
   if (path === '/api/auth/login') return true;
-  if (path === '/api/integrations/shengma/auto-trigger') return true;
   return false;
 }
 

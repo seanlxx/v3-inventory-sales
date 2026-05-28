@@ -1,17 +1,5 @@
 import type { ApiError } from '~/types/api'
-import type { VendorSyncPayload, VendorSyncRun, VendorSyncSchedule, VendorSyncSchedulePayload, VendorSyncStatus } from '~/types/vendorSync'
-
-const defaultSchedule: VendorSyncSchedule = {
-  enabled: false,
-  mode: 'daily',
-  dailyTime: '09:00',
-  intervalMinutes: 60,
-  scope: ['inventory', 'sales'],
-  windowDays: 1,
-  timezoneOffsetMinutes: 480,
-  lastTriggerAt: null,
-  nextRunAt: null
-}
+import type { VendorSyncPayload, VendorSyncRun, VendorSyncStatus } from '~/types/vendorSync'
 
 const defaultStatus: VendorSyncStatus = {
   credentials: { configured: false },
@@ -20,8 +8,7 @@ const defaultStatus: VendorSyncStatus = {
     vendorDeviceCode: '33f70ee6d9bfac1',
     vendorMachineId: '42310'
   },
-  lastRun: null,
-  schedule: { ...defaultSchedule }
+  lastRun: null
 }
 
 export function useVendorSync() {
@@ -32,7 +19,6 @@ export function useVendorSync() {
   const latestRun = shallowRef<VendorSyncRun | null>(null)
   const loading = shallowRef(false)
   const syncing = shallowRef(false)
-  const savingSchedule = shallowRef(false)
   const error = shallowRef<ApiError | null>(null)
 
   async function loadStatus() {
@@ -68,36 +54,14 @@ export function useVendorSync() {
     }
   }
 
-  async function saveSchedule(payload: VendorSyncSchedulePayload) {
-    savingSchedule.value = true
-    error.value = null
-    try {
-      const schedule = await request<VendorSyncSchedule, VendorSyncSchedulePayload>('/integrations/shengma/schedule', {
-        method: 'PUT',
-        body: payload
-      })
-      status.value = { ...status.value, schedule }
-      toastStore.show(schedule.enabled ? '自动同步已启用' : '自动同步已保存', 'success')
-      return schedule
-    } catch (caught) {
-      error.value = normalizeApiError(caught)
-      throw error.value
-    } finally {
-      savingSchedule.value = false
-    }
-  }
-
   return {
     status,
     latestRun,
     loading,
     syncing,
-    savingSchedule,
     error,
     loadStatus,
-    sync,
-    saveSchedule
+    sync
   }
 }
-
 
