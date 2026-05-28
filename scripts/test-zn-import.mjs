@@ -177,20 +177,161 @@ const preProductsResult = await preImportZnProducts(envPreProducts, {
       serviceFee: 0,
       discount: 0,
       date: '2026-05-20 12:00:00'
+    },
+    {
+      vendorOrderNo: 'pre-products-4',
+      title: '',
+      status: '已完成',
+      deviceCode: 'TBN5CFA0261G547T5D3',
+      vendorProductName: '康师傅冰红茶900ml',
+      unitPrice: 4.5,
+      quantity: 1,
+      lineAmount: 4.5,
+      receivedAmount: 4.5,
+      refundAmount: 0,
+      platformFee: 0,
+      serviceFee: 0,
+      discount: 0,
+      date: '2026-05-20 12:00:00'
+    },
+    {
+      vendorOrderNo: 'pre-products-5',
+      title: '',
+      status: '已完成',
+      deviceCode: 'TBN5CFA0261G547T5D3',
+      vendorProductName: '农夫山泉水溶C100柠檬味445ml',
+      unitPrice: 5,
+      quantity: 1,
+      lineAmount: 5,
+      receivedAmount: 5,
+      refundAmount: 0,
+      platformFee: 0,
+      serviceFee: 0,
+      discount: 0,
+      date: '2026-05-20 12:00:00'
+    },
+    {
+      vendorOrderNo: 'pre-products-6',
+      title: '',
+      status: '已完成',
+      deviceCode: 'TBN5CFA0261G547T5D3',
+      vendorProductName: '农夫山泉水溶西柚汁饮料445ML',
+      unitPrice: 5,
+      quantity: 1,
+      lineAmount: 5,
+      receivedAmount: 5,
+      refundAmount: 0,
+      platformFee: 0,
+      serviceFee: 0,
+      discount: 0,
+      date: '2026-05-20 12:00:00'
+    },
+    {
+      vendorOrderNo: 'pre-products-7',
+      title: '',
+      status: '已完成',
+      deviceCode: 'TBN5CFA0261G547T5D3',
+      vendorProductName: '康师傅蜂蜜绿茶1L',
+      unitPrice: 4,
+      quantity: 1,
+      lineAmount: 4,
+      receivedAmount: 4,
+      refundAmount: 0,
+      platformFee: 0,
+      serviceFee: 0,
+      discount: 0,
+      date: '2026-05-20 12:00:00'
+    },
+    {
+      vendorOrderNo: 'pre-products-8',
+      title: '',
+      status: '已完成',
+      deviceCode: 'TBN5CFA0261G547T5D3',
+      vendorProductName: '东鹏补水1L',
+      unitPrice: 5.5,
+      quantity: 1,
+      lineAmount: 5.5,
+      receivedAmount: 5.5,
+      refundAmount: 0,
+      platformFee: 0,
+      serviceFee: 0,
+      discount: 0,
+      date: '2026-05-20 12:00:00'
+    },
+    {
+      vendorOrderNo: 'pre-products-9',
+      title: '',
+      status: '已完成',
+      deviceCode: 'TBN5CFA0261G547T5D3',
+      vendorProductName: '统一香辣牛肉味',
+      unitPrice: 4,
+      quantity: 1,
+      lineAmount: 4,
+      receivedAmount: 4,
+      refundAmount: 0,
+      platformFee: 0,
+      serviceFee: 0,
+      discount: 0,
+      date: '2026-05-20 12:00:00'
+    },
+    {
+      vendorOrderNo: 'pre-products-10',
+      title: '',
+      status: '已完成',
+      deviceCode: 'TBN5CFA0261G547T5D3',
+      vendorProductName: '农夫山泉水溶C100血橙味445ml',
+      unitPrice: 5,
+      quantity: 1,
+      lineAmount: 5,
+      receivedAmount: 5,
+      refundAmount: 0,
+      platformFee: 0,
+      serviceFee: 0,
+      discount: 0,
+      date: '2026-05-20 12:00:00'
+    },
+    {
+      vendorOrderNo: 'pre-products-11',
+      title: '',
+      status: '已完成',
+      deviceCode: 'TBN5CFA0261G547T5D3',
+      vendorProductName: '康师傅绿茶',
+      unitPrice: 4,
+      quantity: 1,
+      lineAmount: 4,
+      receivedAmount: 4,
+      refundAmount: 0,
+      platformFee: 0,
+      serviceFee: 0,
+      discount: 0,
+      date: '2026-05-20 12:00:00'
     }
   ]
 });
-assert.equal(preProductsResult.summary.productsParsed, 1, '商品预导入应按标准名称去重');
-assert.equal(preProductsResult.summary.productsCreated, 1, '商品预导入应先创建缺失商品');
+assert.equal(preProductsResult.summary.productsParsed, 6, '商品预导入应按标准名称去重并合并旧别名');
+assert.equal(preProductsResult.summary.productsCreated, 6, '商品预导入应先创建缺失商品');
 assert.equal(preProductsResult.summary.rowsSkipped, 1, '0 数量商品行应跳过');
-const preProduct = envPreProducts.DB.queryOne('SELECT machine_id, name, normalized_name, external_id FROM products');
+const preProduct = envPreProducts.DB.queryOne('SELECT machine_id, name, normalized_name, external_id FROM products WHERE normalized_name = ?', '冰露饮用纯净水500ml');
 assert.equal(preProduct.machine_id, '1/2号机', 'zn 商品预导入应写入折叠商品机台');
-assert.equal(preProduct.name, '冰露矿泉水550ml', '商品展示名应重命名为标准商品名称');
-assert.equal(preProduct.normalized_name, '冰露矿泉水550ml', '商品 normalized_name 应写入标准化名称');
-assert.equal(preProduct.external_id, '冰露矿泉水550ml', '新建 zn 商品 external_id 应使用标准化名称');
+assert.equal(preProduct.name, '冰露饮用纯净水500ml', '商品展示名应重命名为标准商品名称');
+assert.equal(preProduct.normalized_name, '冰露饮用纯净水500ml', '商品 normalized_name 应写入标准化名称');
+assert.equal(preProduct.external_id, '冰露饮用纯净水500ml', '新建 zn 商品 external_id 应使用标准化名称');
+const preProductNames = envPreProducts.DB.query('SELECT name, normalized_name FROM products ORDER BY normalized_name');
+assert.deepEqual(
+  preProductNames.map(item => [item.name, item.normalized_name]),
+  [
+    ['东鹏补水啦电解质水柠檬味1l', '东鹏补水啦电解质水柠檬味1l'],
+    ['农夫山泉水溶c100复合果汁饮料445ml', '农夫山泉水溶c100复合果汁饮料445ml'],
+    ['冰露饮用纯净水500ml', '冰露饮用纯净水500ml'],
+    ['康师傅冰红茶柠檬口味1l', '康师傅冰红茶柠檬口味1l'],
+    ['康师傅绿茶饮品1l', '康师傅绿茶饮品1l'],
+    ['康师傅香辣牛肉面111g', '康师傅香辣牛肉面111g']
+  ],
+  '商品预导入应把已合并商品的 Excel 旧名称映射到新 normalized_name'
+);
 const preProductsAgain = await preImportZnProducts(envPreProducts, {
   orders: [{
-    vendorOrderNo: 'pre-products-4',
+    vendorOrderNo: 'pre-products-12',
     title: '',
     status: '已完成',
     deviceCode: 'TBN5CFA0261G547T5D3',
@@ -208,7 +349,7 @@ const preProductsAgain = await preImportZnProducts(envPreProducts, {
 });
 assert.equal(preProductsAgain.summary.productsCreated, 0, '商品预导入重复执行不应重复建商品');
 assert.equal(preProductsAgain.summary.productsExisting, 1, '商品预导入重复执行应识别已有商品');
-assert.equal(envPreProducts.DB.queryOne('SELECT COUNT(*) AS n FROM products').n, 1, '商品预导入应保持幂等');
+assert.equal(envPreProducts.DB.queryOne('SELECT COUNT(*) AS n FROM products').n, 6, '商品预导入应保持幂等');
 
 const xlsxPath = firstExistingPath([
   process.env.ZN_IMPORT_XLSX,
