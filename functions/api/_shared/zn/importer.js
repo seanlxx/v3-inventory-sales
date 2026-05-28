@@ -16,6 +16,8 @@ const EMPTY_SUMMARY = {
   ordersSkipped: 0,
   linesImported: 0,
   productsCreated: 0,
+  productsExisting: 0,
+  productsStandardized: 0,
   costsMatched: 0,
   costsMissing: 0,
   warnings: 0
@@ -102,6 +104,17 @@ function normalizeRowText(value) {
   return String(value || '').trim();
 }
 
+function standardProductName(value) {
+  return normalizeProductName(value) || normalizeRowText(value) || '未知商品';
+}
+
+function znProductMachineIdFor(machineId) {
+  const stockMachineId = normalizeMachineId(machineId);
+  return stockMachineId === '1号机' || stockMachineId === '2号机'
+    ? ZN_PRODUCT_MACHINE_ID
+    : stockMachineId;
+}
+
 function hasProductLine(row) {
   return !!normalizeRowText(row?.vendorProductName);
 }
@@ -128,14 +141,22 @@ function normalizeMultiItemLineAmounts(lines) {
   }
 }
 
-async function patchProductMetadata(env, product, line, statements, timestamp) {
+async function patchProductMetadata(env, product, line, statements, summary, timestamp) {
   const normalized = normalizeProductName(line.vendorProductName);
+  const standardName = standardProductName(line.vendorProductName);
+  const rawName = normalizeRowText(line.vendorProductName);
   const patches = [];
   const params = [];
   if (normalized && !product.normalized_name) {
     patches.push('normalized_name = ?');
     params.push(normalized);
     product.normalized_name = normalized;
+  }
+  if (standardName && product.name === rawName && product.name !== standardName) {
+    patches.push('name = ?');
+    params.push(standardName);
+    product.name = standardName;
+    if (summary) summary.productsStandardized = (summary.productsStandardized || 0) + 1;
   }
   if (patches.length > 0) {
     patches.push('updated_at = ?');
@@ -149,36 +170,36 @@ async function patchProductMetadata(env, product, line, statements, timestamp) {
 
 async function findOrCreateProduct(env, machineId, line, statements, summary, timestamp, costCandidateCache) {
   const stockMachineId = normalizeMachineId(machineId);
-  const productMachineId = stockMachineId === '1号机' || stockMachineId === '2号机'
-    ? ZN_PRODUCT_MACHINE_ID
-    : stockMachineId;
+  const productMachineId = znProductMachineIdFor(stockMachineId);
   const normalized = normalizeProductName(line.vendorProductName);
+  const rawName = normalizeRowText(line.vendorProductName);
+  const displayName = standardProductName(line.vendorProductName);
 
   let product = null;
   if (!product && normalized) {
     product = await first(env.DB, `
       SELECT * FROM products
       WHERE machine_id = ?
-        AND (normalized_name = ? OR name = ?)
+        AND (normalized_name = ? OR external_id = ? OR name = ? OR name = ?)
         AND status = 'active'
       LIMIT 1
-    `, [productMachineId, normalized, line.vendorProductName]);
+    `, [productMachineId, normalized, normalized, rawName, displayName]);
   }
-  if (product) return await patchProductMetadata(env, product, line, statements, timestamp);
+  if (product) return await patchProductMetadata(env, product, line, statements, summary, timestamp);
 
   const candidates = await loadPurchaseCostCandidates(env, stockMachineId, costCandidateCache);
   const purchaseMatch = findPurchaseCostCandidate(candidates, line, null);
-  if (purchaseMatch) return await patchProductMetadata(env, purchaseMatch, line, statements, timestamp);
+  if (purchaseMatch) return await patchProductMetadata(env, purchaseMatch, line, statements, summary, timestamp);
 
   product = {
     id: newId(),
     machine_id: productMachineId,
-    name: line.vendorProductName || '未知商品',
+    name: displayName,
     category: '其他',
     sell_price_cents: Math.max(0, Number(line.unitPriceCents) || 0),
     status: 'active',
     normalized_name: normalized,
-    external_id: normalized,
+    external_id: normalized || null,
     created_at: timestamp,
     updated_at: timestamp
   };
@@ -195,6 +216,108 @@ async function findOrCreateProduct(env, machineId, line, statements, summary, ti
   ));
   summary.productsCreated += 1;
   return product;
+}
+
+async function findZnProduct(env, productMachineId, rawName, normalizedName) {
+  const displayName = standardProductName(rawName);
+  return await first(env.DB, `
+    SELECT *
+    FROM products
+    WHERE machine_id = ?
+      AND status = 'active'
+      AND (normalized_name = ? OR external_id = ? OR name = ? OR name = ?)
+    LIMIT 1
+  `, [productMachineId, normalizedName, normalizedName, rawName, displayName]);
+}
+
+function productLineKey(productMachineId, normalizedName) {
+  return `${productMachineId}|${normalizedName}`;
+}
+
+export async function preImportZnProducts(env, body) {
+  const { lines, skipped, unmappedDevices } = validatePayload(body);
+  const summary = {
+    productsParsed: 0,
+    productsCreated: 0,
+    productsExisting: 0,
+    productsStandardized: 0,
+    rowsSkipped: skipped.canceled + skipped.refunded + skipped.unmappedDevice + skipped.missing,
+    warnings: 0
+  };
+  const warnings = [];
+  const timestamp = nowIso();
+  const uniqueProducts = new Map();
+
+  if (skipped.canceled) warnings.push(`已跳过 ${skipped.canceled} 个非"已完成"订单`);
+  if (skipped.refunded) warnings.push(`已跳过 ${skipped.refunded} 个含退款订单`);
+  if (skipped.unmappedDevice) warnings.push(`未识别设备编号 ${unmappedDevices.join(' / ')}，对应 ${skipped.unmappedDevice} 行已跳过`);
+  if (skipped.missing) warnings.push(`已跳过 ${skipped.missing} 行缺失订单号或商品名的数据`);
+
+  for (const line of lines) {
+    const quantity = Math.max(0, Number(line.quantity) || 0);
+    if (quantity <= 0) {
+      summary.rowsSkipped += 1;
+      warnings.push(`商品 ${line.vendorProductName || '-'} 数量无效（${line.quantity}），已跳过`);
+      continue;
+    }
+    const normalizedName = normalizeProductName(line.vendorProductName);
+    if (!normalizedName) {
+      summary.rowsSkipped += 1;
+      warnings.push(`商品 ${line.vendorProductName || '-'} 无法生成标准商品名称，已跳过`);
+      continue;
+    }
+    const productMachineId = znProductMachineIdFor(line.machineId);
+    const key = productLineKey(productMachineId, normalizedName);
+    if (!uniqueProducts.has(key)) {
+      uniqueProducts.set(key, {
+        machineId: productMachineId,
+        rawName: normalizeRowText(line.vendorProductName),
+        standardName: standardProductName(line.vendorProductName),
+        normalizedName,
+        sellPriceCents: Math.max(0, Number(line.unitPriceCents) || 0)
+      });
+    }
+  }
+
+  summary.productsParsed = uniqueProducts.size;
+
+  for (const item of uniqueProducts.values()) {
+    const existing = await findZnProduct(env, item.machineId, item.rawName, item.normalizedName);
+    if (existing) {
+      const statements = [];
+      await patchProductMetadata(
+        env,
+        existing,
+        { vendorProductName: item.rawName },
+        statements,
+        summary,
+        timestamp
+      );
+      if (statements.length > 0) await env.DB.batch(statements);
+      summary.productsExisting += 1;
+      continue;
+    }
+
+    await env.DB.prepare(`
+      INSERT INTO products (
+        id, machine_id, name, category, sell_price_cents, status,
+        created_at, updated_at, normalized_name, external_id
+      ) VALUES (?, ?, ?, '其他', ?, 'active', ?, ?, ?, ?)
+    `).bind(
+      newId(),
+      item.machineId,
+      item.standardName,
+      item.sellPriceCents,
+      timestamp,
+      timestamp,
+      item.normalizedName,
+      item.normalizedName
+    ).run();
+    summary.productsCreated += 1;
+  }
+
+  summary.warnings = warnings.length;
+  return { summary, warnings };
 }
 
 async function loadPurchaseCostCandidates(env, machineId, cache) {
@@ -547,8 +670,12 @@ async function importOneOrder(env, machineId, vendorOrderNo, lines, summary, war
       warnings.push(`订单 ${vendorOrderNo} 缺商品名，跳过此行`);
       continue;
     }
+    const quantity = Math.max(0, Number(line.quantity) || 0);
+    if (quantity <= 0) {
+      warnings.push(`订单 ${vendorOrderNo} 商品 ${line.vendorProductName} 数量无效（${line.quantity}），跳过此行`);
+      continue;
+    }
     const product = await findOrCreateProduct(env, machineId, line, statements, summary, timestamp, costCandidateCache);
-    const quantity = Math.max(1, Number(line.quantity) || 1);
     const unitPriceCents = Math.max(0, Number(line.unitPriceCents) || 0);
     const lineAmountCents = Math.max(0, Number(line.lineAmountCents) || unitPriceCents * quantity);
 
@@ -578,6 +705,7 @@ async function importOneOrder(env, machineId, vendorOrderNo, lines, summary, war
     `).bind(itemId, orderId, product.id, quantity, unitPriceCents, unitCostCents,
             lineAmountCents, lineCogsCents, timestamp));
 
+    const movementCreatedAt = `${orderDate}T00:00:00.000Z`;
     statements.push(env.DB.prepare(`
       INSERT INTO stock_movements (
         id, product_id, machine_id, movement_type, qty_delta, unit_cost_cents,
@@ -588,7 +716,7 @@ async function importOneOrder(env, machineId, vendorOrderNo, lines, summary, war
       product.id, stockMachineId, -quantity, unitCostCents,
       orderId, itemId,
       `${ZN_INTEGRATION}:sale:${vendorOrderNo}:${itemIndex}`,
-      'zn 平台 Excel 导入', timestamp
+      'zn 平台 Excel 导入', movementCreatedAt
     ));
 
     const nextBalance = applyBalanceDelta(balance, -quantity, -quantity * unitCostCents, timestamp);
@@ -697,7 +825,7 @@ function validatePayload(body) {
       vendorOrderNo: effectiveOrderNo,
       vendorProductName: normalizeRowText(row.vendorProductName),
       vendorBarcode: '',
-      quantity: Math.max(1, Number(row.quantity) || 1),
+      quantity: Math.max(0, Number(row.quantity) || 0),
       unitPriceCents: toMoneyCents(row.unitPrice),
       lineAmountCents: toMoneyCents(row.lineAmount ?? row.unitPrice),
       receivedAmountCents: toMoneyCents(hasOrderNo ? row.receivedAmount : currentOrder?.receivedAmount),

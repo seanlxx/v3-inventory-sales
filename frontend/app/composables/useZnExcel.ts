@@ -55,7 +55,7 @@ export function normalizeZnOrderRow(raw: Record<string, unknown>): ZnOrderRow | 
   const vendorProductName = pickZnField(raw, ['商品名称'])
   const vendorBarcode = ''
   const unitPrice = znNumber(pickZnField(raw, ['商品单价']))
-  const quantity = Math.max(1, Number(pickZnField(raw, ['商品数量'])) || 1)
+  const quantity = Math.max(0, Number(pickZnField(raw, ['商品数量'])) || 0)
   const lineAmount = znNumber(pickZnField(raw, ['销售额', '价格']))
   const receivedAmount = znNumber(pickZnField(raw, ['预估到帐金额', '预估到账金额', '到账金额']))
   const refundAmount = znNumber(pickZnField(raw, ['退款金额']))

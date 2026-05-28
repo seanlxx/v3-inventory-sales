@@ -14,6 +14,8 @@ type ImportSummary = {
   ordersSkipped: number
   linesImported: number
   productsCreated: number
+  productsExisting?: number
+  productsStandardized?: number
   costsMatched?: number
   costsMissing?: number
   ordersReconciled?: number
@@ -22,6 +24,20 @@ type ImportSummary = {
 
 type ImportResult = {
   summary: ImportSummary
+  warnings: string[]
+}
+
+type ProductImportSummary = {
+  productsParsed: number
+  productsCreated: number
+  productsExisting: number
+  productsStandardized: number
+  rowsSkipped: number
+  warnings: number
+}
+
+type ProductImportResult = {
+  summary: ProductImportSummary
   warnings: string[]
 }
 
@@ -50,6 +66,7 @@ const submitting = ref(false)
 const rows = ref<ZnOrderRow[]>([])
 const settlementRows = ref<ZnSettlementRow[]>([])
 const result = ref<ImportResult | null>(null)
+const productResult = ref<ProductImportResult | null>(null)
 const settlementResult = ref<SettlementResult | null>(null)
 const errorMessage = ref('')
 const importProgress = ref('')
@@ -63,6 +80,7 @@ const summaryCount = computed(() => {
   let refunded = 0
   let importableRows = 0
   const importableOrders = new Set<string>()
+  const importableProducts = new Set<string>()
   let lastOrderNo = ''
   for (const row of rows.value) {
     devices.add(row.deviceCode)
@@ -73,10 +91,20 @@ const summaryCount = computed(() => {
       importableRows += 1
       const orderNo = row.vendorOrderNo || lastOrderNo
       if (orderNo) importableOrders.add(orderNo)
+      importableProducts.add(productKey(row))
     }
     if (row.vendorOrderNo) lastOrderNo = row.vendorOrderNo
   }
-  return { total: rows.value.length, devices: Array.from(devices), completed, canceled, refunded, importableRows, importableOrders: importableOrders.size }
+  return {
+    total: rows.value.length,
+    devices: Array.from(devices),
+    completed,
+    canceled,
+    refunded,
+    importableRows,
+    importableOrders: importableOrders.size,
+    importableProducts: importableProducts.size
+  }
 })
 
 const settlementSummaryCount = computed(() => {
@@ -106,6 +134,22 @@ function isImportableRow(row: ZnOrderRow) {
   return row.status === '已完成'
     && row.refundAmount <= 0
     && !!row.vendorProductName
+    && row.quantity > 0
+}
+
+function normalizeProductKeyName(name: string) {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/毫升/gi, 'ml')
+    .replace(/克/gi, 'g')
+    .replace(/升/gi, 'l')
+    .replace(/[（）()【】[\]{}<>《》"'“”‘’、，,。.!！?？:：;；\s_\-—/\\|+*=~`·￥$#@%^&]/g, '')
+    .replace(/[^0-9a-z\u4e00-\u9fa5]/g, '')
+}
+
+function productKey(row: ZnOrderRow) {
+  return `${row.deviceCode}|${normalizeProductKeyName(row.vendorProductName)}`
 }
 
 function mergeSummary(target: ImportSummary, next: ImportSummary) {
@@ -114,6 +158,8 @@ function mergeSummary(target: ImportSummary, next: ImportSummary) {
   target.ordersSkipped += next.ordersSkipped || 0
   target.linesImported += next.linesImported || 0
   target.productsCreated += next.productsCreated || 0
+  target.productsExisting = (target.productsExisting || 0) + (next.productsExisting || 0)
+  target.productsStandardized = (target.productsStandardized || 0) + (next.productsStandardized || 0)
   target.costsMatched = (target.costsMatched || 0) + (next.costsMatched || 0)
   target.costsMissing = (target.costsMissing || 0) + (next.costsMissing || 0)
   target.ordersReconciled = (target.ordersReconciled || 0) + (next.ordersReconciled || 0)
@@ -145,6 +191,7 @@ function setMode(mode: ImportMode) {
   fileName.value = ''
   errorMessage.value = ''
   importProgress.value = ''
+  productResult.value = null
 }
 
 async function onFileChange(event: Event) {
@@ -155,6 +202,7 @@ async function onFileChange(event: Event) {
   parsing.value = true
   errorMessage.value = ''
   result.value = null
+  productResult.value = null
   settlementResult.value = null
   if (activeMode.value === 'orders') rows.value = []
   else settlementRows.value = []
@@ -191,8 +239,26 @@ async function onFileChange(event: Event) {
   }
 }
 
+async function importProductsFromOrders(silent = false) {
+  if (rows.value.length === 0) return null
+  if (!silent) importProgress.value = '正在从订单明细提取独立商品并新建商品档案...'
+  const response = await api.request<ProductImportResult>('/integrations/zn/import-products', {
+    method: 'POST',
+    body: { orders: rows.value }
+  })
+  productResult.value = response
+  if (!silent) {
+    toast.show(
+      `已新建 ${response.summary.productsCreated} 个商品，已有 ${response.summary.productsExisting} 个`,
+      'success'
+    )
+  }
+  return response
+}
+
 async function submitOrders() {
   if (rows.value.length === 0) return
+  if (!productResult.value) await importProductsFromOrders(true)
   const batches = chunkRowsByOrder(rows.value, IMPORT_BATCH_SIZE)
   const merged: ImportResult = {
     summary: {
@@ -201,6 +267,8 @@ async function submitOrders() {
       ordersSkipped: 0,
       linesImported: 0,
       productsCreated: 0,
+      productsExisting: 0,
+      productsStandardized: 0,
       costsMatched: 0,
       costsMissing: 0,
       ordersReconciled: 0,
@@ -223,6 +291,21 @@ async function submitOrders() {
     `已导入 ${merged.summary.ordersImported} 单，重复 ${merged.summary.ordersDuplicate}，跳过 ${merged.summary.ordersSkipped}`,
     'success'
   )
+}
+
+async function submitProductsOnly() {
+  if (rows.value.length === 0) return
+  submitting.value = true
+  errorMessage.value = ''
+  try {
+    await importProductsFromOrders(false)
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '商品预导入失败'
+    toast.show(errorMessage.value, 'danger')
+  } finally {
+    submitting.value = false
+    importProgress.value = ''
+  }
 }
 
 async function submitSettlements() {
@@ -261,6 +344,7 @@ function reset() {
   else settlementRows.value = []
   fileName.value = ''
   result.value = null
+  productResult.value = null
   settlementResult.value = null
   errorMessage.value = ''
   importProgress.value = ''
@@ -346,6 +430,10 @@ function reset() {
           <strong>{{ summaryCount.importableOrders }}</strong>
         </div>
         <div class="zn-import__summary-item">
+          <span>独立商品</span>
+          <strong>{{ summaryCount.importableProducts }}</strong>
+        </div>
+        <div class="zn-import__summary-item">
           <span>设备数</span>
           <strong>{{ summaryCount.devices.length }}</strong>
         </div>
@@ -378,10 +466,57 @@ function reset() {
         <AppButton type="button" variant="secondary" :disabled="submitting" @click="reset">
           重新选择
         </AppButton>
+        <AppButton
+          v-if="activeMode === 'orders'"
+          type="button"
+          variant="secondary"
+          :loading="submitting"
+          @click="submitProductsOnly"
+        >
+          先新建商品
+        </AppButton>
         <AppButton type="button" :loading="submitting" @click="submit">
           {{ activeMode === 'orders' ? `确认导入 ${rows.length} 行` : `确认回写 ${settlementRows.length} 行` }}
         </AppButton>
       </div>
+
+      <section v-if="productResult" class="zn-import__result">
+        <h3>商品预导入完成</h3>
+        <div class="zn-import__summary">
+          <div class="zn-import__summary-item">
+            <span>独立商品</span>
+            <strong>{{ productResult.summary.productsParsed }}</strong>
+          </div>
+          <div class="zn-import__summary-item">
+            <span>新建商品</span>
+            <strong>{{ productResult.summary.productsCreated }}</strong>
+          </div>
+          <div class="zn-import__summary-item">
+            <span>已有商品</span>
+            <strong>{{ productResult.summary.productsExisting }}</strong>
+          </div>
+          <div class="zn-import__summary-item">
+            <span>标准化改名</span>
+            <strong>{{ productResult.summary.productsStandardized }}</strong>
+          </div>
+          <div class="zn-import__summary-item">
+            <span>跳过行</span>
+            <strong>{{ productResult.summary.rowsSkipped }}</strong>
+          </div>
+          <div class="zn-import__summary-item">
+            <span>警告</span>
+            <strong>{{ productResult.summary.warnings }}</strong>
+          </div>
+        </div>
+        <details v-if="productResult.warnings.length > 0" class="zn-import__warnings">
+          <summary>警告明细（{{ productResult.warnings.length }}）</summary>
+          <ul>
+            <li v-for="(warning, index) in productResult.warnings" :key="index">
+              {{ warning }}
+            </li>
+          </ul>
+        </details>
+      </section>
 
       <section v-if="result" class="zn-import__result">
         <h3>导入完成</h3>
