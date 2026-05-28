@@ -94,7 +94,7 @@ env.DB.exec(`
 
 assert.equal(normalizeProductName('可口可乐(330ML)'), '可口可乐330ml');
 assert.equal(normalizeProductName('Coca-Cola 330ML'), 'cocacola330ml');
-assert.equal(normalizeProductName('娃哈哈纯净水596毫升'), '娃哈哈纯净水596ml');
+assert.equal(normalizeProductName('娃哈哈纯净水596毫升'), '小支娃哈哈纯净水');
 
 const encryptedLogin = encryptLoginPassword('12345678');
 assert.match(encryptedLogin.password, /^[A-Za-z0-9+/]+=*$/);

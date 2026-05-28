@@ -323,11 +323,91 @@ const preProductsResult = await preImportZnProducts(envPreProducts, {
       serviceFee: 0,
       discount: 0,
       date: '2026-05-20 12:00:00'
+    },
+    {
+      vendorOrderNo: 'pre-products-13',
+      title: '',
+      status: '已完成',
+      deviceCode: 'TBN5CFA0261G547T5D3',
+      vendorProductName: '娃哈哈饮用纯净水596ml',
+      unitPrice: 2,
+      quantity: 1,
+      lineAmount: 2,
+      receivedAmount: 2,
+      refundAmount: 0,
+      platformFee: 0,
+      serviceFee: 0,
+      discount: 0,
+      date: '2026-05-20 12:00:00'
+    },
+    {
+      vendorOrderNo: 'pre-products-14',
+      title: '',
+      status: '已完成',
+      deviceCode: 'TBN5CFA0261G547T5D3',
+      vendorProductName: '娃哈哈纯净水596ml',
+      unitPrice: 2,
+      quantity: 1,
+      lineAmount: 2,
+      receivedAmount: 2,
+      refundAmount: 0,
+      platformFee: 0,
+      serviceFee: 0,
+      discount: 0,
+      date: '2026-05-20 12:00:00'
+    },
+    {
+      vendorOrderNo: 'pre-products-15',
+      title: '',
+      status: '已完成',
+      deviceCode: 'TBN5CFA0261G547T5D3',
+      vendorProductName: '康师傅绿茶茉莉味茶饮品1L',
+      unitPrice: 4,
+      quantity: 1,
+      lineAmount: 4,
+      receivedAmount: 4,
+      refundAmount: 0,
+      platformFee: 0,
+      serviceFee: 0,
+      discount: 0,
+      date: '2026-05-20 12:00:00'
+    },
+    {
+      vendorOrderNo: 'pre-products-16',
+      title: '',
+      status: '已完成',
+      deviceCode: 'TBN5CFA0261G547T5D3',
+      vendorProductName: '康师傅茉莉清茶瓶装1L',
+      unitPrice: 4,
+      quantity: 1,
+      lineAmount: 4,
+      receivedAmount: 4,
+      refundAmount: 0,
+      platformFee: 0,
+      serviceFee: 0,
+      discount: 0,
+      date: '2026-05-20 12:00:00'
+    },
+    {
+      vendorOrderNo: 'pre-products-17',
+      title: '',
+      status: '已完成',
+      deviceCode: 'TBN5CFA0261G547T5D3',
+      vendorProductName: '康师傅茉莉蜜茶1L',
+      unitPrice: 4,
+      quantity: 1,
+      lineAmount: 4,
+      receivedAmount: 4,
+      refundAmount: 0,
+      platformFee: 0,
+      serviceFee: 0,
+      discount: 0,
+      date: '2026-05-20 12:00:00'
     }
   ]
 });
-assert.equal(preProductsResult.summary.productsParsed, 7, '商品预导入应按标准名称去重并合并旧别名');
-assert.equal(preProductsResult.summary.productsCreated, 7, '商品预导入应先创建缺失商品');
+assert.equal(preProductsResult.summary.productsParsed, 9, '商品预导入应按标准名称去重并合并旧别名');
+assert.equal(preProductsResult.summary.productsCreated, 9, '商品预导入应先创建缺失商品');
 assert.equal(preProductsResult.summary.rowsSkipped, 1, '0 数量商品行应跳过');
 const preProduct = envPreProducts.DB.queryOne('SELECT machine_id, name, normalized_name, external_id FROM products WHERE normalized_name = ?', '冰露饮用纯净水500ml');
 assert.equal(preProduct.machine_id, '1/2号机', 'zn 商品预导入应写入折叠商品机台');
@@ -342,8 +422,10 @@ assert.deepEqual(
     ['东鹏补水啦电解质水柠檬味1l', '东鹏补水啦电解质水柠檬味1l'],
     ['农夫山泉水溶c100复合果汁饮料445ml', '农夫山泉水溶c100复合果汁饮料445ml'],
     ['冰露饮用纯净水500ml', '冰露饮用纯净水500ml'],
+    ['小支娃哈哈纯净水', '小支娃哈哈纯净水'],
     ['康师傅冰红茶柠檬口味1l', '康师傅冰红茶柠檬口味1l'],
     ['康师傅绿茶饮品1l', '康师傅绿茶饮品1l'],
+    ['康师傅茉莉饮品1l', '康师傅茉莉饮品1l'],
     ['康师傅香辣牛肉面111g', '康师傅香辣牛肉面111g']
   ],
   '商品预导入应把已合并商品的 Excel 旧名称映射到新 normalized_name'
@@ -368,7 +450,7 @@ const preProductsAgain = await preImportZnProducts(envPreProducts, {
 });
 assert.equal(preProductsAgain.summary.productsCreated, 0, '商品预导入重复执行不应重复建商品');
 assert.equal(preProductsAgain.summary.productsExisting, 1, '商品预导入重复执行应识别已有商品');
-assert.equal(envPreProducts.DB.queryOne('SELECT COUNT(*) AS n FROM products').n, 7, '商品预导入应保持幂等');
+assert.equal(envPreProducts.DB.queryOne('SELECT COUNT(*) AS n FROM products').n, 9, '商品预导入应保持幂等');
 
 const parsedRefundRow = normalizeZnRefundRow({
   '退款订单号': 'refund-test-1',

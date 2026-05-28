@@ -34,7 +34,13 @@ const PRODUCT_NAME_ALIASES = {
   '东鹏补水电解质饮料柠檬味555ml': '东鹏补水啦555ml',
   '东鹏补水电解质水柠檬味555ml': '东鹏补水啦555ml',
   '东鹏补水啦电解质饮料柠檬味555ml': '东鹏补水啦555ml',
-  '东鹏补水啦电解质水柠檬味555ml': '东鹏补水啦555ml'
+  '东鹏补水啦电解质水柠檬味555ml': '东鹏补水啦555ml',
+  '娃哈哈纯净水596ml': '小支娃哈哈纯净水',
+  '娃哈哈饮用纯净水596ml': '小支娃哈哈纯净水',
+  '康师傅绿茶茉莉味茶饮品1000ml': '康师傅茉莉饮品1000ml',
+  '康师傅茉莉清茶1000ml': '康师傅茉莉饮品1000ml',
+  '康师傅茉莉清茶瓶1000ml': '康师傅茉莉饮品1000ml',
+  '康师傅茉莉蜜茶1000ml': '康师傅茉莉饮品1000ml'
 };
 
 function toHalfWidth(value) {
@@ -171,9 +177,9 @@ const products = [
   { id: 'p-coke', name: '可口可乐330ml' },
   { id: 'p-baoli', name: '宝矿力水特500ml' },
   { id: 'p-cestbon', name: '怡宝纯净水555ml' },
-  { id: 'p-wahaha', name: '娃哈哈纯净水596ml' },
+  { id: 'p-wahaha', name: '小支娃哈哈纯净水' },
   { id: 'p-dongpeng', name: '东鹏补水啦 555ml' },
-  { id: 'p-kangshifu-tea', name: '康师傅茉莉清茶1L' },
+  { id: 'p-kangshifu-tea', name: '康师傅茉莉饮品1L' },
   { id: 'p-kangshifu-noodle', name: '康师傅红烧牛肉面136g' },
   { id: 'p-jianjiao', name: '农夫山泉尖叫多肽型西柚味550ml' }
 ];
@@ -184,9 +190,12 @@ const cases = [
   { input: '怡宝饮用纯净水555ml', expectedId: 'p-cestbon' },
   // 用户原报告里失败的样本：
   { input: '娃哈哈纯净水596毫升', expectedId: 'p-wahaha' },                      // 毫升 → ml
+  { input: '娃哈哈饮用纯净水596ml', expectedId: 'p-wahaha' },                    // 旧标准名 → 新标准名
   { input: '东鹏补水啦柠檬味555ml', expectedId: 'p-dongpeng' },                    // 别名 → 标准 555ml
   { input: '东鹏补水电解质饮料柠檬味555ml', expectedId: 'p-dongpeng' },            // 旧标准名 → 新标准名
+  { input: '康师傅绿茶茉莉味茶饮品1L', expectedId: 'p-kangshifu-tea' },            // 旧标准名 → 新标准名
   { input: '康师傅茉莉清茶瓶装1L', expectedId: 'p-kangshifu-tea' },                 // 瓶装 + 1L
+  { input: '康师傅茉莉蜜茶1L', expectedId: 'p-kangshifu-tea' },                    // 旧标准名 → 新标准名
   { input: '康师傅1倍半红烧牛肉面136克', expectedId: 'p-kangshifu-noodle' },         // 倍半修饰 + 克
   { input: '农夫山泉 尖叫运动饮料•多肽型 西柚味 550ml', expectedId: 'p-jianjiao' }   // 多余空格 / • / 修饰词
 ];
