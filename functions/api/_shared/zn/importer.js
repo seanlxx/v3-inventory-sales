@@ -32,14 +32,6 @@ function errorMessage(error) {
   return error instanceof Error ? error.message : String(error || '未知错误');
 }
 
-function normalizeBarcode(raw) {
-  const text = String(raw || '').trim();
-  if (!text) return '';
-  // '6920152400975-2' → '6920152400975'；纯数字也保留
-  const match = text.match(/^(\d{8,14})/);
-  return match ? match[1] : '';
-}
-
 function normalizeCostText(raw) {
   return normalizeProductName(raw)
     .replace(/饮料/g, '')
@@ -111,7 +103,7 @@ function normalizeRowText(value) {
 }
 
 function hasProductLine(row) {
-  return !!(normalizeRowText(row?.vendorProductName) || normalizeRowText(row?.vendorBarcode));
+  return !!normalizeRowText(row?.vendorProductName);
 }
 
 function expectedItemCount(row) {
@@ -137,24 +129,9 @@ function normalizeMultiItemLineAmounts(lines) {
 }
 
 async function patchProductMetadata(env, product, line, statements, timestamp) {
-  const barcode = normalizeBarcode(line.vendorBarcode);
   const normalized = normalizeProductName(line.vendorProductName);
-  const productMachineId = normalizeMachineId(product.product_machine_id || product.machine_id, ZN_PRODUCT_MACHINE_ID);
   const patches = [];
   const params = [];
-  if (barcode && !product.external_id) {
-    const existingBarcodeProduct = await first(env.DB, `
-      SELECT id
-      FROM products
-      WHERE machine_id = ? AND external_id = ? AND id != ?
-      LIMIT 1
-    `, [productMachineId, barcode, product.id]);
-    if (!existingBarcodeProduct) {
-      patches.push('external_id = ?');
-      params.push(barcode);
-      product.external_id = barcode;
-    }
-  }
   if (normalized && !product.normalized_name) {
     patches.push('normalized_name = ?');
     params.push(normalized);
@@ -175,17 +152,9 @@ async function findOrCreateProduct(env, machineId, line, statements, summary, ti
   const productMachineId = stockMachineId === '1号机' || stockMachineId === '2号机'
     ? ZN_PRODUCT_MACHINE_ID
     : stockMachineId;
-  const barcode = normalizeBarcode(line.vendorBarcode);
   const normalized = normalizeProductName(line.vendorProductName);
 
   let product = null;
-  if (barcode) {
-    product = await first(env.DB, `
-      SELECT * FROM products
-      WHERE machine_id = ? AND external_id = ? AND status = 'active'
-      LIMIT 1
-    `, [productMachineId, barcode]);
-  }
   if (!product && normalized) {
     product = await first(env.DB, `
       SELECT * FROM products
@@ -204,12 +173,12 @@ async function findOrCreateProduct(env, machineId, line, statements, summary, ti
   product = {
     id: newId(),
     machine_id: productMachineId,
-    name: line.vendorProductName || (barcode || '未知商品'),
+    name: line.vendorProductName || '未知商品',
     category: '其他',
     sell_price_cents: Math.max(0, Number(line.unitPriceCents) || 0),
     status: 'active',
     normalized_name: normalized,
-    external_id: barcode || normalized,
+    external_id: normalized,
     created_at: timestamp,
     updated_at: timestamp
   };
@@ -255,16 +224,13 @@ async function loadPurchaseCostCandidates(env, machineId, cache) {
 }
 
 function findPurchaseCostCandidate(candidates, line, product) {
-  const barcode = normalizeBarcode(line.vendorBarcode);
   const normalized = normalizeProductName(line.vendorProductName);
   let best = null;
   let bestScore = 0;
 
   for (const candidate of candidates) {
     let score = 0;
-    if (barcode && candidate.external_id === barcode) {
-      score = 1;
-    } else if (normalized && candidate.normalized_name === normalized) {
+    if (normalized && candidate.normalized_name === normalized) {
       score = 1;
     } else if (product?.id && candidate.id === product.id) {
       score = 0.95;
@@ -489,18 +455,14 @@ async function reconcileExistingOrder(env, existing, lines, fees, summary, times
       await env.DB.prepare(`UPDATE sales_items SET ${ipatches.join(', ')} WHERE id = ?`).bind(...iparams).run();
     }
 
-    // 3) 商品级：回填 barcode/normalized_name
-    const barcode = normalizeBarcode(line.vendorBarcode);
+    // 3) 商品级：回填 normalized_name。zn 商品条码不写入商品档案。
     const normalized = normalizeProductName(line.vendorProductName);
     let product = null;
-    if (barcode || normalized) {
+    if (normalized) {
       product = await first(env.DB, `SELECT id, name, machine_id, external_id, normalized_name FROM products WHERE id = ?`, [item.product_id]);
       if (product) {
         const ppatches = [];
         const pparams = [];
-        if (barcode && !product.external_id) {
-          ppatches.push('external_id = ?'); pparams.push(barcode);
-        }
         if (normalized && !product.normalized_name) {
           ppatches.push('normalized_name = ?'); pparams.push(normalized);
         }
@@ -734,7 +696,7 @@ function validatePayload(body) {
       machineId,
       vendorOrderNo: effectiveOrderNo,
       vendorProductName: normalizeRowText(row.vendorProductName),
-      vendorBarcode: normalizeRowText(row.vendorBarcode),
+      vendorBarcode: '',
       quantity: Math.max(1, Number(row.quantity) || 1),
       unitPriceCents: toMoneyCents(row.unitPrice),
       lineAmountCents: toMoneyCents(row.lineAmount ?? row.unitPrice),
