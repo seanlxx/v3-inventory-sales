@@ -1,8 +1,17 @@
 export default defineNuxtRouteMiddleware((to) => {
-  // 仅在客户端运行以保护静态页面生成 (nuxt generate)
   if (import.meta.server) return
 
+  const authStore = useAuthStore()
+  authStore.initialize()
+
   if (to.path === '/login') {
-    return navigateTo('/dashboard', { replace: true })
+    if (authStore.isAuthenticated) {
+      return navigateTo('/dashboard', { replace: true })
+    }
+    return
+  }
+
+  if (!authStore.isAuthenticated) {
+    return navigateTo(`/login?redirect=${encodeURIComponent(to.fullPath)}`, { replace: true })
   }
 })
