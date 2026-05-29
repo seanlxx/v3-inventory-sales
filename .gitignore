@@ -24,10 +24,19 @@ github-recovery-codes.txt
 # OpenACP local workspace (contains secrets)
 .openacp
 
-# 售货机平台导出的订单明细 / 交易账单（含手机号等 PII，禁止提交）
+# 售货机平台导出的订单明细 / 交易账单 / 退款明细（含手机号等 PII，禁止提交）
 订单明细_*.xlsx
 订单明细_*.xls
 交易账单_*.xlsx
 交易账单_*.xls
+退款明细_*.xlsx
+退款明细_*.xls
 ~$*.xlsx
 ~$*.xls
+
+# zn 平台导出文件
+数据*.txt
+数据*.xlsx
+
+# 订单截图
+订单截图/
