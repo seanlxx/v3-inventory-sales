@@ -47,13 +47,15 @@ const buttonClasses = computed(() => [
   justify-content: center;
   gap: var(--space-2);
   border: 1px solid transparent;
-  border-radius: var(--radius-2);
+  border-radius: var(--radius-3);
   padding: 0 var(--space-4);
-  font-weight: 700;
-  line-height: 1;
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  line-height: var(--leading-tight);
   white-space: nowrap;
   cursor: pointer;
-  transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+  transition: all var(--transition-fast);
+  box-shadow: var(--shadow-sm);
 }
 
 .app-button:disabled {
@@ -74,6 +76,8 @@ const buttonClasses = computed(() => [
 
 .app-button--primary:hover:not(:disabled) {
   background: var(--color-primary-strong);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
 }
 
 .app-button--secondary {
@@ -84,6 +88,8 @@ const buttonClasses = computed(() => [
 
 .app-button--secondary:hover:not(:disabled) {
   background: var(--color-surface-muted);
+  border-color: var(--color-border-strong);
+  transform: translateY(-1px);
 }
 
 .app-button--danger {

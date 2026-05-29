@@ -79,6 +79,8 @@ function cellClass(column: DataTableColumn) {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-3);
   background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
 }
 
 .data-table__scroll {
@@ -107,8 +109,10 @@ th.data-table__cell {
   z-index: 1;
   background: var(--color-surface-subtle);
   color: var(--color-text-muted);
-  font-size: 12px;
-  font-weight: 800;
+  font-size: var(--text-xs);
+  font-weight: var(--font-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .data-table__cell--right {
@@ -136,6 +140,7 @@ tbody tr {
 
 tbody tr:hover {
   background-color: var(--color-surface-subtle);
+  box-shadow: inset 0 0 0 1px var(--color-border-strong);
 }
 </style>
 

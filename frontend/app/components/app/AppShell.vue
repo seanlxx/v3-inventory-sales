@@ -326,6 +326,10 @@ const mobileNavigationItems = computed(() => navigationItems.filter(item => item
   min-width: 0;
   flex: 1;
   padding: var(--space-6);
+  max-width: 1600px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .app-shell__toast {

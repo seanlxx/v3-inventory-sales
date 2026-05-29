@@ -81,9 +81,10 @@ function closeDialog() {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-radius: var(--radius-3);
+  border-radius: var(--radius-4);
   background: var(--color-surface);
-  box-shadow: var(--shadow-popover);
+  box-shadow: var(--shadow-xl);
+  border: 1px solid var(--color-border);
 }
 
 .app-dialog__panel--wide {
@@ -110,8 +111,9 @@ function closeDialog() {
 
 .app-dialog__title {
   margin: 0;
-  font-size: 18px;
-  line-height: 1.3;
+  font-size: var(--text-lg);
+  font-weight: var(--font-bold);
+  line-height: var(--leading-tight);
 }
 
 .app-dialog__description {
