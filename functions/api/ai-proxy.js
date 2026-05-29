@@ -8,10 +8,6 @@ const DEFAULT_YUNWU_BASE_URL = 'https://yunwu.ai/v1';
 const DEFAULT_QWEN_MODEL_ID = 'qwen3.5-omni-plus';
 const AI_MODEL_LIST_TIMEOUT_MS = 30000;
 const AI_PLATFORMS = new Set(['opencode', 'qwen', 'deepseek', 'claude', 'yunwu']);
-const GUEST_SESSION = {
-  username: 'guest',
-  expires_at: '9999-12-31T23:59:59.999Z'
-};
 
 function json(status, payload) {
   return Response.json(payload, {
@@ -46,7 +42,7 @@ async function requireSession(context) {
   if (context.data?.session) return { session: context.data.session };
 
   const token = context.request.headers.get('X-VM-Session') || '';
-  if (!token) return { session: GUEST_SESSION };
+  if (!token) return { error: json(401, { error: 'Unauthorized' }) };
 
   const tokenHash = await sha256(token);
   const session = await context.env.DB.prepare(`
@@ -56,7 +52,7 @@ async function requireSession(context) {
     LIMIT 1
   `).bind(tokenHash, nowIso()).first();
 
-  return { session: session || GUEST_SESSION };
+  return session ? { session } : { error: json(401, { error: 'Unauthorized' }) };
 }
 
 function getPlatform(modelId = '') {

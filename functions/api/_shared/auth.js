@@ -120,8 +120,55 @@ export async function requireSession(context) {
   return session ? { session } : { error: json(401, { message: 'Unauthorized' }) };
 }
 
-export async function login() {
-  return json(403, { message: '账号密码登录已暂时关闭' });
+export async function login(context, body) {
+  if (!body || typeof body !== 'object') return json(400, { message: 'Invalid credentials' });
+
+  const ip = clientIp(context.request);
+  const now = Date.now();
+  const cutoff = new Date(now - LOGIN_WINDOW_MS).toISOString();
+  const cleanup = new Date(now - LOGIN_CLEANUP_MS).toISOString();
+
+  await context.env.DB.batch([
+    context.env.DB.prepare('DELETE FROM app_sessions WHERE expires_at <= ?').bind(nowIso()),
+    context.env.DB.prepare('DELETE FROM app_login_attempts WHERE attempted_at < ?').bind(cleanup)
+  ]);
+
+  const recent = await first(context.env.DB, `
+    SELECT COUNT(*) AS count
+    FROM app_login_attempts
+    WHERE ip = ? AND attempted_at > ?
+  `, [ip, cutoff]);
+
+  if ((recent?.count || 0) >= LOGIN_LIMIT) {
+    return json(429, { message: 'Too many login attempts. Try again later.' });
+  }
+
+  const account = await ensureAuthRow(context.env.DB);
+  const username = String(body.p_username || body.username || '').trim();
+  const password = String(body.p_password || body.password || '');
+  const passwordOk = username === account.username && await verifyPassword(password, account.password_hash);
+
+  if (!passwordOk) {
+    await run(context.env.DB, 'INSERT INTO app_login_attempts (ip, attempted_at) VALUES (?, ?)', [ip, nowIso()]);
+    return json(200, null);
+  }
+
+  const token = randomToken();
+  const expiresAt = new Date(now + SESSION_TTL_MS).toISOString();
+  await context.env.DB.batch([
+    context.env.DB.prepare('DELETE FROM app_login_attempts WHERE ip = ?').bind(ip),
+    context.env.DB.prepare(`
+      INSERT INTO app_sessions (token_hash, username, expires_at, created_at)
+      VALUES (?, ?, ?, ?)
+    `).bind(await sha256(token), account.username, expiresAt, nowIso())
+  ]);
+
+  return json(200, {
+    token,
+    username: account.username,
+    expires_at: expiresAt,
+    uses_default_password: !!account.uses_default_password
+  });
 }
 
 export async function authProfile(context) {

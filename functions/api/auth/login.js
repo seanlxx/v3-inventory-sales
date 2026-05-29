@@ -1,8 +1,9 @@
 import { login } from '../_shared/auth.js';
-import { json, methodNotAllowed } from '../_shared/http.js';
+import { json, methodNotAllowed, parseJsonBody } from '../_shared/http.js';
 
 export async function onRequestPost(context) {
-  return await login(context);
+  const body = await parseJsonBody(context.request);
+  return await login(context, body);
 }
 
 export function onRequestGet() {
