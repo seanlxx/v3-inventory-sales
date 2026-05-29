@@ -330,32 +330,34 @@ async function getProfitBreakdown(env, month) {
 async function getLowStock(env, threshold, machineId) {
   const params = [threshold];
   const stockMachineId = String(machineId || '').trim();
-  const machineFilter = stockMachineId ? 'AND stock_machine_id = ?' : '';
+  const machineFilter = stockMachineId ? 'AND ib.machine_id = ?' : '';
   if (stockMachineId) params.push(stockMachineId);
 
   const rows = await all(env.DB, `
-    WITH product_rows AS (
+    WITH stock_agg AS (
       SELECT
-        p.*,
-        b.machine_id AS stock_machine_id,
-        COALESCE(b.quantity_on_hand, 0) AS quantity_on_hand,
-        COALESCE(b.avg_cost_cents, 0) AS avg_cost_cents,
-        COALESCE(b.inventory_value_cents, 0) AS inventory_value_cents,
-        b.updated_at
-      FROM products p
-      LEFT JOIN inventory_balances b ON b.product_id = p.id
+        product_id,
+        SUM(quantity_on_hand) AS quantity_on_hand,
+        SUM(avg_cost_cents) AS avg_cost_cents,
+        SUM(inventory_value_cents) AS inventory_value_cents,
+        MAX(updated_at) AS updated_at
+      FROM inventory_balances ib
+      WHERE 1=1
+        ${machineFilter}
+      GROUP BY product_id
     )
     SELECT
       p.id AS product_id,
       p.name AS product_name,
       p.category,
-      COALESCE(p.stock_machine_id, p.machine_id) AS machine_id,
-      p.quantity_on_hand,
-      p.avg_cost_cents,
+      p.machine_id AS product_machine_id,
+      COALESCE(s.quantity_on_hand, 0) AS quantity_on_hand,
+      COALESCE(s.avg_cost_cents, 0) AS avg_cost_cents,
       COALESCE(pc.purchase_avg_cost_cents, 0) AS purchase_avg_cost_cents,
-      p.inventory_value_cents,
-      p.updated_at
-    FROM product_rows p
+      COALESCE(s.inventory_value_cents, 0) AS inventory_value_cents,
+      s.updated_at
+    FROM products p
+    LEFT JOIN stock_agg s ON s.product_id = p.id
     LEFT JOIN (
       SELECT
         i.product_id,
@@ -370,17 +372,14 @@ async function getLowStock(env, threshold, machineId) {
       GROUP BY i.product_id
     ) pc ON pc.product_id = p.id
     WHERE p.status = 'active'
-      AND COALESCE(p.quantity_on_hand, 0) <= ?
-      ${machineFilter}
-    ORDER BY COALESCE(p.quantity_on_hand, 0), COALESCE(p.stock_machine_id, p.machine_id), p.name
+      AND COALESCE(s.quantity_on_hand, 0) <= ?
+    ORDER BY COALESCE(s.quantity_on_hand, 0), p.name
     LIMIT 20
   `, params);
 
   return rows.map(row => ({
     productId: row.product_id,
     productName: row.product_name,
-    machineId: row.machine_id,
-    stockMachineId: row.machine_id,
     category: row.category || '其他',
     quantityOnHand: Number(row.quantity_on_hand) || 0,
     avgCost: centsToMoney(Math.max(0, Number(row.avg_cost_cents) || 0)),

@@ -25,10 +25,10 @@ const props = defineProps<{
       暂无低库存商品
     </div>
     <div v-else class="low-stock__list">
-      <article v-for="item in props.items" :key="`${item.productId}:${item.machineId}`" class="low-stock__item">
+      <article v-for="item in props.items" :key="item.productId" class="low-stock__item">
         <div class="low-stock__main">
           <strong>{{ item.productName }}</strong>
-          <span>{{ item.machineId }} · {{ item.category || '其他' }}</span>
+          <span>{{ item.category || '其他' }}</span>
         </div>
         <div class="low-stock__meta">
           <strong class="numeric">{{ formatQuantity(item.quantityOnHand) }} 件</strong>
