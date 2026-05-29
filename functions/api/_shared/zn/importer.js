@@ -267,7 +267,7 @@ export async function preImportZnProducts(env, body) {
     productsCreated: 0,
     productsExisting: 0,
     productsStandardized: 0,
-    rowsSkipped: skipped.canceled + skipped.refunded + skipped.unmappedDevice + skipped.missing,
+    rowsSkipped: skipped.canceled + skipped.unmappedDevice + skipped.missing,
     warnings: 0
   };
   const warnings = [];
@@ -275,7 +275,6 @@ export async function preImportZnProducts(env, body) {
   const uniqueProducts = new Map();
 
   if (skipped.canceled) warnings.push(`已跳过 ${skipped.canceled} 个非"已完成"订单`);
-  if (skipped.refunded) warnings.push(`已跳过 ${skipped.refunded} 个含退款订单`);
   if (skipped.unmappedDevice) warnings.push(`未识别设备编号 ${unmappedDevices.join(' / ')}，对应 ${skipped.unmappedDevice} 行已跳过`);
   if (skipped.missing) warnings.push(`已跳过 ${skipped.missing} 行缺失订单号或商品名的数据`);
 
@@ -825,10 +824,6 @@ function validatePayload(body) {
       skipped.canceled += 1;
       continue;
     }
-    if (refundAmount > 0) {
-      skipped.refunded += 1;
-      continue;
-    }
     const machineId = mapZnDeviceToMachine(deviceCode);
     if (!machineId) {
       skipped.unmappedDevice += 1;
@@ -873,7 +868,6 @@ export async function runZnImport(env, body) {
   const timestamp = nowIso();
 
   if (skipped.canceled) warnings.push(`已跳过 ${skipped.canceled} 个非"已完成"订单`);
-  if (skipped.refunded) warnings.push(`已跳过 ${skipped.refunded} 个含退款订单`);
   if (skipped.unmappedDevice) warnings.push(`未识别设备编号 ${unmappedDevices.join(' / ')}，对应 ${skipped.unmappedDevice} 行已跳过`);
   if (skipped.missing) warnings.push(`已跳过 ${skipped.missing} 行缺失订单号或商品名的数据`);
 

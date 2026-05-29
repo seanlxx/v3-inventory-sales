@@ -214,7 +214,6 @@ const currentRowsCount = computed(() => {
 
 function isImportableRow(row: ZnOrderRow) {
   return row.status === '已完成'
-    && row.refundAmount <= 0
     && !!row.vendorProductName
     && row.quantity > 0
 }

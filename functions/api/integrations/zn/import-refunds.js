@@ -263,6 +263,14 @@ async function importOneRefund(env, refund, summary, warnings, timestamp) {
     ZN_INTEGRATION
   ));
 
+  statements.push(env.DB.prepare(`
+    UPDATE sales_orders
+    SET refund_amount_cents = 0,
+        updated_at = ?
+    WHERE id = ?
+      AND refund_amount_cents > 0
+  `).bind(timestamp, originalOrder.id));
+
   const balanceCache = new Map();
   for (let index = 0; index < matched.length; index += 1) {
     const item = matched[index];

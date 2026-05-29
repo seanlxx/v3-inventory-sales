@@ -109,7 +109,7 @@ async function getMonthlySales(env, month, machineId) {
 
   return await first(env.DB, `
     SELECT
-      ${signedSalesSumSql('total_amount_cents')} AS revenue_cents,
+      ${signedSalesSumSql('received_amount_cents')} AS revenue_cents,
       ${signedSalesSumSql('received_amount_cents')} AS received_cents,
       ${signedSalesSumSql('total_cogs_cents')} AS cogs_cents,
       COALESCE(SUM(refund_amount_cents), 0) AS refunds_cents
@@ -125,7 +125,7 @@ async function getTodaySales(env, machineId) {
   const params = [todayDate(), ...machineFilter.params];
 
   return await first(env.DB, `
-    SELECT ${signedSalesSumSql('total_amount_cents')} AS revenue_cents
+    SELECT ${signedSalesSumSql('received_amount_cents')} AS revenue_cents
     FROM sales_orders
     WHERE voided_at IS NULL
       AND record_date = ?
@@ -156,7 +156,7 @@ async function getSalesTrend(env, days, machineId) {
     WITH revenue_by_date AS (
       SELECT
         record_date AS date,
-        ${signedSalesSumSql('total_amount_cents')} AS revenue_cents
+        ${signedSalesSumSql('received_amount_cents')} AS revenue_cents
       FROM sales_orders
       WHERE voided_at IS NULL
         AND type IN ('sale', 'refund')
@@ -205,7 +205,7 @@ async function getSalesTrendByMachine(env, days, machineId) {
       SELECT
         machine_id,
         record_date AS date,
-        ${signedSalesSumSql('total_amount_cents')} AS revenue_cents
+        ${signedSalesSumSql('received_amount_cents')} AS revenue_cents
       FROM sales_orders
       WHERE voided_at IS NULL
         AND type IN ('sale', 'refund')
@@ -266,7 +266,7 @@ async function getMachineRanking(env, month) {
     WITH revenue_by_machine AS (
       SELECT
         machine_id,
-        ${signedSalesSumSql('total_amount_cents')} AS revenue_cents,
+        ${signedSalesSumSql('received_amount_cents')} AS revenue_cents,
         ${signedSalesSumSql('received_amount_cents')} AS received_cents,
         ${signedSalesSumSql('total_cogs_cents')} AS cogs_cents
       FROM sales_orders
@@ -336,7 +336,7 @@ async function getProfitBreakdown(env, month) {
     totals_by_machine AS (
       SELECT
         display_machine_id,
-        COALESCE(SUM(total_amount_cents), 0) AS revenue_cents,
+        COALESCE(SUM(received_amount_cents), 0) AS revenue_cents,
         COALESCE(SUM(received_amount_cents), 0) AS received_cents,
         COALESCE(SUM(total_cogs_cents), 0) AS cogs_cents
       FROM order_rows
