@@ -40,12 +40,15 @@ function validationError(message) {
 function balanceToLegacy(row = {}) {
   const totalPurchaseQty = Number(row.total_purchase_qty) || 0;
   const totalPurchaseCostCents = Number(row.total_purchase_cost_cents) || 0;
+  const manualCostCents = Math.max(0, Number(row.manual_cost_cents) || 0);
   const purchaseAvgCostCents = Number(row.purchase_avg_cost_cents) || (
     totalPurchaseQty > 0 ? Math.round(totalPurchaseCostCents / totalPurchaseQty) : 0
   );
+  const avgCostCents = Math.max(0, Number(row.avg_cost_cents) || 0) || manualCostCents;
   return {
     currentStock: Number(row.quantity_on_hand) || 0,
-    avgCost: centsToMoney(Math.max(0, Number(row.avg_cost_cents) || 0)),
+    avgCost: centsToMoney(avgCostCents),
+    manualCost: centsToMoney(manualCostCents),
     purchaseAvgCost: centsToMoney(purchaseAvgCostCents),
     totalPurchaseQty,
     totalPurchaseCost: centsToMoney(totalPurchaseCostCents)
@@ -177,6 +180,7 @@ function productRowFromPayload(payload, existing = null) {
     name: stringOrNull(payload.name) || existing?.name || '',
     category: stringOrNull(payload.category) || existing?.category || '其他',
     sell_price_cents: moneyToCents(hasOwn(payload, 'sellPrice') ? payload.sellPrice : centsToMoney(existing?.sell_price_cents)),
+    manual_cost_cents: moneyToCents(hasOwn(payload, 'manualCost') ? payload.manualCost : centsToMoney(existing?.manual_cost_cents)),
     status: existing?.status || 'active',
     created_at: existing?.created_at || stringOrNull(payload.createdAt) || timestamp,
     updated_at: timestamp
@@ -244,13 +248,14 @@ function payloadProductId(payload) {
 function upsertProductStatement(db, product) {
   return db.prepare(`
     INSERT INTO products (
-      id, machine_id, name, category, sell_price_cents, status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      id, machine_id, name, category, sell_price_cents, manual_cost_cents, status, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       machine_id = excluded.machine_id,
       name = excluded.name,
       category = excluded.category,
       sell_price_cents = excluded.sell_price_cents,
+      manual_cost_cents = excluded.manual_cost_cents,
       status = excluded.status,
       updated_at = excluded.updated_at
   `).bind(
@@ -259,10 +264,79 @@ function upsertProductStatement(db, product) {
     product.name,
     product.category,
     product.sell_price_cents,
+    product.manual_cost_cents,
     product.status,
     product.created_at,
     product.updated_at
   );
+}
+
+async function manualCostSyncStatements(env, product, unitCostCents, timestamp = nowIso()) {
+  const statements = [];
+  if (unitCostCents <= 0) return statements;
+
+  statements.push(env.DB.prepare(`
+    UPDATE inventory_balances
+    SET avg_cost_cents = ?,
+        inventory_value_cents = quantity_on_hand * ?,
+        updated_at = ?
+    WHERE product_id = ?
+      AND quantity_on_hand > 0
+      AND COALESCE(avg_cost_cents, 0) = 0
+      AND COALESCE(inventory_value_cents, 0) = 0
+  `).bind(unitCostCents, unitCostCents, timestamp, product.id));
+
+  const rows = await all(env.DB, `
+    SELECT
+      i.id,
+      i.sales_order_id,
+      i.quantity,
+      o.type
+    FROM sales_items i
+    JOIN sales_orders o ON o.id = i.sales_order_id
+    WHERE i.product_id = ?
+      AND o.voided_at IS NULL
+      AND o.type IN ('sale', 'loss')
+      AND COALESCE(i.unit_cost_cents, 0) = 0
+      AND COALESCE(i.line_cogs_cents, 0) = 0
+  `, [product.id]);
+
+  if (!rows.length) return statements;
+
+  const orderIds = Array.from(new Set(rows.map(row => row.sales_order_id).filter(Boolean)));
+  for (const row of rows) {
+    const quantityValue = Math.max(0, Number(row.quantity) || 0);
+    const lineCogsCents = quantityValue * unitCostCents;
+    statements.push(env.DB.prepare(`
+      UPDATE sales_items
+      SET unit_cost_cents = ?,
+          line_cogs_cents = ?
+      WHERE id = ?
+    `).bind(unitCostCents, lineCogsCents, row.id));
+    statements.push(env.DB.prepare(`
+      UPDATE stock_movements
+      SET unit_cost_cents = ?
+      WHERE ref_type = 'sales_order'
+        AND ref_item_id = ?
+        AND movement_type = ?
+        AND COALESCE(unit_cost_cents, 0) = 0
+    `).bind(unitCostCents, row.id, row.type));
+  }
+
+  for (const orderId of orderIds) {
+    statements.push(env.DB.prepare(`
+      UPDATE sales_orders
+      SET total_cogs_cents = (
+            SELECT COALESCE(SUM(line_cogs_cents), 0)
+            FROM sales_items
+            WHERE sales_order_id = ?
+          ),
+          updated_at = ?
+      WHERE id = ?
+    `).bind(orderId, timestamp, orderId));
+  }
+
+  return statements;
 }
 
 export async function listProducts(env, options = {}) {
@@ -389,7 +463,11 @@ export async function saveProduct(env, payload) {
   const product = productRowFromPayload(payload, existing);
   if (!product.name) throw new Error('Missing product name');
 
-  const statements = [upsertProductStatement(env.DB, product)];
+  const timestamp = nowIso();
+  const statements = [
+    upsertProductStatement(env.DB, product),
+    ...await manualCostSyncStatements(env, product, product.manual_cost_cents, timestamp)
+  ];
   await env.DB.batch(statements);
 
   if (hasOwn(payload, 'currentStock')) {
@@ -397,7 +475,7 @@ export async function saveProduct(env, payload) {
       productId: product.id,
       machineId: product.machine_id,
       quantityOnHand: quantity(payload.currentStock),
-      unitCost: hasOwn(payload, 'avgCost') ? payload.avgCost : 0,
+      unitCost: hasOwn(payload, 'manualCost') ? payload.manualCost : hasOwn(payload, 'avgCost') ? payload.avgCost : 0,
       note: 'product stock edit'
     });
   }
@@ -871,6 +949,7 @@ export async function createSalesOrder(env, payload, forcedType = null) {
     const explicitLineCogs = hasOwn(item, 'itemCogs') ? Math.abs(moneyToCents(item.itemCogs)) : 0;
     const historicalUnitCostCents = Math.max(0, Number(balance.avg_cost_cents) || 0)
       || await getPurchaseAvgCostCents(env, product.id, purchaseCostCache)
+      || Math.max(0, Number(product.manual_cost_cents) || 0)
       || moneyToCents(item.avgCost);
     const unitCostCents = explicitLineCogs && qty > 0 ? Math.round(explicitLineCogs / qty) : historicalUnitCostCents;
     const lineAmountCents = type === 'loss'

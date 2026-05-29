@@ -18,7 +18,8 @@ const draft = reactive<ProductMutationPayload>({
   name: '',
   machineId: '',
   category: '其他',
-  sellPrice: 0
+  sellPrice: 0,
+  manualCost: 0
 })
 
 const formError = shallowRef('')
@@ -31,6 +32,7 @@ function resetDraft() {
   draft.machineId = props.product?.machineId || props.machines[0] || '1号机'
   draft.category = props.product?.category || props.categories[0] || '其他'
   draft.sellPrice = props.product?.sellPrice || 0
+  draft.manualCost = props.product?.manualCost || 0
   formError.value = ''
 }
 
@@ -47,7 +49,15 @@ function submitForm() {
     formError.value = '售价不能小于 0'
     return
   }
-  emit('submit', { ...draft, sellPrice: Number(draft.sellPrice) || 0 })
+  if (Number(draft.manualCost) < 0) {
+    formError.value = '成本不能小于 0'
+    return
+  }
+  emit('submit', {
+    ...draft,
+    sellPrice: Number(draft.sellPrice) || 0,
+    manualCost: Number(draft.manualCost) || 0
+  })
 }
 
 watch(open, (isOpen) => {
@@ -88,10 +98,19 @@ watch(() => props.product, () => {
         </select>
       </label>
 
-      <AppInput v-model="draft.sellPrice" label="售价" type="number" placeholder="0.00" />
+      <AppInput v-model="draft.sellPrice" label="售价" type="number" step="0.01" placeholder="0.00" />
+
+      <AppInput
+        v-model="draft.manualCost"
+        label="手动成本"
+        type="number"
+        step="0.01"
+        placeholder="0.00"
+        hint="用于没有成本的商品；保存后只回填成本为 0 的历史销售和损耗利润。"
+      />
 
       <div class="product-form__notice">
-        库存、均价、累计进货数量只读，不能在商品表单里直接修改。
+        库存、累计进货数量只读，不能在商品表单里直接修改。
       </div>
 
       <p v-if="formError" class="product-form__error">

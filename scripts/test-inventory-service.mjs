@@ -96,6 +96,7 @@ env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0009_sales_received_am
 env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0011_money_columns_align.sql'), 'utf8'));
 env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0013_stock_transfers.sql'), 'utf8'));
 env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0014_stock_movement_transfer_types.sql'), 'utf8'));
+env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0015_product_manual_cost.sql'), 'utf8'));
 
 await saveProduct(env, {
   id: 'p1',
@@ -388,6 +389,45 @@ assert.deepEqual(await balance('p2', 'machine-a'), {
   total_purchase_cost_cents: 0
 });
 assert.equal((await listProducts(env, { id: 'p2' }))[0].purchaseAvgCost, 0, 'voided purchases should not leave a displayed purchase cost');
+
+await saveProduct(env, {
+  id: 'p-manual-cost',
+  name: 'Manual Cost Gum',
+  machineId: 'machine-manual',
+  category: 'snack',
+  sellPrice: 5
+});
+await createAdjustment(env, {
+  productId: 'p-manual-cost',
+  machineId: 'machine-manual',
+  quantityOnHand: 4
+});
+const zeroCostSale = await createSalesOrder(env, {
+  id: 'so-manual-cost-zero',
+  machineId: 'machine-manual',
+  date: '2026-05-06',
+  items: [{ productId: 'p-manual-cost', quantity: 2 }]
+}, 'sale');
+assert.equal(zeroCostSale.totalCogs, 0, 'sale before manual cost should have zero cogs');
+await saveProduct(env, {
+  id: 'p-manual-cost',
+  name: 'Manual Cost Gum',
+  machineId: 'machine-manual',
+  category: 'snack',
+  sellPrice: 5,
+  manualCost: 1.25
+});
+const manualCostProduct = (await listProducts(env, { id: 'p-manual-cost' }))[0];
+assert.equal(manualCostProduct.manualCost, 1.25);
+assert.equal(manualCostProduct.avgCost, 1.25, 'manual cost should display when inventory average is missing');
+const syncedSale = (await listSales(env, { id: 'so-manual-cost-zero', status: 'all' }))[0];
+assert.equal(syncedSale.totalCogs, 2.5, 'manual cost should backfill zero-cost sales cogs');
+assert.equal(syncedSale.items[0].avgCost, 1.25);
+const manualCostMonthly = await monthlyReport(env, {
+  includeMonthly: false,
+  currentMonth: '2026-05'
+});
+assert.equal(manualCostMonthly.current.cogs >= 2.5, true, 'monthly profit should use backfilled manual cost');
 
 await archiveProduct(env, 'p2');
 assert.equal((await listProducts(env, { id: 'p2', includeArchived: true }))[0].status, 'archived');

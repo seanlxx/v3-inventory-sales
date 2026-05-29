@@ -41,7 +41,7 @@ function quantityDeltaLabel(movement: StockMovement) {
 }
 
 const displayCost = computed(() =>
-  Number(props.product?.purchaseAvgCost) || Number(props.product?.avgCost) || 0
+  Number(props.product?.purchaseAvgCost) || Number(props.product?.avgCost) || Number(props.product?.manualCost) || 0
 )
 </script>
 
@@ -61,7 +61,7 @@ const displayCost = computed(() =>
         <strong>{{ formatMoney(props.product.sellPrice) }}</strong>
       </div>
       <div>
-        <span>进货价</span>
+        <span>成本</span>
         <strong>{{ formatMoney(displayCost) }}</strong>
       </div>
     </div>

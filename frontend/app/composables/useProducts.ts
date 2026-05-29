@@ -38,6 +38,7 @@ function normalizeProductPayload(payload: ProductMutationPayload): ProductMutati
   }
 
   if (payload.id) normalized.id = payload.id
+  if (payload.manualCost !== undefined) normalized.manualCost = Number(payload.manualCost) || 0
   if (payload.imageAssetId !== undefined) normalized.imageAssetId = payload.imageAssetId
   return normalized
 }

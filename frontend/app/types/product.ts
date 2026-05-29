@@ -12,6 +12,7 @@ export type Product = {
   currentStock?: number
   inventoryByMachine?: Record<string, number>
   avgCost?: number
+  manualCost?: number
   purchaseAvgCost?: number
   totalPurchaseQty?: number
   totalPurchaseCost?: number
@@ -38,5 +39,6 @@ export type ProductMutationPayload = Record<string, unknown> & {
   machineId: string
   category?: string
   sellPrice: number
+  manualCost?: number
   imageAssetId?: string | null
 }

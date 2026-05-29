@@ -40,7 +40,7 @@ function trendTone(product: Product): 'primary' | 'success' | 'warning' | 'neutr
 }
 
 function purchaseCost(product: Product) {
-  return Number(product.purchaseAvgCost) || Number(product.avgCost) || 0
+  return Number(product.purchaseAvgCost) || Number(product.avgCost) || Number(product.manualCost) || 0
 }
 </script>
 
@@ -54,7 +54,7 @@ function purchaseCost(product: Product) {
             <th scope="col" class="product-table__th--category product-table__center">分类</th>
             <th scope="col" class="product-table__th--machine product-table__center">售货机</th>
             <th scope="col" class="product-table__th--price product-table__center">售价</th>
-            <th scope="col" class="product-table__th--cost product-table__center">进货价</th>
+            <th scope="col" class="product-table__th--cost product-table__center">成本</th>
             <th scope="col" class="product-table__th--stock product-table__center">总库存</th>
             <th scope="col" class="product-table__th--status product-table__center">状态</th>
             <th scope="col" class="product-table__th--trend product-table__center">近 14 天趋势</th>
@@ -186,7 +186,7 @@ function purchaseCost(product: Product) {
 
           <div class="product-table__card-footer">
             <span>售价 {{ formatMoney(product.sellPrice) }}</span>
-            <span>进货价 {{ purchaseCost(product) > 0 ? formatMoney(purchaseCost(product)) : '—' }}</span>
+            <span>成本 {{ purchaseCost(product) > 0 ? formatMoney(purchaseCost(product)) : '—' }}</span>
             <button class="product-table__card-stock" type="button" @click="emit('movements', product)">
               库存 {{ formatQuantity(product.currentStock) }}
             </button>
