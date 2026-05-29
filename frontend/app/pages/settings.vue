@@ -43,7 +43,6 @@ const {
 } = useSettings()
 
 const businessDraft = reactive({
-  feeRate: '0.006',
   lowStockThreshold: '3',
   restockTargetDays: '7'
 })
@@ -71,7 +70,6 @@ const activeAiModelOptions = computed(() => {
 
 function syncDrafts() {
   const business = settings.value.businessSettings
-  businessDraft.feeRate = String(business.feeRate)
   businessDraft.lowStockThreshold = String(business.lowStockThreshold)
   businessDraft.restockTargetDays = String(business.restockTargetDays)
   machinesDraft.value = settings.value.machines.join('\n')
@@ -105,7 +103,6 @@ function parseLines(value: string) {
 
 async function submitBusinessSettings() {
   const payload: BusinessSettings = {
-    feeRate: Number(businessDraft.feeRate),
     lowStockThreshold: Number(businessDraft.lowStockThreshold),
     restockTargetDays: Number(businessDraft.restockTargetDays)
   }
@@ -250,16 +247,9 @@ onMounted(async () => {
       />
     </SettingsSection>
 
-    <SettingsSection title="业务参数" description="用于库存提醒、补货建议和利润计算的基础参数。">
+    <SettingsSection title="业务参数" description="用于库存提醒和补货建议的基础参数。">
       <form class="settings-page__form" @submit.prevent="submitBusinessSettings">
         <div class="settings-page__grid">
-          <AppInput
-            v-model="businessDraft.feeRate"
-            label="手续费率"
-            type="number"
-            step="0.0001"
-            placeholder="0.006"
-          />
           <AppInput
             v-model="businessDraft.lowStockThreshold"
             label="低库存阈值"

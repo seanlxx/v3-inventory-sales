@@ -4,7 +4,6 @@ export type SettingEntry<T = unknown> = {
 }
 
 export type BusinessSettings = {
-  feeRate: number
   lowStockThreshold: number
   restockTargetDays: number
 }

@@ -11,6 +11,7 @@ import {
   createPurchases,
   listProducts,
   listSales,
+  monthlyReport,
   createSalesOrder,
   saveProduct,
   updateProductStatus,
@@ -465,6 +466,20 @@ const bulkSales = await listSales(env, {
 env.DB.maxBindParams = Infinity;
 assert.equal(bulkSales.length, 120, 'sales list should handle more than 100 orders');
 assert.equal(bulkSales.every(order => order.items.length === 1), true, 'batched sales list should include every order item');
+
+await env.DB.prepare(`
+  UPDATE sales_orders
+  SET platform_fee_cents = 25,
+      service_fee_cents = 5,
+      received_amount_cents = total_amount_cents - 30
+  WHERE id = 'so1'
+`).run();
+const monthlyFeeReport = await monthlyReport(env, {
+  includeMonthly: false,
+  currentMonth: '2026-05',
+  feeRate: 0.5
+});
+assert.equal(monthlyFeeReport.current.fee, 0.3, 'monthly fee should use recorded order fees, not feeRate fallback');
 
 assert.equal(await movementBalanceDiffCount(), 0, 'movement totals should match inventory_balances');
 console.log('inventory service ledger tests passed');

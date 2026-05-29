@@ -1279,7 +1279,6 @@ async function getVoidValueDelta(env, movement, reverse) {
 }
 
 export async function monthlyReport(env, options = {}) {
-  const feeRate = Math.max(0, Number(options.feeRate) || 0);
   const months = options.includeMonthly === false
     ? [options.currentMonth, options.previousMonth].filter(Boolean)
     : [];
@@ -1302,6 +1301,11 @@ export async function monthlyReport(env, options = {}) {
         WHEN type = 'refund' THEN -total_cogs_cents
         ELSE 0
       END), 0) AS cogs_cents,
+      COALESCE(SUM(CASE
+        WHEN type = 'sale' THEN platform_fee_cents + service_fee_cents
+        WHEN type = 'refund' THEN -(platform_fee_cents + service_fee_cents)
+        ELSE 0
+      END), 0) AS fee_cents,
       COALESCE(SUM(CASE WHEN type = 'refund' THEN total_amount_cents ELSE 0 END), 0) AS refunds_cents,
       COUNT(*) AS sales_count
     FROM sales_orders
@@ -1354,6 +1358,7 @@ export async function monthlyReport(env, options = {}) {
     item.revenue = centsToMoney(row.revenue_cents);
     item.received = centsToMoney(row.received_cents);
     item.cogs = centsToMoney(row.cogs_cents);
+    item.fee = centsToMoney(row.fee_cents);
     item.refunds = centsToMoney(row.refunds_cents);
     item.salesCount = Number(row.sales_count) || 0;
   }
@@ -1366,7 +1371,6 @@ export async function monthlyReport(env, options = {}) {
   }
 
   const monthly = Array.from(byMonth.values()).sort((a, b) => b.month.localeCompare(a.month)).map(item => {
-    item.fee = Math.round(Math.max(item.revenue - item.received, item.revenue * feeRate, 0) * 100) / 100;
     item.profit = Math.round((item.received - item.cogs) * 100) / 100;
     item.profitRate = item.received > 0 ? (item.profit / item.received) * 100 : 0;
     return item;

@@ -38,12 +38,6 @@ function normalizeThreshold(value) {
   return Number.isFinite(number) && number >= 0 ? number : 3;
 }
 
-function normalizeFeeRate(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number) || number < 0) return 0.006;
-  return number > 1 ? number / 100 : number;
-}
-
 function inventoryValueCents(row) {
   if ((Number(row.quantity_on_hand) || 0) <= 0) return 0;
   return Math.max(0, Number(row.inventory_value_cents) || 0);
@@ -77,9 +71,6 @@ async function getSettingValue(env, key) {
 async function getBusinessSettings(env) {
   const businessSettings = getSettingObject(await getSettingValue(env, 'businessSettings'));
   return {
-    feeRate: normalizeFeeRate(
-      businessSettings.feeRate ?? await getSettingValue(env, 'feeRate')
-    ),
     lowStockThreshold: normalizeThreshold(
       businessSettings.lowStockThreshold ?? await getSettingValue(env, 'lowStockThreshold')
     )

@@ -11,7 +11,6 @@ import type {
 import type { UpdateAuthPayload } from '~/types/auth'
 
 const defaultBusinessSettings: BusinessSettings = {
-  feeRate: 0.006,
   lowStockThreshold: 3,
   restockTargetDays: 7
 }
@@ -57,12 +56,6 @@ export const aiProviderOptions: readonly AiProviderOption[] = [
   }
 ] as const
 
-function normalizeFeeRate(value: unknown) {
-  const number = Number(value)
-  if (!Number.isFinite(number) || number < 0) return defaultBusinessSettings.feeRate
-  return number > 1 ? number / 100 : number
-}
-
 function normalizeInteger(value: unknown, fallback: number, min: number) {
   const number = Math.round(Number(value))
   return Number.isFinite(number) && number >= min ? number : fallback
@@ -91,7 +84,6 @@ function normalizeBusinessSettings(entries: Map<string, unknown>): BusinessSetti
     : {}
 
   return {
-    feeRate: normalizeFeeRate(objectValue.feeRate ?? entries.get('feeRate')),
     lowStockThreshold: normalizeInteger(
       objectValue.lowStockThreshold ?? entries.get('lowStockThreshold'),
       defaultBusinessSettings.lowStockThreshold,
@@ -169,13 +161,11 @@ export function useSettings() {
     error.value = null
     try {
       const normalized: BusinessSettings = {
-        feeRate: normalizeFeeRate(payload.feeRate),
         lowStockThreshold: normalizeInteger(payload.lowStockThreshold, defaultBusinessSettings.lowStockThreshold, 0),
         restockTargetDays: normalizeInteger(payload.restockTargetDays, defaultBusinessSettings.restockTargetDays, 1)
       }
       await Promise.all([
         saveSetting('businessSettings', normalized),
-        saveSetting('feeRate', normalized.feeRate),
         saveSetting('lowStockThreshold', normalized.lowStockThreshold),
         saveSetting('restockTargetDays', normalized.restockTargetDays)
       ])
