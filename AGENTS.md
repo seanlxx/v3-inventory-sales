@@ -437,6 +437,10 @@ powershell -ExecutionPolicy Bypass -File ./scripts/deploy-pages.ps1
 | 16 | 纯 UI / CSS 改动验证时自建静态服务 + mock API + Playwright 自动化，绕开项目标准的 `dev.bat` / `dev.ps1` → 走 §3.4 / §4.3 标准流程：`build.ps1` + `dev.bat` + DevTools 三宽度目视 |
 | 17 | 为一次性 UI 布局验证写 100 行 Playwright 脚本（注入 session、route 拦截、6 视口截图），结果在调脚本本身的路由 404 / 模块解析 / 选择器 → 验证投入应与改动复杂度匹配，CSS / 布局类改动用 DevTools 目视即可 |
 | 18 | push 后只看 GitHub 成功就认为已上线 → 必须运行 `scripts/deploy-pages.ps1` 发布并验证当前 commit，避免 Cloudflare Git 集成停在 `Idle` / `Skipped` |
+| 19 | 远程 D1 数据修复时把 `BEGIN TRANSACTION` / `COMMIT` 写进 `wrangler d1 execute --remote --file`，被 D1 拒绝后再改 → 远程 D1 已按文件批次失败回滚，直接写无事务、幂等 SQL |
+| 20 | 商品合并 / 库存修复时先假设 `machine_id`（例如看到商品写着 `1/2号机` 就只重建该机台余额）→ 必须先从 `stock_movements` 按真实 `product_id` 分组查实际机台，再按流水结果重建 `inventory_balances` |
+| 21 | 远程 D1 预检查用多段 `UNION ALL` 计数，Wrangler JSON 输出不稳定还继续追结果 → 用一条 `SELECT` + 多个标量子查询返回单行计数，或逐表单查关键计数 |
+| 22 | 商品合并时物理删除源商品，导致后续 Excel / 外部平台旧名称又导入出重复商品 → 源商品应优先 `archived`，并把 `normalized_name` 写成 `merged:<目标标准名>`，让导入器继续归并 |
 
 ### 3.7 结束前记录
 
@@ -860,3 +864,8 @@ powershell -ExecutionPolicy Bypass -File ./scripts/inject-local-session.ps1 -Use
 
 5 条违规已分别落地为 §3.6 反模式 #13–#17（Playwright `npx --package` 失败、临时 npm 装到非 output/、`Set-Content -Encoding UTF8` 带 BOM、纯 CSS 改动绕开 `dev.bat`、为一次性布局验证写 100+ 行脚本）。下次接到 UI 改动直接走"`build.ps1` → `dev.bat` → DevTools 三宽度目视"。
 
+### 10.2  2026-05-29 · 商品合并远程 D1 数据修复
+
+本次把"娃哈哈营养快线水果牛奶饮品原味500g"合并到"娃哈哈营养快线原味500g"时出现了多余操作：先用了 `UNION ALL` 计数导致 Wrangler JSON 结果不便核对；第一次 SQL 文件包含 `BEGIN TRANSACTION` / `COMMIT` 被远程 D1 拒绝；后续又假设商品机台是 `1/2号机`，导致第一次余额重建没有覆盖真实流水机台，必须补一次余额缓存修正。
+
+已沉淀到 §3.6 反模式 #19–#22。以后做远程 D1 商品合并必须先用单行标量查询确认源/目标 id、真实流水机台和关联计数；写无事务、幂等 SQL；优先归档源商品并写 `merged:<目标标准名>`；重建余额时以 `stock_movements` 的实际 `machine_id` 分组为准，不能凭商品名或页面显示猜。
