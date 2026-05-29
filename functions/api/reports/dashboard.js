@@ -425,7 +425,20 @@ async function getRecentExceptions(env, threshold, machineId) {
   const orderRows = await all(env.DB, `
     SELECT id, type, record_date, machine_id, voided_at, created_at
     FROM sales_orders
-    WHERE (type IN ('refund', 'loss') OR voided_at IS NOT NULL)
+    WHERE (
+        type = 'loss'
+        OR voided_at IS NOT NULL
+        OR (
+          type = 'refund'
+          AND EXISTS (
+            SELECT 1
+            FROM stock_movements m
+            WHERE m.ref_type = 'sales_order'
+              AND m.ref_id = sales_orders.id
+              AND m.movement_type = 'refund'
+          )
+        )
+      )
       ${orderMachineFilter.sql}
     ORDER BY COALESCE(voided_at, created_at) DESC
     LIMIT 8

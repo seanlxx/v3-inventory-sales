@@ -73,23 +73,37 @@ const report = await response.json();
 assert.equal(report.salesTrend.length, trendDays, 'dashboard trend should honor custom day range');
 const trendPoint = report.salesTrend.find(point => point.date === testDate);
 assert.ok(trendPoint, 'dashboard trend should include the seeded date');
-assert.equal(trendPoint.revenue, 90, 'trend revenue should subtract refunds from sale totals');
-assert.equal(trendPoint.quantity, 5, 'trend quantity should sum all order items');
+assert.equal(trendPoint.gross, 90, 'trend gross should subtract refunds from sale totals');
+assert.equal(trendPoint.received, 88, 'trend received should subtract refunds from sale received totals');
+assert.equal(trendPoint.cogs, 36, 'trend cogs should subtract refund cogs from sale cogs');
+assert.equal(trendPoint.profit, 52, 'trend profit should use net received minus net cogs');
 assert.equal(report.salesTrendByMachine.length, 1, 'filtered dashboard trend should expose selected machine series');
 assert.equal(report.salesTrendByMachine[0].machineId, 'machine-a');
 const machineTrendPoint = report.salesTrendByMachine[0].points.find(point => point.date === testDate);
 assert.ok(machineTrendPoint, 'machine trend should include the seeded date');
-assert.equal(machineTrendPoint.revenue, 90, 'machine trend revenue should subtract refunds from sale totals');
-assert.equal(machineTrendPoint.quantity, 5, 'machine trend quantity should sum all order items');
+assert.equal(machineTrendPoint.gross, 90, 'machine trend gross should subtract refunds from sale totals');
+assert.equal(machineTrendPoint.received, 88, 'machine trend received should subtract refunds from sale received totals');
+assert.equal(machineTrendPoint.cogs, 36, 'machine trend cogs should subtract refund cogs from sale cogs');
+assert.equal(machineTrendPoint.profit, 52, 'machine trend profit should use net received minus net cogs');
 
 assert.equal(report.machineRanking[0].machineId, 'machine-a');
-assert.equal(report.machineRanking[0].revenue, 90, 'ranking revenue should subtract refunds from sale totals');
-assert.equal(report.kpis.monthRevenue, 90, 'dashboard month revenue should subtract refunds from sale totals');
+assert.equal(report.machineRanking[0].revenue, 88, 'ranking revenue should use net received after refunds and fees');
+assert.equal(report.kpis.monthRevenue, 88, 'dashboard month revenue should use net received after refunds and fees');
 assert.equal(report.kpis.monthReceived, 88, 'dashboard should expose net received amount after refunds and fees');
 assert.equal(report.kpis.refunds, 30, 'dashboard should still expose refund total separately');
 assert.equal(report.kpis.monthGrossProfit, 52, 'dashboard gross profit should use net received amount minus net cogs');
 assert.equal(report.machineRanking[0].profit, 52, 'ranking profit should use net received amount minus net cogs');
 assert.equal(report.machineRanking[0].quantity, 5, 'ranking quantity should sum all order items');
+assert.equal(
+  report.recentExceptions.some(item => item.id === 'so-amount-only-refund'),
+  false,
+  'amount-only refund rows should not appear as real refund exceptions'
+);
+assert.equal(
+  report.recentExceptions.some(item => item.id === 'so-refund' && item.type === 'refund'),
+  true,
+  'stock-return refund rows should still appear as real refund exceptions'
+);
 
 console.log('dashboard report aggregation tests passed');
 
@@ -121,10 +135,14 @@ async function seedDashboardRows() {
     ), (
       'so-refund', 'refund', 'machine-a', ?, ?, 3000, 900, 3000, 3000,
       NULL, NULL, NULL, ?, ?
+    ), (
+      'so-amount-only-refund', 'refund', 'machine-a', '2000-01-01', '2000-01', 1500, 0, 1500, 1500,
+      'amount-only refund without stock return', NULL, NULL, ?, ?
     )
   `).bind(
     testDate, testMonth, testTimestamp, testTimestamp,
-    testDate, testMonth, testTimestamp, testTimestamp
+    testDate, testMonth, testTimestamp, testTimestamp,
+    `${testDate}T00:05:00.000Z`, `${testDate}T00:05:00.000Z`
   ).run();
 
   await env.DB.prepare(`
@@ -133,6 +151,18 @@ async function seedDashboardRows() {
       line_amount_cents, line_cogs_cents, created_at
     ) VALUES
       ('so-multi-item:0', 'so-multi-item', 'p1', 2, 3000, 900, 6000, 1800, ?),
-      ('so-multi-item:1', 'so-multi-item', 'p2', 3, 2000, 900, 6000, 2700, ?)
-  `).bind(testTimestamp, testTimestamp).run();
+      ('so-multi-item:1', 'so-multi-item', 'p2', 3, 2000, 900, 6000, 2700, ?),
+      ('so-refund:0', 'so-refund', 'p1', 1, 3000, 900, 3000, 900, ?),
+      ('so-amount-only-refund:0', 'so-amount-only-refund', 'p2', 1, 1500, 0, 1500, 0, ?)
+  `).bind(testTimestamp, testTimestamp, testTimestamp, `${testDate}T00:05:00.000Z`).run();
+
+  await env.DB.prepare(`
+    INSERT INTO stock_movements (
+      id, product_id, machine_id, movement_type, qty_delta, unit_cost_cents,
+      ref_type, ref_id, ref_item_id, voids_movement_id, created_at
+    ) VALUES (
+      'sales_order:so-refund:p1:0', 'p1', 'machine-a', 'refund', 1, 900,
+      'sales_order', 'so-refund', 'so-refund:0', NULL, ?
+    )
+  `).bind(testTimestamp).run();
 }
