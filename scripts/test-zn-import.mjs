@@ -128,6 +128,66 @@ assert.equal(zeroQtyResult.summary.productsCreated, 0, '0 数量行不应先创�
 assert.equal(envZeroQty.DB.queryOne('SELECT COUNT(*) AS n FROM products').n, 0, '0 数量行不应污染商品表');
 assert(zeroQtyResult.warnings.some(warning => warning.includes('数量无效')), '0 数量行应返回数量无效警告');
 
+const envMultiItem = { DB: new D1Database() };
+loadBaseSchema(envMultiItem);
+const multiItemResult = await runZnImport(envMultiItem, {
+  orders: [
+    {
+      vendorOrderNo: 'multi-item-order',
+      title: '东方树叶乌龙茶原味茶饮料500ml',
+      status: '已完成',
+      deviceCode: 'TBN5CFA0261G547T5D3',
+      vendorProductName: '康师傅冰红茶柠檬口味1L',
+      unitPrice: 4.5,
+      quantity: 1,
+      lineAmount: 84,
+      receivedAmount: 84,
+      refundAmount: 0,
+      platformFee: 0,
+      serviceFee: 0,
+      discount: 0,
+      date: '2026-05-27 10:45:57'
+    },
+    {
+      vendorOrderNo: '',
+      title: '',
+      status: '',
+      deviceCode: '',
+      vendorProductName: '东方树叶乌龙茶原味茶饮料500ml',
+      unitPrice: 5,
+      quantity: 6,
+      lineAmount: 0,
+      receivedAmount: 0,
+      refundAmount: 0,
+      platformFee: 0,
+      serviceFee: 0,
+      discount: 0,
+      date: ''
+    },
+    {
+      vendorOrderNo: '',
+      title: '',
+      status: '',
+      deviceCode: '',
+      vendorProductName: '康师傅茉莉蜜茶1L',
+      unitPrice: 4.5,
+      quantity: 11,
+      lineAmount: 0,
+      receivedAmount: 0,
+      refundAmount: 0,
+      platformFee: 0,
+      serviceFee: 0,
+      discount: 0,
+      date: ''
+    }
+  ]
+});
+assert.equal(multiItemResult.summary.ordersImported, 1, '多商品订单应导入 1 单');
+assert.equal(multiItemResult.summary.linesImported, 3, '订单号为空的第 3 行商品也应继承上一订单');
+assert.equal(multiItemResult.summary.ordersSkipped, 0, '多商品续行不应被跳过');
+assert.equal(envMultiItem.DB.queryOne('SELECT COUNT(*) AS n FROM sales_items WHERE sales_order_id = ?', 'zn:multi-item-order').n, 3, '应写入 3 条销售明细');
+assert.equal(envMultiItem.DB.queryOne('SELECT total_amount_cents AS amount FROM sales_orders WHERE id = ?', 'zn:multi-item-order').amount, 8400, '多商品订单金额应等于三行商品金额合计');
+
 const envPreProducts = { DB: new D1Database() };
 loadBaseSchema(envPreProducts);
 const preProductsResult = await preImportZnProducts(envPreProducts, {

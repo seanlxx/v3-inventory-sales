@@ -119,17 +119,6 @@ function hasProductLine(row) {
   return !!normalizeRowText(row?.vendorProductName);
 }
 
-function expectedItemCount(row) {
-  const title = normalizeRowText(row?.title);
-  const match = title.match(/(?:共计消费|共计)(\d+)件商品/);
-  if (match) return Math.max(1, Number(match[1]) || 1);
-  const priceCents = toMoneyCents(row?.lineAmount ?? row?.price);
-  const unitPriceCents = toMoneyCents(row?.unitPrice);
-  const quantity = Math.max(1, Number(row?.quantity) || 1);
-  if (priceCents > unitPriceCents * quantity) return Math.max(quantity + 1, 2);
-  return quantity;
-}
-
 function normalizeMultiItemLineAmounts(lines) {
   const groups = groupLines(lines);
   for (const groupLines of groups.values()) {
@@ -828,9 +817,7 @@ function validatePayload(body) {
         platformFee: row?.platformFee,
         serviceFee: row?.serviceFee,
         discount: row?.discount,
-        date: row?.date,
-        expectedItems: expectedItemCount(row),
-        itemCount: 0
+        date: row?.date
       };
     }
 
@@ -850,7 +837,6 @@ function validatePayload(body) {
     }
     const canInheritOrder = !vendorOrderNo
       && currentOrder
-      && currentOrder.itemCount < currentOrder.expectedItems
       && hasProductLine(row);
     const effectiveOrderNo = vendorOrderNo || (canInheritOrder ? currentOrder.vendorOrderNo : '');
     if (!effectiveOrderNo || !hasProductLine(row)) {
@@ -872,7 +858,6 @@ function validatePayload(body) {
       discountCents: toMoneyCents(hasOrderNo ? row.discount : currentOrder?.discount),
       date: row.date || currentOrder?.date || ''
     });
-    if (currentOrder && effectiveOrderNo === currentOrder.vendorOrderNo) currentOrder.itemCount += 1;
   }
 
   normalizeMultiItemLineAmounts(lines);
