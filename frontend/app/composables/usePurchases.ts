@@ -96,8 +96,15 @@ function sortAiCandidates(candidates: PurchaseAiCandidate[]) {
     .map(item => item.candidate)
 }
 
+// 折叠值（zn 销售导入历史遗留）。AI 识别进货时不应把这些商品发给 AI 做匹配，
+// 否则容易被选中导致串货（见 docs/重构计划-1-2号机.md R-D 根因）。
+const FOLDED_MACHINE_IDS = new Set(['1/2号机', '1/2号机总库存'])
+
 function activeProducts(products: readonly Product[]) {
-  return products.filter(product => product.status !== 'archived')
+  return products.filter(product =>
+    product.status !== 'archived'
+    && !FOLDED_MACHINE_IDS.has(product.machineId || '')
+  )
 }
 
 function buildPurchaseRecognitionPrompt(options: {

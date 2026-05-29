@@ -14,8 +14,10 @@ export type DashboardKpis = {
 
 export type SalesTrendPoint = {
   date: string
-  revenue: number
-  quantity: number
+  gross: number
+  received: number
+  cogs: number
+  profit: number
 }
 
 export type SalesTrendMachineSeries = {

@@ -46,6 +46,13 @@ const checks = [
     title: 'duplicate-product',
     metric: result => toNumber(result.summary.duplicate_group_count),
     metricLabel: '重复组'
+  },
+  {
+    file: 'cross-machine-duplicate-product.mjs',
+    json: 'cross-machine-duplicate-product',
+    title: 'cross-machine-duplicate-product',
+    metric: result => toNumber(result.summary.rd_groups),
+    metricLabel: 'R-D 折叠+真实机重复组'
   }
 ];
 
@@ -99,7 +106,14 @@ function renderTopTable(result) {
   return [
     '| 机台 | normalized_name | 重复数 | 商品 ID | 商品名 | 根因 |',
     '| --- | --- | ---: | --- | --- | --- |',
-    ...rows.map(row => `| ${row.machine_id} | ${row.normalized_name} | ${row.dup_count} | ${row.product_ids.join('<br>')} | ${row.names.join('<br>')} | ${row.suspected_root_cause} |`)
+    ...rows.map(row => {
+      if (result.check === 'cross-machine-duplicate-product') {
+        const ids = (row.products || []).map(p => `${p.product_id} [${p.product_machine_id}] bal=${p.balance_qty} purch=${p.purchase_qty} sale=${p.sale_qty}`).join('<br>');
+        const names = (row.products || []).map(p => p.product_name).join('<br>');
+        return `| ${(row.products || []).map(p => p.product_machine_id).join(' / ')} | ${row.normalized_name} | ${row.product_count} | ${ids} | ${names} | ${row.suspected_root_cause} |`;
+      }
+      return `| ${row.machine_id} | ${row.normalized_name} | ${row.dup_count} | ${row.product_ids.join('<br>')} | ${row.names.join('<br>')} | ${row.suspected_root_cause} |`;
+    })
   ].join('\n') + '\n';
 }
 

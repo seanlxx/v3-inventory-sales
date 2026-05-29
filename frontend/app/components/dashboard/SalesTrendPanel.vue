@@ -12,12 +12,11 @@ import {
   type ChartData,
   type ChartOptions
 } from 'chart.js'
-import type { SalesTrendMachineSeries, SalesTrendPoint } from '~/types/report'
-import { formatMoney, formatQuantity } from '~/utils/format'
+import type { SalesTrendPoint } from '~/types/report'
+import { formatMoney } from '~/utils/format'
 
 const props = defineProps<{
   points: readonly SalesTrendPoint[]
-  machineSeries?: readonly SalesTrendMachineSeries[]
   days: number
   loading?: boolean
 }>()
@@ -29,7 +28,6 @@ const emit = defineEmits<{
 const TREND_DAY_PRESETS = [7, 14, 30] as const
 const MIN_TREND_DAYS = 1
 const MAX_TREND_DAYS = 90
-const MACHINE_SERIES_COLORS = ['#0ea5e9', '#f97316', '#7c3aed', '#0f766e', '#dc2626'] as const
 
 Chart.register(
   CategoryScale,
@@ -54,60 +52,37 @@ const trendRangeLabel = computed(() => `${normalizedDays.value} 天`)
 const customDaysActive = computed(() =>
   !TREND_DAY_PRESETS.some(preset => preset === normalizedDays.value)
 )
-const visibleMachineSeries = computed(() =>
-  (props.machineSeries ?? []).filter(series =>
-    series.machineId
-    && series.points.length === props.points.length
-    && series.points.some(point => (Number(point.revenue) || 0) !== 0 || (Number(point.quantity) || 0) !== 0)
-  )
-)
+
 const hasTrendData = computed(() =>
-  props.points.some(point => (Number(point.revenue) || 0) > 0 || (Number(point.quantity) || 0) > 0)
-  || visibleMachineSeries.value.some(series =>
-    series.points.some(point => (Number(point.revenue) || 0) > 0 || (Number(point.quantity) || 0) > 0)
+  props.points.some(point =>
+    (Number(point.gross) || 0) > 0
+    || (Number(point.received) || 0) > 0
+    || (Number(point.profit) || 0) > 0
   )
 )
 
 const chartSummary = computed(() => {
   const peak = props.points.reduce<SalesTrendPoint | null>((current, point) => {
-    if (!current || Number(point.revenue) > Number(current.revenue)) return point
+    if (!current || Number(point.gross) > Number(current.gross)) return point
     return current
   }, null)
   if (!peak) return '销售趋势图'
-  return `销售趋势图，最高销售额出现在 ${peak.date}，${formatMoney(Number(peak.revenue) || 0)}，销量 ${formatQuantity(Number(peak.quantity) || 0)} 件`
+  return `销售趋势图，最高销售额出现在 ${peak.date}，${formatMoney(Number(peak.gross) || 0)}`
 })
 
 const chartData = computed<ChartData<'line'>>(() => {
   const labels = props.points.map(point => point.date)
-  const revenueValues = props.points.map(point => Number(point.revenue) || 0)
-  const quantityValues = props.points.map(point => Number(point.quantity) || 0)
+  const grossValues = props.points.map(point => Number(point.gross) || 0)
+  const receivedValues = props.points.map(point => Number(point.received) || 0)
+  const profitValues = props.points.map(point => Number(point.profit) || 0)
   const pointRadius = compactChart.value ? 2.5 : 3.5
-  const machineRevenueDatasets = visibleMachineSeries.value.map((series, index) => {
-    const color = MACHINE_SERIES_COLORS[index % MACHINE_SERIES_COLORS.length]
-    return {
-      label: `${series.machineId}销售额`,
-      data: series.points.map(point => Number(point.revenue) || 0),
-      borderColor: color,
-      backgroundColor: 'rgba(255, 255, 255, 0)',
-      borderWidth: 2,
-      borderDash: [4, 3],
-      fill: false,
-      pointBackgroundColor: '#ffffff',
-      pointBorderColor: color,
-      pointBorderWidth: 1.5,
-      pointRadius: compactChart.value ? 2 : 2.75,
-      pointHoverRadius: 4,
-      tension: 0.32,
-      yAxisID: 'y'
-    }
-  })
 
   return {
     labels,
     datasets: [
       {
-        label: machineRevenueDatasets.length > 1 ? '全机销售额' : '销售额',
-        data: revenueValues,
+        label: '销售额',
+        data: grossValues,
         borderColor: '#0ea5e9',
         backgroundColor: 'rgba(14, 165, 233, 0.16)',
         borderWidth: 2.5,
@@ -120,12 +95,11 @@ const chartData = computed<ChartData<'line'>>(() => {
         tension: 0.32,
         yAxisID: 'y'
       },
-      ...machineRevenueDatasets,
       {
-        label: '销量',
-        data: quantityValues,
+        label: '到账',
+        data: receivedValues,
         borderColor: '#16a34a',
-        backgroundColor: 'rgba(22, 163, 74, 0.12)',
+        backgroundColor: 'rgba(22, 163, 74, 0.10)',
         borderWidth: 2.25,
         fill: false,
         pointBackgroundColor: '#ffffff',
@@ -134,7 +108,23 @@ const chartData = computed<ChartData<'line'>>(() => {
         pointRadius,
         pointHoverRadius: 5,
         tension: 0.32,
-        yAxisID: 'yQuantity'
+        yAxisID: 'y'
+      },
+      {
+        label: '毛利',
+        data: profitValues,
+        borderColor: '#f97316',
+        backgroundColor: 'rgba(249, 115, 22, 0.10)',
+        borderWidth: 2.25,
+        borderDash: [5, 3],
+        fill: false,
+        pointBackgroundColor: '#ffffff',
+        pointBorderColor: '#f97316',
+        pointBorderWidth: 2,
+        pointRadius,
+        pointHoverRadius: 5,
+        tension: 0.32,
+        yAxisID: 'y'
       }
     ]
   }
@@ -187,9 +177,6 @@ const chartOptions = computed<ChartOptions<'line'>>(() => ({
         label(item) {
           const label = item.dataset.label ?? ''
           const value = Number(item.parsed.y) || 0
-          if (item.dataset.yAxisID === 'yQuantity') {
-            return `${label}: ${formatQuantity(value)} 件`
-          }
           return `${label}: ${formatMoney(value)}`
         }
       }
@@ -230,25 +217,6 @@ const chartOptions = computed<ChartOptions<'line'>>(() => ({
         },
         callback(value) {
           return formatMoneyTick(Number(value) || 0)
-        }
-      }
-    },
-    yQuantity: {
-      beginAtZero: true,
-      border: {
-        display: false
-      },
-      grid: {
-        drawOnChartArea: false
-      },
-      position: 'right',
-      ticks: {
-        color: '#667085',
-        font: {
-          size: compactChart.value ? 10 : 11
-        },
-        callback(value) {
-          return formatQuantity(Number(value) || 0)
         }
       }
     }
@@ -356,7 +324,7 @@ function formatMoneyTick(value: number) {
     <header class="sales-trend__header">
       <div class="sales-trend__heading">
         <h2 class="sales-trend__title">销售趋势</h2>
-        <p class="sales-trend__description">最近 {{ trendRangeLabel }}销售额与销量走势</p>
+        <p class="sales-trend__description">最近 {{ trendRangeLabel }} 销售额 · 到账 · 毛利走势</p>
       </div>
       <div class="sales-trend__range" aria-label="销售趋势时间跨度">
         <div class="sales-trend__preset-group" role="group" aria-label="常用时间跨度">
