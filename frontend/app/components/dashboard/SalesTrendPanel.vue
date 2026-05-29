@@ -12,11 +12,12 @@ import {
   type ChartData,
   type ChartOptions
 } from 'chart.js'
-import type { SalesTrendPoint } from '~/types/report'
+import type { SalesTrendMachineSeries, SalesTrendPoint } from '~/types/report'
 import { formatMoney } from '~/utils/format'
 
 const props = defineProps<{
   points: readonly SalesTrendPoint[]
+  machineSeries: readonly SalesTrendMachineSeries[]
   days: number
   loading?: boolean
 }>()
@@ -28,6 +29,26 @@ const emit = defineEmits<{
 const TREND_DAY_PRESETS = [7, 14, 30] as const
 const MIN_TREND_DAYS = 1
 const MAX_TREND_DAYS = 90
+const MACHINE_SERIES_STYLES = [
+  {
+    borderColor: '#2563eb',
+    backgroundColor: 'rgba(37, 99, 235, 0.08)',
+    borderDash: [] as number[],
+    pointStyle: 'circle'
+  },
+  {
+    borderColor: '#7c3aed',
+    backgroundColor: 'rgba(124, 58, 237, 0.08)',
+    borderDash: [6, 4],
+    pointStyle: 'triangle'
+  },
+  {
+    borderColor: '#be123c',
+    backgroundColor: 'rgba(190, 18, 60, 0.08)',
+    borderDash: [2, 3],
+    pointStyle: 'rectRot'
+  }
+] as const
 
 Chart.register(
   CategoryScale,
@@ -53,12 +74,18 @@ const customDaysActive = computed(() =>
   !TREND_DAY_PRESETS.some(preset => preset === normalizedDays.value)
 )
 
+const visibleMachineSeries = computed(() =>
+  props.machineSeries.filter(series => series.machineId && series.points.length > 0)
+)
+
+const chartLabels = computed(() => {
+  if (props.points.length > 0) return props.points.map(point => point.date)
+  return visibleMachineSeries.value[0]?.points.map(point => point.date) ?? []
+})
+
 const hasTrendData = computed(() =>
-  props.points.some(point =>
-    (Number(point.gross) || 0) > 0
-    || (Number(point.received) || 0) > 0
-    || (Number(point.profit) || 0) > 0
-  )
+  props.points.some(hasPointValue)
+  || visibleMachineSeries.value.some(series => series.points.some(hasPointValue))
 )
 
 const chartSummary = computed(() => {
@@ -67,15 +94,38 @@ const chartSummary = computed(() => {
     return current
   }, null)
   if (!peak) return '销售趋势图'
-  return `销售趋势图，最高销售额出现在 ${peak.date}，${formatMoney(Number(peak.gross) || 0)}`
+  const machineNames = visibleMachineSeries.value.map(series => series.machineId).join('、')
+  return `销售趋势图，最高销售额出现在 ${peak.date}，${formatMoney(Number(peak.gross) || 0)}${machineNames ? `，包含${machineNames}分机走势` : ''}`
 })
 
 const chartData = computed<ChartData<'line'>>(() => {
-  const labels = props.points.map(point => point.date)
+  const labels = chartLabels.value
   const grossValues = props.points.map(point => Number(point.gross) || 0)
   const receivedValues = props.points.map(point => Number(point.received) || 0)
   const profitValues = props.points.map(point => Number(point.profit) || 0)
   const pointRadius = compactChart.value ? 2.5 : 3.5
+  const machineDatasets = visibleMachineSeries.value.map((series, index) => {
+    const style = MACHINE_SERIES_STYLES[index % MACHINE_SERIES_STYLES.length]!
+    const grossByDate = new Map(series.points.map(point => [point.date, Number(point.gross) || 0]))
+
+    return {
+      label: `${series.machineId}销售额`,
+      data: labels.map(label => grossByDate.get(label) ?? 0),
+      borderColor: style.borderColor,
+      backgroundColor: style.backgroundColor,
+      borderWidth: compactChart.value ? 1.8 : 2,
+      borderDash: [...style.borderDash],
+      fill: false,
+      pointBackgroundColor: '#ffffff',
+      pointBorderColor: style.borderColor,
+      pointBorderWidth: compactChart.value ? 1.5 : 2,
+      pointRadius: compactChart.value ? 2 : 3,
+      pointHoverRadius: 5,
+      pointStyle: style.pointStyle,
+      tension: 0.28,
+      yAxisID: 'y'
+    }
+  })
 
   return {
     labels,
@@ -125,7 +175,8 @@ const chartData = computed<ChartData<'line'>>(() => {
         pointHoverRadius: 5,
         tension: 0.32,
         yAxisID: 'y'
-      }
+      },
+      ...machineDatasets
     ]
   }
 })
@@ -196,8 +247,8 @@ const chartOptions = computed<ChartOptions<'line'>>(() => ({
           size: compactChart.value ? 10 : 11
         },
         callback(value, index) {
-          const label = props.points[index]?.date ?? String(value)
-          if (!shouldShowDateLabel(index, props.points.length, compactChart.value)) return ''
+          const label = chartLabels.value[index] ?? String(value)
+          if (!shouldShowDateLabel(index, chartLabels.value.length, compactChart.value)) return ''
           return compactChart.value ? shortDate(label) : label
         }
       }
@@ -278,6 +329,12 @@ function renderChart() {
 
 function syncCompactChart(event: MediaQueryList | MediaQueryListEvent) {
   compactChart.value = event.matches
+}
+
+function hasPointValue(point: SalesTrendPoint) {
+  return (Number(point.gross) || 0) > 0
+    || (Number(point.received) || 0) > 0
+    || (Number(point.profit) || 0) > 0
 }
 
 function clampTrendDays(value: number | string) {
@@ -366,7 +423,7 @@ function formatMoneyTick(value: number) {
     <div v-if="props.loading" class="sales-trend__empty">
       加载趋势数据
     </div>
-    <div v-else-if="props.points.length === 0 || !hasTrendData" class="sales-trend__empty">
+    <div v-else-if="chartLabels.length === 0 || !hasTrendData" class="sales-trend__empty">
       当前范围暂无销售趋势
     </div>
     <div v-else class="sales-trend__chart" role="img" :aria-label="chartSummary">

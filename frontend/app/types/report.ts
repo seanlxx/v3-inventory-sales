@@ -22,7 +22,7 @@ export type SalesTrendPoint = {
 
 export type SalesTrendMachineSeries = {
   machineId: string
-  points: SalesTrendPoint[]
+  points: readonly SalesTrendPoint[]
 }
 
 export type MachineRankingItem = {
@@ -49,7 +49,7 @@ export type DashboardReport = {
   month: string
   kpis: DashboardKpis
   salesTrend: SalesTrendPoint[]
-  salesTrendByMachine?: SalesTrendMachineSeries[]
+  salesTrendByMachine: SalesTrendMachineSeries[]
   machineRanking: MachineRankingItem[]
   profitBreakdown: ProfitBreakdownItem[]
   lowStock: InventoryBalance[]

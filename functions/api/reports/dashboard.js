@@ -12,6 +12,7 @@ function todayDate() {
 }
 
 const MAX_TREND_DAYS = 90;
+const DEFAULT_TREND_MACHINE_IDS = ['1号机', '2号机', '3号机'];
 
 function addDays(date, days) {
   const next = new Date(date);
@@ -193,29 +194,46 @@ async function getSalesTrendByMachine(env, days, machineId) {
 
   const seriesByMachine = new Map();
   rows.forEach(row => {
-    const key = row.machine_id;
+    const key = String(row.machine_id || '').trim();
+    if (!key) return;
     if (!seriesByMachine.has(key)) seriesByMachine.set(key, new Map());
     seriesByMachine.get(key).set(row.date, row);
   });
   const dates = dateSeries(days);
+  const requestedMachineId = String(machineId || '').trim();
+  const machineIds = requestedMachineId
+    ? [requestedMachineId]
+    : Array.from(new Set([
+      ...DEFAULT_TREND_MACHINE_IDS,
+      ...Array.from(seriesByMachine.keys())
+    ])).sort((left, right) => {
+      const leftIndex = DEFAULT_TREND_MACHINE_IDS.indexOf(left);
+      const rightIndex = DEFAULT_TREND_MACHINE_IDS.indexOf(right);
+      if (leftIndex >= 0 && rightIndex >= 0) return leftIndex - rightIndex;
+      if (leftIndex >= 0) return -1;
+      if (rightIndex >= 0) return 1;
+      return left.localeCompare(right, 'zh-CN');
+    });
 
-  return Array.from(seriesByMachine.entries())
-    .sort(([left], [right]) => left.localeCompare(right, 'zh-CN'))
-    .map(([machineId, rowMap]) => ({
-      machineId,
-      points: dates.map(date => {
-        const row = rowMap.get(date) || {};
-        const received = Number(row.received_cents) || 0;
-        const cogs = Math.abs(Number(row.cogs_cents) || 0);
-        return {
-          date,
-          gross: centsToMoney(Number(row.gross_cents) || 0),
-          received: centsToMoney(received),
-          cogs: centsToMoney(cogs),
-          profit: centsToMoney(Math.max(0, received - cogs))
-        };
-      })
-    }));
+  return machineIds
+    .map(machineId => {
+      const rowMap = seriesByMachine.get(machineId) || new Map();
+      return {
+        machineId,
+        points: dates.map(date => {
+          const row = rowMap.get(date) || {};
+          const received = Number(row.received_cents) || 0;
+          const cogs = Math.abs(Number(row.cogs_cents) || 0);
+          return {
+            date,
+            gross: centsToMoney(Number(row.gross_cents) || 0),
+            received: centsToMoney(received),
+            cogs: centsToMoney(cogs),
+            profit: centsToMoney(Math.max(0, received - cogs))
+          };
+        })
+      };
+    });
 }
 
 async function getMachineRanking(env, month) {
