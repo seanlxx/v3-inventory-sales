@@ -103,7 +103,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <SettingsSection title="三号机厂商同步" description="从盛码读取三号机销售、库存、售价和成本。">
+  <SettingsSection title="轨道机厂商同步" description="从盛码读取轨道机销售、库存、售价和成本。">
     <template #aside>
       <StatusBadge :label="credentialsLabel" :tone="credentialsTone" />
     </template>

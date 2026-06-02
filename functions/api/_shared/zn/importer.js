@@ -30,6 +30,12 @@ function newSummary() {
   return { ...EMPTY_SUMMARY };
 }
 
+function mergeSummary(target, source) {
+  for (const key of Object.keys(EMPTY_SUMMARY)) {
+    target[key] = (Number(target[key]) || 0) + (Number(source[key]) || 0);
+  }
+}
+
 function errorMessage(error) {
   return error instanceof Error ? error.message : String(error || '未知错误');
 }
@@ -157,12 +163,14 @@ async function patchProductMetadata(env, product, line, statements, summary, tim
   return product;
 }
 
-async function findOrCreateProduct(env, machineId, line, statements, summary, timestamp, costCandidateCache) {
+async function findOrCreateProduct(env, machineId, line, statements, summary, timestamp, costCandidateCache, productCache = null) {
   const stockMachineId = normalizeMachineId(machineId);
   const productMachineId = znProductMachineIdFor(stockMachineId);
   const normalized = normalizeProductName(line.vendorProductName);
   const rawName = normalizeRowText(line.vendorProductName);
   const displayName = standardProductName(line.vendorProductName);
+  const cacheKey = productLineKey(productMachineId, normalized || displayName || rawName);
+  if (productCache?.has(cacheKey)) return productCache.get(cacheKey);
 
   let product = null;
   if (!product && normalized) {
@@ -174,14 +182,26 @@ async function findOrCreateProduct(env, machineId, line, statements, summary, ti
       LIMIT 1
     `, [productMachineId, normalized, normalized, rawName, displayName]);
   }
-  if (product) return await patchProductMetadata(env, product, line, statements, summary, timestamp);
+  if (product) {
+    const patched = await patchProductMetadata(env, product, line, statements, summary, timestamp);
+    productCache?.set(cacheKey, patched);
+    return patched;
+  }
 
   product = await findMergedTargetProduct(env, productMachineId, rawName, normalized, displayName);
-  if (product) return await patchProductMetadata(env, product, line, statements, summary, timestamp);
+  if (product) {
+    const patched = await patchProductMetadata(env, product, line, statements, summary, timestamp);
+    productCache?.set(cacheKey, patched);
+    return patched;
+  }
 
   const candidates = await loadPurchaseCostCandidates(env, stockMachineId, costCandidateCache);
   const purchaseMatch = findPurchaseCostCandidate(candidates, line, null);
-  if (purchaseMatch) return await patchProductMetadata(env, purchaseMatch, line, statements, summary, timestamp);
+  if (purchaseMatch) {
+    const patched = await patchProductMetadata(env, purchaseMatch, line, statements, summary, timestamp);
+    productCache?.set(cacheKey, patched);
+    return patched;
+  }
 
   product = {
     id: newId(),
@@ -207,6 +227,7 @@ async function findOrCreateProduct(env, machineId, line, statements, summary, ti
     product.normalized_name, product.external_id
   ));
   summary.productsCreated += 1;
+  productCache?.set(cacheKey, product);
   return product;
 }
 
@@ -445,6 +466,7 @@ async function restoreExistingOrderInventory(env, existing, timestamp) {
 async function rebuildExistingOrder(env, existing, lines, fees, summary, timestamp, costCandidateCache) {
   const statements = [];
   const balanceCache = new Map();
+  const productCache = new Map();
   let totalAmount = 0;
   let totalCogs = 0;
   let itemIndex = 0;
@@ -460,7 +482,7 @@ async function rebuildExistingOrder(env, existing, lines, fees, summary, timesta
   for (const line of lines) {
     if (!line.vendorProductName) continue;
     const stockMachineId = normalizeMachineId(existing.machine_id);
-    const product = await findOrCreateProduct(env, existing.machine_id, line, statements, summary, timestamp, costCandidateCache);
+    const product = await findOrCreateProduct(env, existing.machine_id, line, statements, summary, timestamp, costCandidateCache, productCache);
     const quantity = Math.max(1, Number(line.quantity) || 1);
     const unitPriceCents = Math.max(0, Number(line.unitPriceCents) || 0);
     const lineAmountCents = Math.max(0, Number(line.lineAmountCents) || unitPriceCents * quantity);
@@ -686,6 +708,9 @@ async function importOneOrder(env, machineId, vendorOrderNo, lines, summary, war
 
   const orderDate = toDateOnly(lines[0]?.date) || toDateOnly(new Date().toISOString());
   const statements = [];
+  const orderSummary = newSummary();
+  const pendingBalances = new Map();
+  const productCache = new Map();
   let totalAmount = 0;
   let totalCogs = 0;
   let itemIndex = 0;
@@ -700,15 +725,15 @@ async function importOneOrder(env, machineId, vendorOrderNo, lines, summary, war
       warnings.push(`订单 ${vendorOrderNo} 商品 ${line.vendorProductName} 数量无效（${line.quantity}），跳过此行`);
       continue;
     }
-    const product = await findOrCreateProduct(env, machineId, line, statements, summary, timestamp, costCandidateCache);
+    const product = await findOrCreateProduct(env, machineId, line, statements, orderSummary, timestamp, costCandidateCache, productCache);
     const unitPriceCents = Math.max(0, Number(line.unitPriceCents) || 0);
     const lineAmountCents = Math.max(0, Number(line.lineAmountCents) || unitPriceCents * quantity);
 
     const balanceKey = `${product.id}|${stockMachineId}`;
-    if (!balanceCache.has(balanceKey)) {
+    if (!pendingBalances.has(balanceKey) && !balanceCache.has(balanceKey)) {
       balanceCache.set(balanceKey, await getBalance(env, product.id, stockMachineId));
     }
-    const balance = balanceCache.get(balanceKey);
+    const balance = pendingBalances.get(balanceKey) || balanceCache.get(balanceKey);
     const candidates = Number(balance.avg_cost_cents) > 0
       ? []
       : await loadPurchaseCostCandidates(env, stockMachineId, costCandidateCache);
@@ -718,8 +743,8 @@ async function importOneOrder(env, machineId, vendorOrderNo, lines, summary, war
     const balanceCostCents = Number(balance.avg_cost_cents) || 0;
     const unitCostCents = line.costCents ?? (balanceCostCents || costMatch?.avgCostCents || 0);
     const lineCogsCents = unitCostCents * quantity;
-    if (unitCostCents > 0) summary.costsMatched += 1;
-    else summary.costsMissing += 1;
+    if (unitCostCents > 0) orderSummary.costsMatched += 1;
+    else orderSummary.costsMissing += 1;
 
     const itemId = `${orderId}:${itemIndex}`;
     statements.push(env.DB.prepare(`
@@ -746,11 +771,11 @@ async function importOneOrder(env, machineId, vendorOrderNo, lines, summary, war
 
     const nextBalance = applyBalanceDelta(balance, -quantity, -quantity * unitCostCents, timestamp);
     statements.push(upsertBalanceStmt(env, nextBalance));
-    balanceCache.set(balanceKey, nextBalance);
+    pendingBalances.set(balanceKey, nextBalance);
 
     totalAmount += lineAmountCents;
     totalCogs += lineCogsCents;
-    summary.linesImported += 1;
+    orderSummary.linesImported += 1;
     itemIndex += 1;
   }
 
@@ -784,6 +809,10 @@ async function importOneOrder(env, machineId, vendorOrderNo, lines, summary, war
 
   try {
     await env.DB.batch(statements);
+    mergeSummary(summary, orderSummary);
+    for (const [key, balance] of pendingBalances) {
+      balanceCache.set(key, balance);
+    }
     summary.ordersImported += 1;
   } catch (error) {
     summary.ordersSkipped += 1;

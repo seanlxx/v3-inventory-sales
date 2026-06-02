@@ -4,7 +4,8 @@ export const ZN_INTEGRATION = 'zn';
 export const ZN_DEVICE_TO_MACHINE = {
   TBN5CFA0261G547T5D3: '1号机',
   TBN5CFA0261GJ6BG6EA: '2号机',
-  TBN5CFA0261GI1MJ345: '2号机'
+  TBN5CFA0261GI1MJ345: '2号机',
+  TBN5CFA0261KGGWA303: '3号机'
 };
 
 export function mapZnDeviceToMachine(deviceCode) {

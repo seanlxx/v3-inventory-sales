@@ -458,7 +458,7 @@ function reset() {
 </script>
 
 <template>
-  <SettingsSection title="1号机 / 2号机 销售导入" description="从 zn 平台导出订单明细 Excel，浏览器本地解析后写入数据库。设备编号 → 机型映射见 docs/设备映射与数据来源.md。">
+  <SettingsSection title="1号机 / 2号机 / 3号机 销售导入" description="从 zn 平台导出订单明细 Excel，浏览器本地解析后写入数据库。设备编号 → 机型映射见 docs/设备映射与数据来源.md。">
     <template #aside>
       <StatusBadge label="Excel 导入" tone="neutral" />
     </template>

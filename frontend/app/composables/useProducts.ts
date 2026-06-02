@@ -9,7 +9,7 @@ const defaultFilters: ProductListFilters = {
   status: 'active'
 }
 
-const DEFAULT_STOCK_MACHINES = ['1号机', '2号机', '三号机'] as const
+const DEFAULT_STOCK_MACHINES = ['1号机', '2号机', '3号机', '轨道机'] as const
 
 function productMachines(product: Product): string[] {
   return [

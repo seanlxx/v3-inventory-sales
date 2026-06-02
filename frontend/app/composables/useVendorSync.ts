@@ -4,7 +4,7 @@ import type { VendorSyncPayload, VendorSyncRun, VendorSyncStatus } from '~/types
 const defaultStatus: VendorSyncStatus = {
   credentials: { configured: false },
   mapping: {
-    localMachineName: '三号机',
+    localMachineName: '轨道机',
     vendorDeviceCode: '33f70ee6d9bfac1',
     vendorMachineId: '42310'
   },
@@ -44,7 +44,7 @@ export function useVendorSync() {
       })
       latestRun.value = run
       status.value = { ...status.value, lastRun: run }
-      toastStore.show(payload.dryRun ? '预览同步完成' : '三号机同步完成', run.status === 'success' ? 'success' : 'warning')
+      toastStore.show(payload.dryRun ? '预览同步完成' : '轨道机同步完成', run.status === 'success' ? 'success' : 'warning')
       return run
     } catch (caught) {
       error.value = normalizeApiError(caught)
@@ -64,4 +64,3 @@ export function useVendorSync() {
     sync
   }
 }
-

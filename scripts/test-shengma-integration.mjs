@@ -367,7 +367,7 @@ const spriteBalance = await env.DB.prepare(`
   SELECT b.quantity_on_hand, b.avg_cost_cents, b.inventory_value_cents
   FROM inventory_balances b
   JOIN products p ON p.id = b.product_id
-  WHERE p.machine_id = '三号机' AND p.name = '雪碧330ml'
+  WHERE p.machine_id = '轨道机' AND p.name = '雪碧330ml'
 `).first();
 assert.deepEqual({
   quantity_on_hand: spriteBalance.quantity_on_hand,
@@ -384,7 +384,7 @@ const balance = await env.DB.prepare(`
   SELECT b.quantity_on_hand, b.avg_cost_cents, b.inventory_value_cents
   FROM inventory_balances b
   JOIN products p ON p.id = b.product_id
-  WHERE p.machine_id = '三号机' AND p.name = '可口可乐 330ml'
+  WHERE p.machine_id = '轨道机' AND p.name = '可口可乐 330ml'
 `).first();
 assert.deepEqual({
   quantity_on_hand: balance.quantity_on_hand,

@@ -12,7 +12,7 @@ function todayDate() {
 }
 
 const MAX_TREND_DAYS = 90;
-const DEFAULT_TREND_MACHINE_IDS = ['1号机', '2号机', '3号机'];
+const DEFAULT_TREND_MACHINE_IDS = ['1号机', '2号机', '3号机', '轨道机'];
 
 function addDays(date, days) {
   const next = new Date(date);
