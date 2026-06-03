@@ -33,6 +33,13 @@ export class InventoryValidationError extends Error {
 const PRODUCT_STATUSES = new Set(['active', 'archived']);
 const IN_CLAUSE_BATCH_SIZE = 50;
 
+function salesMachineFilterValues(value) {
+  const machineId = normalizeMachineId(value, '');
+  if (!machineId || machineId === 'all') return [];
+  if (machineId === '轨道机') return ['轨道机', '三号机'];
+  return [machineId];
+}
+
 function validationError(message) {
   return new InventoryValidationError(message);
 }
@@ -1049,8 +1056,14 @@ export async function listSales(env, filters = {}) {
     params.push(normalizeSalesType(filters.type));
   }
   if (filters.machineId && filters.machineId !== 'all') {
-    conditions.push('o.machine_id = ?');
-    params.push(filters.machineId);
+    const machineIds = salesMachineFilterValues(filters.machineId);
+    if (machineIds.length === 1) {
+      conditions.push('o.machine_id = ?');
+      params.push(machineIds[0]);
+    } else if (machineIds.length > 1) {
+      conditions.push(`o.machine_id IN (${placeholders(machineIds.length)})`);
+      params.push(...machineIds);
+    }
   }
   if (filters.productId && filters.productId !== 'all') {
     conditions.push(`EXISTS (

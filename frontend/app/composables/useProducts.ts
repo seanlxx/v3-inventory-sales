@@ -1,7 +1,7 @@
 import type { ApiError } from '~/types/api'
 import type { StockMovement } from '~/types/inventory'
 import type { Product, ProductListFilters, ProductMutationPayload, ProductStatus, ProductStatusPayload } from '~/types/product'
-import { machineOptionsWithDefaults } from '~/utils/machines'
+import { machineMatchesOption, machineOptionsWithDefaults } from '~/utils/machines'
 
 const defaultFilters: ProductListFilters = {
   search: '',
@@ -25,7 +25,7 @@ function matchesSearch(product: Product, search: string) {
 
 function matchesMachine(product: Product, machineId: string) {
   if (machineId === 'all') return true
-  return product.machineId === machineId || product.stockMachineId === machineId
+  return machineMatchesOption(product.machineId, machineId) || machineMatchesOption(product.stockMachineId, machineId)
 }
 
 function normalizeProductPayload(payload: ProductMutationPayload): ProductMutationPayload {

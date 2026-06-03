@@ -13,6 +13,9 @@ function todayDate() {
 
 const MAX_TREND_DAYS = 90;
 const DEFAULT_TREND_MACHINE_IDS = ['1号机', '2号机', '3号机', '轨道机'];
+const MACHINE_ALIASES = new Map([
+  ['三号机', '轨道机']
+]);
 
 function addDays(date, days) {
   const next = new Date(date);
@@ -45,9 +48,37 @@ function inventoryValueCents(row) {
 }
 
 function machineFilterFor(column, machineId) {
-  const value = String(machineId || '').trim();
-  if (!value) return { sql: '', params: [] };
-  return { sql: `AND ${column} = ?`, params: [value] };
+  const values = machineFilterValues(machineId);
+  if (values.length === 0) return { sql: '', params: [] };
+  if (values.length === 1) return { sql: `AND ${column} = ?`, params: values };
+  return { sql: `AND ${column} IN (${values.map(() => '?').join(', ')})`, params: values };
+}
+
+function canonicalMachineId(value) {
+  const machineId = String(value || '').trim();
+  return MACHINE_ALIASES.get(machineId) || machineId;
+}
+
+function machineFilterValues(value) {
+  const machineId = canonicalMachineId(value);
+  if (!machineId || machineId === 'all') return [];
+  if (machineId === '轨道机') return ['轨道机', '三号机'];
+  return [machineId];
+}
+
+function machineSql(column) {
+  return `CASE WHEN ${column} = '三号机' THEN '轨道机' ELSE ${column} END`;
+}
+
+function sortMachineIds(machineIds) {
+  return machineIds.sort((left, right) => {
+    const leftIndex = DEFAULT_TREND_MACHINE_IDS.indexOf(left);
+    const rightIndex = DEFAULT_TREND_MACHINE_IDS.indexOf(right);
+    if (leftIndex >= 0 && rightIndex >= 0) return leftIndex - rightIndex;
+    if (leftIndex >= 0) return -1;
+    if (rightIndex >= 0) return 1;
+    return left.localeCompare(right, 'zh-CN');
+  });
 }
 
 function safeJsonParse(value, fallback = null) {
@@ -176,9 +207,10 @@ async function getSalesTrend(env, days, machineId) {
 async function getSalesTrendByMachine(env, days, machineId) {
   const startDate = dateWindowStart(days);
   const filter = machineFilterFor('machine_id', machineId);
+  const displayMachineSql = machineSql('machine_id');
   const rows = await all(env.DB, `
     SELECT
-      machine_id,
+      ${displayMachineSql} AS machine_id,
       record_date AS date,
       ${signedSalesSumSql('total_amount_cents')} AS gross_cents,
       ${signedSalesSumSql('received_amount_cents')} AS received_cents,
@@ -188,8 +220,8 @@ async function getSalesTrendByMachine(env, days, machineId) {
       AND type IN ('sale', 'refund')
       AND record_date >= ?
       ${filter.sql}
-    GROUP BY machine_id, record_date
-    ORDER BY machine_id, record_date
+    GROUP BY ${displayMachineSql}, record_date
+    ORDER BY ${displayMachineSql}, record_date
   `, [startDate, ...filter.params]);
 
   const seriesByMachine = new Map();
@@ -200,20 +232,13 @@ async function getSalesTrendByMachine(env, days, machineId) {
     seriesByMachine.get(key).set(row.date, row);
   });
   const dates = dateSeries(days);
-  const requestedMachineId = String(machineId || '').trim();
+  const requestedMachineId = canonicalMachineId(machineId);
   const machineIds = requestedMachineId
     ? [requestedMachineId]
-    : Array.from(new Set([
+    : sortMachineIds(Array.from(new Set([
       ...DEFAULT_TREND_MACHINE_IDS,
       ...Array.from(seriesByMachine.keys())
-    ])).sort((left, right) => {
-      const leftIndex = DEFAULT_TREND_MACHINE_IDS.indexOf(left);
-      const rightIndex = DEFAULT_TREND_MACHINE_IDS.indexOf(right);
-      if (leftIndex >= 0 && rightIndex >= 0) return leftIndex - rightIndex;
-      if (leftIndex >= 0) return -1;
-      if (rightIndex >= 0) return 1;
-      return left.localeCompare(right, 'zh-CN');
-    });
+    ])));
 
   return machineIds
     .map(machineId => {
@@ -237,10 +262,12 @@ async function getSalesTrendByMachine(env, days, machineId) {
 }
 
 async function getMachineRanking(env, month) {
+  const orderMachineSql = machineSql('machine_id');
+  const itemMachineSql = machineSql('o.machine_id');
   const rows = await all(env.DB, `
     WITH revenue_by_machine AS (
       SELECT
-        machine_id,
+        ${orderMachineSql} AS machine_id,
         ${signedSalesSumSql('received_amount_cents')} AS revenue_cents,
         ${signedSalesSumSql('received_amount_cents')} AS received_cents,
         ${signedSalesSumSql('total_cogs_cents')} AS cogs_cents
@@ -248,18 +275,18 @@ async function getMachineRanking(env, month) {
       WHERE voided_at IS NULL
         AND type IN ('sale', 'refund')
         AND year_month = ?
-      GROUP BY machine_id
+      GROUP BY ${orderMachineSql}
     ),
     quantity_by_machine AS (
       SELECT
-        o.machine_id,
+        ${itemMachineSql} AS machine_id,
         COALESCE(SUM(i.quantity), 0) AS quantity
       FROM sales_orders o
       JOIN sales_items i ON i.sales_order_id = o.id
       WHERE o.voided_at IS NULL
         AND o.type = 'sale'
         AND o.year_month = ?
-      GROUP BY o.machine_id
+      GROUP BY ${itemMachineSql}
     )
     SELECT
       r.machine_id,
@@ -282,12 +309,13 @@ async function getMachineRanking(env, month) {
 }
 
 async function getProfitBreakdown(env, month) {
+  const displayMachineSql = machineSql('machine_id');
   const rows = await all(env.DB, `
     WITH order_rows AS (
       SELECT
         id,
         type,
-        machine_id AS display_machine_id,
+        ${displayMachineSql} AS display_machine_id,
         CASE
           WHEN type = 'sale' THEN total_amount_cents
           WHEN type = 'refund' THEN -total_amount_cents
@@ -347,9 +375,8 @@ async function getProfitBreakdown(env, month) {
 
 async function getLowStock(env, threshold, machineId) {
   const params = [threshold];
-  const stockMachineId = String(machineId || '').trim();
-  const machineFilter = stockMachineId ? 'AND ib.machine_id = ?' : '';
-  if (stockMachineId) params.push(stockMachineId);
+  const machineFilter = machineFilterFor('ib.machine_id', machineId);
+  params.push(...machineFilter.params);
 
   const rows = await all(env.DB, `
     WITH stock_agg AS (
@@ -361,7 +388,7 @@ async function getLowStock(env, threshold, machineId) {
         MAX(updated_at) AS updated_at
       FROM inventory_balances ib
       WHERE 1=1
-        ${machineFilter}
+        ${machineFilter.sql}
       GROUP BY product_id
     )
     SELECT
@@ -411,9 +438,8 @@ async function getLowStock(env, threshold, machineId) {
 
 async function getRecentExceptions(env, threshold, machineId) {
   const params = [threshold];
-  const stockMachineId = String(machineId || '').trim();
-  const machineFilter = stockMachineId ? 'AND stock_machine_id = ?' : '';
-  if (stockMachineId) params.push(stockMachineId);
+  const machineFilter = machineFilterFor('stock_machine_id', machineId);
+  params.push(...machineFilter.params);
 
   const lowStockRows = await all(env.DB, `
     WITH product_rows AS (
@@ -428,20 +454,20 @@ async function getRecentExceptions(env, threshold, machineId) {
     SELECT
       p.id,
       p.name,
-      COALESCE(p.stock_machine_id, p.machine_id) AS machine_id,
+      ${machineSql('COALESCE(p.stock_machine_id, p.machine_id)')} AS machine_id,
       p.quantity_on_hand,
       COALESCE(p.balance_updated_at, p.updated_at) AS occurred_at
     FROM product_rows p
     WHERE p.status = 'active'
       AND COALESCE(p.quantity_on_hand, 0) <= ?
-      ${machineFilter}
+      ${machineFilter.sql}
     ORDER BY COALESCE(p.balance_updated_at, p.updated_at) DESC
     LIMIT 6
   `, params);
 
   const orderMachineFilter = machineFilterFor('machine_id', machineId);
   const orderRows = await all(env.DB, `
-    SELECT id, type, record_date, machine_id, voided_at, created_at
+    SELECT id, type, record_date, ${machineSql('machine_id')} AS machine_id, voided_at, created_at
     FROM sales_orders
     WHERE (
         type = 'loss'
