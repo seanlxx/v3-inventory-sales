@@ -10,7 +10,7 @@ import type {
   SalesOrderType
 } from '~/types/sale'
 import { AI_PRODUCT_MATCHING_RULES, extractAiJsonObject, roundAiMoney, useAiRecognition } from '~/composables/useAiRecognition'
-import { machineOptionsWithDefaults } from '~/utils/machines'
+import { displayMachineName, machineOptionsWithDefaults } from '~/utils/machines'
 import { buildProductCatalogPrompt, matchProductByName, normalizeProductName } from '~/utils/product-match'
 
 type SalesAiImage = AiRecognitionImage
@@ -52,7 +52,7 @@ function matchesSearch(order: SalesOrder, search: string) {
   const keyword = search.trim().toLowerCase()
   if (!keyword) return true
   const items = order.items.map(item => item.productName || item.productId).join(' ')
-  return `${order.id} ${order.note || ''} ${order.machineId} ${items}`.toLowerCase().includes(keyword)
+  return `${order.id} ${order.note || ''} ${order.machineId} ${displayMachineName(order.machineId, '')} ${items}`.toLowerCase().includes(keyword)
 }
 
 function roundMoney(value: number) {

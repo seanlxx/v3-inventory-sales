@@ -1,7 +1,7 @@
 import type { ApiError } from '~/types/api'
 import type { StockMovement } from '~/types/inventory'
 import type { Product, ProductListFilters, ProductMutationPayload, ProductStatus, ProductStatusPayload } from '~/types/product'
-import { machineMatchesOption, machineOptionsWithDefaults } from '~/utils/machines'
+import { displayMachineName, machineMatchesOption, machineOptionsWithDefaults } from '~/utils/machines'
 
 const defaultFilters: ProductListFilters = {
   search: '',
@@ -17,10 +17,17 @@ function productMachines(product: Product): string[] {
   ].filter((machine): machine is string => Boolean(machine))
 }
 
+function machineSearchText(product: Product) {
+  return productMachines(product).flatMap((machine) => {
+    const displayName = displayMachineName(machine, '')
+    return displayName && displayName !== machine ? [machine, displayName] : [machine]
+  }).join(' ')
+}
+
 function matchesSearch(product: Product, search: string) {
   const keyword = search.trim().toLowerCase()
   if (!keyword) return true
-  return `${product.name} ${productMachines(product).join(' ')} ${product.category}`.toLowerCase().includes(keyword)
+  return `${product.name} ${machineSearchText(product)} ${product.category}`.toLowerCase().includes(keyword)
 }
 
 function matchesMachine(product: Product, machineId: string) {

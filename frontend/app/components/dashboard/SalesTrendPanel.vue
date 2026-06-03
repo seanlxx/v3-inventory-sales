@@ -14,6 +14,7 @@ import {
 } from 'chart.js'
 import type { SalesTrendMachineSeries, SalesTrendPoint } from '~/types/report'
 import { formatMoney } from '~/utils/format'
+import { displayMachineName } from '~/utils/machines'
 
 const props = defineProps<{
   points: readonly SalesTrendPoint[]
@@ -75,7 +76,7 @@ const customDaysActive = computed(() =>
 )
 
 const visibleMachineSeries = computed(() =>
-  props.machineSeries.filter(series => series.machineId && series.points.length > 0)
+  props.machineSeries.filter(series => displayMachineName(series.machineId, '') && series.points.length > 0)
 )
 
 const chartLabels = computed(() => {
@@ -94,7 +95,7 @@ const chartSummary = computed(() => {
     return current
   }, null)
   if (!peak) return '销售趋势图'
-  const machineNames = visibleMachineSeries.value.map(series => series.machineId).join('、')
+  const machineNames = visibleMachineSeries.value.map(series => displayMachineName(series.machineId)).join('、')
   return `销售趋势图，最高销售额出现在 ${peak.date}，${formatMoney(Number(peak.gross) || 0)}${machineNames ? `，包含${machineNames}分机走势` : ''}`
 })
 
@@ -109,7 +110,7 @@ const chartData = computed<ChartData<'line'>>(() => {
     const grossByDate = new Map(series.points.map(point => [point.date, Number(point.gross) || 0]))
 
     return {
-      label: `${series.machineId}销售额`,
+      label: `${displayMachineName(series.machineId)}销售额`,
       data: labels.map(label => grossByDate.get(label) ?? 0),
       borderColor: style.borderColor,
       backgroundColor: style.backgroundColor,

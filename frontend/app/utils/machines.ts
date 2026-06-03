@@ -16,6 +16,10 @@ export function canonicalMachineOption(value: string | null | undefined) {
   return MACHINE_ALIASES.get(machine) || machine
 }
 
+export function displayMachineName(value: string | null | undefined, fallback = '-') {
+  return canonicalMachineOption(value) || fallback
+}
+
 export function machineMatchesOption(machine: string | null | undefined, option: string) {
   const normalizedMachine = canonicalMachineOption(machine)
   const normalizedOption = canonicalMachineOption(option)

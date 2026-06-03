@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { MachineRankingItem } from '~/types/report'
 import { formatMoney, formatQuantity } from '~/utils/format'
+import { displayMachineName } from '~/utils/machines'
 
 const props = defineProps<{
   items: readonly MachineRankingItem[]
@@ -35,7 +36,7 @@ function widthFor(item: MachineRankingItem) {
     <div v-else class="machine-ranking__list">
       <article v-for="item in props.items" :key="item.machineId" class="machine-ranking__item">
         <div class="machine-ranking__row">
-          <strong>{{ item.machineId }}</strong>
+          <strong>{{ displayMachineName(item.machineId) }}</strong>
           <span class="numeric">{{ formatMoney(item.profit) }}</span>
         </div>
         <div class="machine-ranking__bar-track" aria-hidden="true">

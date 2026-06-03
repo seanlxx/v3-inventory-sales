@@ -3,6 +3,7 @@ import type { ApiError } from '~/types/api'
 import type { StockMovement, StockMovementType } from '~/types/inventory'
 import type { Product } from '~/types/product'
 import { formatDateTime, formatMoney, formatQuantity } from '~/utils/format'
+import { displayMachineName } from '~/utils/machines'
 
 const open = defineModel<boolean>('open', { default: false })
 
@@ -91,7 +92,7 @@ const displayCost = computed(() =>
         </div>
         <div class="product-history__meta">
           <span>{{ formatDateTime(movement.createdAt) }}</span>
-          <span>{{ movement.machineId }}</span>
+          <span>{{ displayMachineName(movement.machineId) }}</span>
           <span>{{ movement.refType }} / {{ movement.refId }}</span>
         </div>
       </li>

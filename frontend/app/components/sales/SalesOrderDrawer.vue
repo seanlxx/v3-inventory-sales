@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { SalesOrder, SalesOrderType } from '~/types/sale'
 import { formatDateTime, formatMoney, formatQuantity } from '~/utils/format'
+import { displayMachineName } from '~/utils/machines'
 
 const open = defineModel<boolean>('open', { default: false })
 
@@ -42,7 +43,7 @@ function stockImpact(order: SalesOrder, quantity: number) {
         </div>
         <div>
           <span>售货机</span>
-          <strong>{{ props.order.machineId || '-' }}</strong>
+          <strong>{{ displayMachineName(props.order.machineId) }}</strong>
         </div>
         <div>
           <span>金额</span>

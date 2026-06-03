@@ -2,6 +2,7 @@
 import type { ApiError } from '~/types/api'
 import type { SalesOrder, SalesOrderType } from '~/types/sale'
 import { formatMoney, formatQuantity } from '~/utils/format'
+import { displayMachineName } from '~/utils/machines'
 
 const props = defineProps<{
   orders: readonly SalesOrder[]
@@ -74,7 +75,7 @@ function orderQuantity(order: SalesOrder) {
               <StatusBadge :label="typeLabel(order.type)" :tone="typeTone(order.type)" />
             </td>
             <td class="sales-table__center">{{ order.date }}</td>
-            <td class="sales-table__center">{{ order.machineId || '-' }}</td>
+            <td class="sales-table__center">{{ displayMachineName(order.machineId) }}</td>
             <td class="sales-table__center">
               {{ order.items.length }} 项
             </td>
@@ -156,7 +157,7 @@ function orderQuantity(order: SalesOrder) {
         <dl class="sales-table__card-grid">
           <div>
             <dt>售货机</dt>
-            <dd>{{ order.machineId || '-' }}</dd>
+            <dd>{{ displayMachineName(order.machineId) }}</dd>
           </div>
           <div>
             <dt>明细</dt>

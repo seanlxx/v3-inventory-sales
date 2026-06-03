@@ -2,6 +2,7 @@
 import type { ApiError } from '~/types/api'
 import type { Product } from '~/types/product'
 import { formatMoney, formatQuantity } from '~/utils/format'
+import { displayMachineName } from '~/utils/machines'
 
 const props = defineProps<{
   products: readonly Product[]
@@ -94,7 +95,7 @@ function purchaseCost(product: Product) {
             <td class="product-table__center">
               <StatusBadge :label="product.category || '其他'" tone="neutral" />
             </td>
-            <td class="product-table__center">{{ product.machineId }}</td>
+            <td class="product-table__center">{{ displayMachineName(product.machineId) }}</td>
             <td class="product-table__center">
               {{ formatMoney(product.sellPrice) }}
             </td>
@@ -176,7 +177,7 @@ function purchaseCost(product: Product) {
           <header class="product-table__card-header">
             <div class="product-table__card-main">
               <strong class="product-table__card-name">{{ product.name }}</strong>
-              <span class="product-table__card-meta">{{ product.machineId }} · {{ product.category || '其他' }}</span>
+              <span class="product-table__card-meta">{{ displayMachineName(product.machineId) }} · {{ product.category || '其他' }}</span>
             </div>
             <StatusBadge
               :label="product.status === 'archived' ? '停用' : '启用'"

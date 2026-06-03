@@ -2,6 +2,7 @@
 import type { Product } from '~/types/product'
 import type { SalesItem, SalesOrderType } from '~/types/sale'
 import { formatMoney, formatQuantity } from '~/utils/format'
+import { displayMachineName } from '~/utils/machines'
 
 const items = defineModel<SalesItem[]>({ default: () => [] })
 
@@ -97,7 +98,7 @@ function updateItem(index: number, patch: Partial<SalesItem>) {
               >
                 <option value="">选择商品</option>
                 <option v-for="product in props.products" :key="product.id" :value="product.id">
-                  {{ product.name }} · {{ product.machineId }}
+                  {{ product.name }} · {{ displayMachineName(product.machineId) }}
                 </option>
               </select>
             </td>

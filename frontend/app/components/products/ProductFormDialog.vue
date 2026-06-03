@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Product, ProductMutationPayload } from '~/types/product'
+import { canonicalMachineOption } from '~/utils/machines'
 
 const open = defineModel<boolean>('open', { default: false })
 
@@ -29,7 +30,7 @@ const dialogDescription = computed(() => '只维护商品主数据，库存请�
 function resetDraft() {
   draft.id = props.product?.id
   draft.name = props.product?.name || ''
-  draft.machineId = props.product?.machineId || props.machines[0] || '1号机'
+  draft.machineId = canonicalMachineOption(props.product?.machineId) || props.machines[0] || '1号机'
   draft.category = props.product?.category || props.categories[0] || '其他'
   draft.sellPrice = props.product?.sellPrice || 0
   draft.manualCost = props.product?.manualCost || 0
