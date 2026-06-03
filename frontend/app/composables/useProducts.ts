@@ -1,6 +1,7 @@
 import type { ApiError } from '~/types/api'
 import type { StockMovement } from '~/types/inventory'
 import type { Product, ProductListFilters, ProductMutationPayload, ProductStatus, ProductStatusPayload } from '~/types/product'
+import { machineOptionsWithDefaults } from '~/utils/machines'
 
 const defaultFilters: ProductListFilters = {
   search: '',
@@ -8,8 +9,6 @@ const defaultFilters: ProductListFilters = {
   category: 'all',
   status: 'active'
 }
-
-const DEFAULT_STOCK_MACHINES = ['1号机', '2号机', '3号机', '轨道机'] as const
 
 function productMachines(product: Product): string[] {
   return [
@@ -59,19 +58,11 @@ export function useProducts() {
   const movementsError = shallowRef<ApiError | null>(null)
 
   const machineOptions = computed(() => {
-    const machines = new Set<string>(DEFAULT_STOCK_MACHINES)
-    products.value.forEach(product => {
-      productMachines(product).forEach(machine => machines.add(machine))
-    })
-    return Array.from(machines).sort((left, right) => left.localeCompare(right, 'zh-CN'))
+    return machineOptionsWithDefaults(products.value.flatMap(productMachines))
   })
 
   const productMachineOptions = computed(() => {
-    const machines = new Set<string>(DEFAULT_STOCK_MACHINES)
-    products.value.forEach(product => {
-      productMachines(product).forEach(machine => machines.add(machine))
-    })
-    return Array.from(machines).sort((left, right) => left.localeCompare(right, 'zh-CN'))
+    return machineOptionsWithDefaults(products.value.flatMap(productMachines))
   })
 
   const categoryOptions = computed(() => {

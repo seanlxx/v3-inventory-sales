@@ -1,5 +1,6 @@
 import type { ApiError } from '~/types/api'
 import type { DashboardFilters, DashboardReport } from '~/types/report'
+import { machineOptionsWithDefaults } from '~/utils/machines'
 
 function currentMonth() {
   return new Date().toISOString().slice(0, 7)
@@ -18,17 +19,11 @@ export function useReports() {
   const error = shallowRef<ApiError | null>(null)
 
   const machineOptions = computed(() => {
-    const machines = new Set<string>()
-    report.value?.machineRanking.forEach(item => {
-      if (item.machineId) machines.add(item.machineId)
-    })
-    report.value?.salesTrendByMachine?.forEach(series => {
-      if (series.machineId) machines.add(series.machineId)
-    })
-    report.value?.lowStock.forEach(item => {
-      if (item.machineId) machines.add(item.machineId)
-    })
-    return Array.from(machines).sort((left, right) => left.localeCompare(right, 'zh-CN'))
+    return machineOptionsWithDefaults([
+      ...(report.value?.machineRanking.map(item => item.machineId) ?? []),
+      ...(report.value?.salesTrendByMachine?.map(series => series.machineId) ?? []),
+      ...(report.value?.lowStock.map(item => item.machineId) ?? [])
+    ])
   })
 
   function updateFilters(nextFilters: Partial<DashboardFilters>) {

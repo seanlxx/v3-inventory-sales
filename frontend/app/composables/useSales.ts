@@ -10,6 +10,7 @@ import type {
   SalesOrderType
 } from '~/types/sale'
 import { AI_PRODUCT_MATCHING_RULES, extractAiJsonObject, roundAiMoney, useAiRecognition } from '~/composables/useAiRecognition'
+import { machineOptionsWithDefaults } from '~/utils/machines'
 import { buildProductCatalogPrompt, matchProductByName, normalizeProductName } from '~/utils/product-match'
 
 type SalesAiImage = AiRecognitionImage
@@ -206,12 +207,10 @@ export function useSales() {
   const productOptions = computed(() => activeProducts(products.value))
 
   const machineOptions = computed(() => {
-    const machines = new Set(products.value.map(product => product.machineId).filter(Boolean))
-    if (machines.size === 0) {
-      machines.add('1号机')
-      machines.add('2号机')
-    }
-    return Array.from(machines).sort((left, right) => left.localeCompare(right, 'zh-CN'))
+    return machineOptionsWithDefaults([
+      ...products.value.map(product => product.machineId),
+      ...orders.value.map(order => order.machineId)
+    ])
   })
 
   function updateFilters(nextFilters: Partial<SalesListFilters>) {
