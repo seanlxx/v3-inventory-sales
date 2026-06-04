@@ -20,6 +20,10 @@ export type SalesOrder = {
   totalAmount: number
   receivedAmount?: number
   totalCogs?: number
+  platformFee?: number
+  serviceFee?: number
+  discount?: number
+  refundAmount?: number
   items: SalesItem[]
   type: SalesOrderType
   note?: string

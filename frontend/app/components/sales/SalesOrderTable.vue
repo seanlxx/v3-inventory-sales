@@ -16,6 +16,8 @@ const emit = defineEmits<{
   retry: []
 }>()
 
+const TABLE_COLSPAN = 10
+
 function typeLabel(type: SalesOrderType) {
   if (type === 'refund') return '退款'
   if (type === 'loss') return '损耗'
@@ -31,6 +33,38 @@ function typeTone(type: SalesOrderType) {
 function orderQuantity(order: SalesOrder) {
   return order.items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)
 }
+
+function moneyValue(value: number | null | undefined) {
+  return Math.abs(Number(value) || 0)
+}
+
+function normalizeMoney(value: number) {
+  return Math.abs(value) < 0.005 ? 0 : value
+}
+
+function orderReceivedAmount(order: SalesOrder) {
+  if (order.type === 'loss') return 0
+  return moneyValue(order.receivedAmount)
+}
+
+function orderProfitAmount(order: SalesOrder) {
+  const cost = moneyValue(order.totalCogs)
+  if (order.type === 'loss') return -cost
+
+  const profit = orderReceivedAmount(order) - cost
+  return normalizeMoney(order.type === 'refund' ? -Math.abs(profit) : profit)
+}
+
+function profitLabel(order: SalesOrder) {
+  if (order.type === 'loss') return `损耗成本 ${formatMoney(moneyValue(order.totalCogs))}`
+  return formatMoney(orderProfitAmount(order))
+}
+
+function moneyToneClass(value: number) {
+  if (value > 0) return 'sales-table__money--positive'
+  if (value < 0) return 'sales-table__money--negative'
+  return 'sales-table__money--neutral'
+}
 </script>
 
 <template>
@@ -45,18 +79,20 @@ function orderQuantity(order: SalesOrder) {
             <th scope="col" class="sales-table__center">明细</th>
             <th scope="col" class="sales-table__center">数量</th>
             <th scope="col" class="sales-table__center">金额</th>
+            <th scope="col" class="sales-table__center">成本</th>
+            <th scope="col" class="sales-table__center">利润</th>
             <th scope="col" class="sales-table__center">状态</th>
             <th scope="col" class="sales-table__center sales-table__actions-cell">操作</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="props.loading">
-            <td class="sales-table__state" colspan="8">
+            <td class="sales-table__state" :colspan="TABLE_COLSPAN">
               正在加载单据
             </td>
           </tr>
           <tr v-else-if="props.error">
-            <td class="sales-table__state sales-table__state--error" colspan="8">
+            <td class="sales-table__state sales-table__state--error" :colspan="TABLE_COLSPAN">
               <div class="sales-table__state-stack">
                 <strong>{{ props.error.message }}</strong>
                 <AppButton variant="secondary" size="sm" @click="emit('retry')">
@@ -66,7 +102,7 @@ function orderQuantity(order: SalesOrder) {
             </td>
           </tr>
           <tr v-else-if="props.orders.length === 0">
-            <td class="sales-table__state" colspan="8">
+            <td class="sales-table__state" :colspan="TABLE_COLSPAN">
               没有符合筛选条件的单据
             </td>
           </tr>
@@ -84,6 +120,14 @@ function orderQuantity(order: SalesOrder) {
             </td>
             <td class="sales-table__center">
               {{ formatMoney(order.totalAmount) }}
+            </td>
+            <td class="sales-table__center">
+              {{ formatMoney(order.totalCogs) }}
+            </td>
+            <td class="sales-table__center">
+              <span class="sales-table__money" :class="moneyToneClass(orderProfitAmount(order))">
+                {{ profitLabel(order) }}
+              </span>
             </td>
             <td class="sales-table__center">
               <div class="sales-table__status">
@@ -167,6 +211,16 @@ function orderQuantity(order: SalesOrder) {
             <dt>数量</dt>
             <dd>{{ formatQuantity(orderQuantity(order)) }}</dd>
           </div>
+          <div>
+            <dt>成本</dt>
+            <dd>{{ formatMoney(order.totalCogs) }}</dd>
+          </div>
+          <div>
+            <dt>{{ order.type === 'loss' ? '损耗成本' : '利润' }}</dt>
+            <dd class="sales-table__money" :class="moneyToneClass(orderProfitAmount(order))">
+              {{ order.type === 'loss' ? formatMoney(moneyValue(order.totalCogs)) : formatMoney(orderProfitAmount(order)) }}
+            </dd>
+          </div>
         </dl>
 
         <div class="sales-table__card-actions">
@@ -203,7 +257,7 @@ function orderQuantity(order: SalesOrder) {
 
 .sales-table__table {
   width: 100%;
-  min-width: 820px;
+  min-width: 980px;
   border-collapse: collapse;
 }
 
@@ -247,6 +301,23 @@ function orderQuantity(order: SalesOrder) {
   flex-wrap: wrap;
   justify-content: center;
   gap: var(--space-1);
+}
+
+.sales-table__money {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.sales-table__money--positive {
+  color: var(--color-inbound);
+}
+
+.sales-table__money--negative {
+  color: var(--color-danger);
+}
+
+.sales-table__money--neutral {
+  color: var(--color-text-muted);
 }
 
 .sales-table__state {
@@ -388,10 +459,6 @@ tbody tr:last-child td {
     color: var(--color-text);
     font-weight: 700;
     font-variant-numeric: tabular-nums;
-  }
-
-  .sales-table__card-grid div:last-child {
-    grid-column: 1 / -1;
   }
 
   .sales-table__card-actions {

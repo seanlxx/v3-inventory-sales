@@ -34,10 +34,18 @@ function normalizeOrderType(value: unknown): SalesOrderType {
 
 function normalizeOrder(order: SalesOrder): SalesOrder {
   const rawType = (order as { type?: unknown }).type
+  const totalAmount = Number(order.totalAmount) || 0
   return {
     ...order,
     type: normalizeOrderType(rawType === 'daily' ? 'sale' : rawType),
     status: order.status || (order.voidedAt ? 'voided' : 'active'),
+    totalAmount,
+    receivedAmount: Number(order.receivedAmount ?? totalAmount) || 0,
+    totalCogs: Number(order.totalCogs) || 0,
+    platformFee: Number(order.platformFee) || 0,
+    serviceFee: Number(order.serviceFee) || 0,
+    discount: Number(order.discount) || 0,
+    refundAmount: Number(order.refundAmount) || 0,
     items: (order.items || []).map(item => ({
       ...item,
       quantity: Math.abs(Number(item.quantity) || 0),
