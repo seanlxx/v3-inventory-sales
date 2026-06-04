@@ -3,6 +3,16 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
+function ConvertFrom-WranglerJson($RawOutput, $Label) {
+  $text = ($RawOutput -join "`n").Trim()
+  $jsonStart = $text.IndexOf("[")
+  if ($jsonStart -lt 0) {
+    throw "$Label did not return a JSON array. Output: $text"
+  }
+
+  return $text.Substring($jsonStart) | ConvertFrom-Json
+}
+
 $dirty = git status --short
 if ($dirty) {
   throw "Working tree is not clean. Commit or stash changes before deploying."
@@ -20,7 +30,7 @@ npx wrangler pages deploy .\dist `
   --commit-message $commitMessage
 
 $deploymentsJson = npx wrangler pages deployment list --project-name v3-inventory-sales --environment production --json
-$deployments = $deploymentsJson | ConvertFrom-Json
+$deployments = ConvertFrom-WranglerJson $deploymentsJson "wrangler pages deployment list"
 $latest = $deployments[0]
 
 if ($latest.Source -ne $commitHash.Substring(0, 7)) {
