@@ -499,7 +499,8 @@ async function rebuildExistingOrder(env, existing, lines, fees, summary, timesta
       ? null
       : findPurchaseCostCandidate(candidates, line, product);
     const balanceCostCents = Number(balance.avg_cost_cents) || 0;
-    const unitCostCents = line.costCents ?? (balanceCostCents || costMatch?.avgCostCents || 0);
+    const productManualCostCents = Math.max(0, Number(product.manual_cost_cents) || 0);
+    const unitCostCents = line.costCents ?? (balanceCostCents || costMatch?.avgCostCents || productManualCostCents || 0);
     const lineCogsCents = unitCostCents * quantity;
     if (unitCostCents > 0) summary.costsMatched = (summary.costsMatched || 0) + 1;
     else summary.costsMissing = (summary.costsMissing || 0) + 1;
@@ -647,23 +648,25 @@ async function reconcileExistingOrder(env, existing, lines, fees, summary, times
     let lineCogsCents = existingLineCogs;
     if (existingLineCogs === 0) {
       if (!product) {
-        product = await first(env.DB, `SELECT id, name, machine_id, external_id, normalized_name FROM products WHERE id = ?`, [item.product_id]);
+        product = await first(env.DB, `SELECT id, name, machine_id, external_id, normalized_name, manual_cost_cents FROM products WHERE id = ?`, [item.product_id]);
       }
       const candidates = await loadPurchaseCostCandidates(env, existing.machine_id, costCandidateCache);
       const costMatch = findPurchaseCostCandidate(candidates, line, product);
-      if (costMatch) {
+      const fallbackCostCents = Math.max(0, Number(product?.manual_cost_cents) || 0);
+      const resolvedCostCents = costMatch?.avgCostCents || fallbackCostCents;
+      if (resolvedCostCents > 0) {
         const quantity = Math.max(1, Number(item.quantity || line.quantity) || 1);
-        lineCogsCents = costMatch.avgCostCents * quantity;
+        lineCogsCents = resolvedCostCents * quantity;
         await env.DB.prepare(`
           UPDATE sales_items
           SET unit_cost_cents = ?, line_cogs_cents = ?
           WHERE id = ?
-        `).bind(costMatch.avgCostCents, lineCogsCents, item.id).run();
+        `).bind(resolvedCostCents, lineCogsCents, item.id).run();
         await env.DB.prepare(`
           UPDATE stock_movements
           SET unit_cost_cents = ?
           WHERE ref_type = 'sales_order' AND ref_item_id = ?
-        `).bind(costMatch.avgCostCents, item.id).run();
+        `).bind(resolvedCostCents, item.id).run();
         cogsChanged = true;
         summary.costsMatched = (summary.costsMatched || 0) + 1;
       } else {
@@ -741,7 +744,8 @@ async function importOneOrder(env, machineId, vendorOrderNo, lines, summary, war
       ? null
       : findPurchaseCostCandidate(candidates, line, product);
     const balanceCostCents = Number(balance.avg_cost_cents) || 0;
-    const unitCostCents = line.costCents ?? (balanceCostCents || costMatch?.avgCostCents || 0);
+    const productManualCostCents = Math.max(0, Number(product.manual_cost_cents) || 0);
+    const unitCostCents = line.costCents ?? (balanceCostCents || costMatch?.avgCostCents || productManualCostCents || 0);
     const lineCogsCents = unitCostCents * quantity;
     if (unitCostCents > 0) orderSummary.costsMatched += 1;
     else orderSummary.costsMissing += 1;
