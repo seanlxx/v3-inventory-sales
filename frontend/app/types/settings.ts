@@ -19,9 +19,6 @@ export type AiProviderOption = {
 }
 
 export type AiClientConfig = {
-  apiKey?: string
-  apiKeyMasked?: string
-  baseUrl?: string
   modelId?: string
   configured?: boolean
 }

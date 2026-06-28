@@ -101,17 +101,6 @@ function getConfig(platform, env) {
   return getConfig('opencode', env);
 }
 
-function normalizeClientConfig(platform, clientConfig) {
-  if (!clientConfig || typeof clientConfig !== 'object') return null;
-  const apiKey = typeof clientConfig.apiKey === 'string' ? clientConfig.apiKey.trim() : '';
-  if (!apiKey) return null;
-  const baseUrl = typeof clientConfig.baseUrl === 'string' ? clientConfig.baseUrl.trim() : '';
-  return {
-    apiKey,
-    baseUrl: baseUrl || getConfig(platform, {}).baseUrl
-  };
-}
-
 function safeParse(value, fallback = null) {
   try {
     return JSON.parse(value);
@@ -143,28 +132,15 @@ async function getStoredAiSettings(db) {
   };
 }
 
-function mergeClientConfig(platform, draftConfig, storedConfig, envConfig) {
-  const draft = draftConfig && typeof draftConfig === 'object' ? draftConfig : {};
+function storedModelId(storedConfig) {
   const stored = storedConfig && typeof storedConfig === 'object' ? storedConfig : {};
-  const apiKey = typeof draft.apiKey === 'string' && draft.apiKey.trim()
-    ? draft.apiKey.trim()
-    : typeof stored.apiKey === 'string' && stored.apiKey.trim()
-      ? stored.apiKey.trim()
-      : envConfig.apiKey;
-  const baseUrl = typeof draft.baseUrl === 'string' && draft.baseUrl.trim()
-    ? draft.baseUrl.trim()
-    : typeof stored.baseUrl === 'string' && stored.baseUrl.trim()
-      ? stored.baseUrl.trim()
-      : envConfig.baseUrl || getConfig(platform, {}).baseUrl;
-
-  if (!apiKey) return null;
-  return { apiKey, baseUrl };
+  return typeof stored.modelId === 'string' ? stored.modelId.trim() : '';
 }
 
 async function resolveAiRequest(context, body) {
   if (body.modelId) {
     const platform = normalizePlatform(body.platform, getPlatform(body.modelId));
-    const config = normalizeClientConfig(platform, body.clientConfig) || getConfig(platform, context.env);
+    const config = getConfig(platform, context.env);
     return {
       platform,
       config: config?.apiKey ? config : null,
@@ -175,11 +151,10 @@ async function resolveAiRequest(context, body) {
   const storedSettings = await getStoredAiSettings(context.env.DB);
   const platform = normalizePlatform(body.platform, storedSettings.activeProvider);
   const storedConfig = storedSettings.configs[platform];
-  const config = mergeClientConfig(platform, body.clientConfig, storedConfig, getConfig(platform, context.env));
-  const storedModelId = typeof storedConfig?.modelId === 'string' ? storedConfig.modelId.trim() : '';
-  const modelId = storedModelId || (platform === 'qwen' ? DEFAULT_QWEN_MODEL_ID : '');
+  const config = getConfig(platform, context.env);
+  const modelId = storedModelId(storedConfig) || (platform === 'qwen' ? DEFAULT_QWEN_MODEL_ID : '');
 
-  return { platform, config, modelId };
+  return { platform, config: config?.apiKey ? config : null, modelId };
 }
 
 function configuredModels(env) {
@@ -192,13 +167,8 @@ function configuredModels(env) {
   };
 }
 
-async function configuredModelSources(env) {
-  const storedSettings = await getStoredAiSettings(env.DB);
-  return Object.fromEntries(Array.from(AI_PLATFORMS).map(platform => {
-    const envConfigured = configuredModels(env)[platform];
-    const storedConfig = storedSettings.configs[platform];
-    return [platform, envConfigured || !!String(storedConfig?.apiKey || '').trim()];
-  }));
+function configuredModelSources(env) {
+  return configuredModels(env);
 }
 
 async function fetchWithTimeout(url, options, timeoutMs) {

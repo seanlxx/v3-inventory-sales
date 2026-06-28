@@ -1,7 +1,6 @@
 import type { ApiError } from '~/types/api'
 import type {
   AiClientConfigs,
-  AiClientConfig,
   AiProviderId,
   AiProviderOption,
   BusinessSettings,
@@ -250,13 +249,12 @@ export function useSettings() {
     }
   }
 
-  async function fetchAiModels(provider: AiProviderId, clientConfig: AiClientConfig) {
+  async function fetchAiModels(provider: AiProviderId) {
     return await request<{ models: string[] }, Record<string, unknown>>('/ai-proxy', {
       method: 'POST',
       body: {
         action: 'models',
-        platform: provider,
-        clientConfig
+        platform: provider
       }
     })
   }

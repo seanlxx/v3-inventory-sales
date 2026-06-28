@@ -88,10 +88,6 @@ function proxyBody(overrides = {}) {
     imageBase64: 'abc123',
     mimeType: 'image/jpeg',
     maxTokens: 128,
-    clientConfig: {
-      apiKey: 'test-key',
-      baseUrl: 'https://example.test/v1'
-    },
     ...overrides
   };
 }
@@ -113,7 +109,14 @@ async function testCloudflareImageRouting() {
     body: JSON.stringify(proxyBody()),
     headers: { 'X-VM-Session': 'valid-session' }
   });
-  const response = await api.onRequestPost({ request, env: { DB: sessionDb() } });
+  const response = await api.onRequestPost({
+    request,
+    env: {
+      DB: sessionDb(),
+      OPENCODE_API_KEY: 'env-opencode-key',
+      OPENCODE_BASE_URL: 'https://example.test/v1'
+    }
+  });
   assert.equal(response.status, 200);
   assert.equal(calls.length, 1);
   assertChatCompletionImageCall(calls[0]);
@@ -130,7 +133,14 @@ async function testTextJsonRouting() {
       jsonSchema: { type: 'object' }
     }))
   });
-  const response = await api.onRequestPost({ request, env: { DB: sessionDb() } });
+  const response = await api.onRequestPost({
+    request,
+    env: {
+      DB: sessionDb(),
+      OPENCODE_API_KEY: 'env-opencode-key',
+      OPENCODE_BASE_URL: 'https://example.test/v1'
+    }
+  });
   assert.equal(response.status, 200);
   const payload = JSON.parse(calls[0].options.body);
   assert.equal(calls[0].url, 'https://example.test/v1/chat/completions');
@@ -154,17 +164,19 @@ async function testStoredModelRouting() {
         aiActiveProvider: 'qwen',
         aiClientConfigs: {
           qwen: {
-            apiKey: 'stored-key',
-            baseUrl: 'https://stored.example/v1',
+            baseUrl: 'https://ignored-stored.example/v1',
+            apiKey: 'ignored-stored-key',
             modelId: 'qwen-test-model'
           }
         }
-      })
+      }),
+      QWEN_API_KEY: 'env-qwen-key',
+      QWEN_BASE_URL: 'https://stored.example/v1'
     }
   });
   assert.equal(response.status, 200);
   assert.equal(calls[0].url, 'https://stored.example/v1/chat/completions');
-  assert.equal(calls[0].options.headers.Authorization, 'Bearer stored-key');
+  assert.equal(calls[0].options.headers.Authorization, 'Bearer env-qwen-key');
   assert.equal(JSON.parse(calls[0].options.body).model, 'qwen-test-model');
 }
 
@@ -175,16 +187,16 @@ async function testModelListRouting() {
     headers: { 'X-VM-Session': 'valid-session' },
     body: JSON.stringify({
       action: 'models',
-      platform: 'qwen',
-      clientConfig: {
-        apiKey: 'test-key',
-        baseUrl: 'https://example.test/v1'
-      }
+      platform: 'qwen'
     })
   });
   const response = await api.onRequestPost({
     request,
-    env: { DB: settingsDb({}) }
+    env: {
+      DB: settingsDb({}),
+      QWEN_API_KEY: 'env-qwen-key',
+      QWEN_BASE_URL: 'https://example.test/v1'
+    }
   });
   assert.equal(response.status, 200);
   assert.equal(calls[0].url, 'https://example.test/v1/models');

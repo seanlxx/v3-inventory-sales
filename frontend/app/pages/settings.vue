@@ -12,8 +12,6 @@ const { theme, setTheme } = useTheme()
 
 type AiProviderDraft = {
   baseUrl: string
-  apiKey: string
-  apiKeyMasked: string
   modelId: string
   models: string[]
   modelLoading: boolean
@@ -49,11 +47,11 @@ const businessDraft = reactive({
 const machinesDraft = shallowRef('')
 const categoriesDraft = shallowRef('')
 const aiDraft = reactive<Record<AiProviderId, AiProviderDraft>>({
-  opencode: { baseUrl: '', apiKey: '', apiKeyMasked: '', modelId: '', models: [], modelLoading: false, modelError: '', configured: false },
-  qwen: { baseUrl: '', apiKey: '', apiKeyMasked: '', modelId: '', models: [], modelLoading: false, modelError: '', configured: false },
-  deepseek: { baseUrl: '', apiKey: '', apiKeyMasked: '', modelId: '', models: [], modelLoading: false, modelError: '', configured: false },
-  claude: { baseUrl: '', apiKey: '', apiKeyMasked: '', modelId: '', models: [], modelLoading: false, modelError: '', configured: false },
-  yunwu: { baseUrl: '', apiKey: '', apiKeyMasked: '', modelId: '', models: [], modelLoading: false, modelError: '', configured: false }
+  opencode: { baseUrl: '', modelId: '', models: [], modelLoading: false, modelError: '', configured: false },
+  qwen: { baseUrl: '', modelId: '', models: [], modelLoading: false, modelError: '', configured: false },
+  deepseek: { baseUrl: '', modelId: '', models: [], modelLoading: false, modelError: '', configured: false },
+  claude: { baseUrl: '', modelId: '', models: [], modelLoading: false, modelError: '', configured: false },
+  yunwu: { baseUrl: '', modelId: '', models: [], modelLoading: false, modelError: '', configured: false }
 })
 const activeAiProvider = shallowRef<AiProviderId>('qwen')
 const activeAiDraft = computed(() => aiDraft[activeAiProvider.value])
@@ -80,9 +78,7 @@ function syncDrafts() {
     const config = settings.value.aiClientConfigs[provider.id]
     const modelId = config?.modelId || ''
     aiDraft[provider.id] = {
-      baseUrl: config?.baseUrl || provider.defaultBaseUrl,
-      apiKey: '',
-      apiKeyMasked: config?.apiKeyMasked || '',
+      baseUrl: provider.defaultBaseUrl,
       modelId,
       models: modelId ? [modelId] : [],
       modelLoading: false,
@@ -120,17 +116,11 @@ async function submitAiConfigs() {
   const configs = Object.fromEntries(providerOptions.map(provider => {
     const draft = aiDraft[provider.id]
     return [provider.id, {
-      baseUrl: draft.baseUrl.trim(),
-      apiKey: draft.apiKey.trim() || undefined,
-      apiKeyMasked: draft.apiKey.trim() ? undefined : draft.apiKeyMasked,
       modelId: draft.modelId.trim() || undefined
     }]
   })) as AiClientConfigs
 
   await saveAiClientSettings(activeAiProvider.value, configs)
-  for (const provider of providerOptions) {
-    aiDraft[provider.id].apiKey = ''
-  }
 }
 
 async function loadAiModels() {
@@ -138,11 +128,7 @@ async function loadAiModels() {
   draft.modelLoading = true
   draft.modelError = ''
   try {
-    const response = await fetchAiModels(activeAiProvider.value, {
-      baseUrl: draft.baseUrl.trim(),
-      apiKey: draft.apiKey.trim() || undefined,
-      apiKeyMasked: draft.apiKey.trim() ? undefined : draft.apiKeyMasked
-    })
+    const response = await fetchAiModels(activeAiProvider.value)
     draft.models = response.models
     const firstModel = response.models[0]
     if (!draft.modelId && firstModel) {
@@ -299,7 +285,7 @@ onMounted(async () => {
 
     <VendorSyncCard />
 
-    <SettingsSection title="AI provider" description="填写 Base URL 和 API Key 后手动获取模型，再选择当前要使用的模型。">
+    <SettingsSection title="AI provider" description="API Key 仅从 Cloudflare 环境变量读取；这里选择当前 provider 和模型。">
       <form class="settings-page__form" @submit.prevent="submitAiConfigs">
         <article class="settings-page__provider">
           <div class="settings-page__provider-heading">
@@ -308,7 +294,7 @@ onMounted(async () => {
               <p>{{ activeAiProviderOption.baseUrlEnv }} / {{ activeAiProviderOption.keyEnv }}</p>
             </div>
             <StatusBadge
-              :label="activeAiDraft.configured ? activeAiDraft.apiKeyMasked || '已配置' : '未配置'"
+              :label="activeAiDraft.configured ? '服务端已配置' : '服务端未配置'"
               :tone="activeAiDraft.configured ? 'success' : 'neutral'"
             />
           </div>
@@ -329,12 +315,7 @@ onMounted(async () => {
             <AppInput
               v-model="activeAiDraft.baseUrl"
               label="Base URL"
-            />
-            <AppInput
-              v-model="activeAiDraft.apiKey"
-              label="API Key"
-              type="password"
-              placeholder="留空则保留原 Key"
+              disabled
             />
             <label class="settings-page__select-field">
               <span>模型</span>
