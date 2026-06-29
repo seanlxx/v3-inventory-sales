@@ -18,6 +18,7 @@ export type AiRecognitionPromptOptions = {
 }
 
 type RecognizeImageBatchOptions<TParsed> = {
+  apiKey: string
   images: readonly AiRecognitionImage[]
   batchSize?: number
   maxTokens: number
@@ -179,7 +180,11 @@ export function useAiRecognition() {
     return Promise.all(nextFiles.map((file, index) => readImageFile(file, index)))
   }
 
-  async function requestAiStream(body: Record<string, unknown>, onDelta: (text: string) => void, signal?: AbortSignal) {
+  async function requestAiStream(
+    body: Record<string, unknown>,
+    onDelta: (text: string) => void,
+    signal?: AbortSignal
+  ) {
     const authStore = useAuthStore()
     authStore.initialize()
     const apiBase = String(config.public.apiBase || '/api').replace(/\/$/, '')
@@ -266,6 +271,7 @@ export function useAiRecognition() {
             imageBase64: image.aiImageBase64,
             mimeType: image.aiMimeType
           })),
+          apiKey: options.apiKey,
           maxTokens: options.maxTokens,
           stream: true,
           systemPrompt: options.systemPrompt,

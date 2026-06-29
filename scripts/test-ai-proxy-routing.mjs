@@ -29,12 +29,6 @@ async function loadCloudflareProxy() {
     console,
     fetch: async (url, options) => {
       calls.push({ url: String(url), options });
-      if (String(url).endsWith('/models')) {
-        return {
-          ok: true,
-          json: async () => ({ data: [{ id: 'qwen-test-model' }, { id: 'qwen-other-model' }] })
-        };
-      }
       return {
         ok: true,
         json: async () => ({ choices: [{ message: { content: '{"items":[]}' } }] })
@@ -61,29 +55,11 @@ function sessionDb() {
   };
 }
 
-function settingsDb(settings) {
-  const base = sessionDb();
-  return {
-    prepare: (sql) => {
-      if (/FROM app_sessions/.test(sql)) return base.prepare(sql);
-      if (/FROM vending_records/.test(sql)) {
-        return {
-          bind: (key) => ({
-            first: async () => {
-              if (!(key in settings)) return null;
-              return { data: JSON.stringify({ key, value: settings[key] }) };
-            }
-          })
-        };
-      }
-      throw new Error(`Unexpected SQL: ${sql}`);
-    }
-  };
-}
-
 function proxyBody(overrides = {}) {
   return {
-    modelId: 'gpt-5.4-mini',
+    apiKey: 'manual-request-key',
+    modelId: 'client-ignored-model',
+    platform: 'client-ignored-platform',
     userPrompt: 'recognize sales from image',
     imageBase64: 'abc123',
     mimeType: 'image/jpeg',
@@ -93,16 +69,18 @@ function proxyBody(overrides = {}) {
 }
 
 function assertChatCompletionImageCall(call) {
-  assert.equal(call.url, 'https://example.test/v1/chat/completions');
+  assert.equal(call.url, 'https://api.243706.xyz/v1/chat/completions');
+  assert.equal(call.options.headers.Authorization, 'Bearer manual-request-key');
   const payload = JSON.parse(call.options.body);
-  assert.equal(payload.model, 'gpt-5.4-mini');
+  assert.equal(payload.model, 'gpt5.5');
+  assert.equal(payload.apiKey, undefined);
   const content = payload.messages.at(-1).content;
   assert.equal(content[0].type, 'text');
   assert.equal(content[1].type, 'image_url');
   assert.equal(content[1].image_url.url, 'data:image/jpeg;base64,abc123');
 }
 
-async function testCloudflareImageRouting() {
+async function testManualKeyImageRouting() {
   const { api, calls } = await loadCloudflareProxy();
   const request = new Request('https://app.test/api/ai-proxy', {
     method: 'POST',
@@ -111,11 +89,7 @@ async function testCloudflareImageRouting() {
   });
   const response = await api.onRequestPost({
     request,
-    env: {
-      DB: sessionDb(),
-      OPENCODE_API_KEY: 'env-opencode-key',
-      OPENCODE_BASE_URL: 'https://example.test/v1'
-    }
+    env: { DB: sessionDb() }
   });
   assert.equal(response.status, 200);
   assert.equal(calls.length, 1);
@@ -135,72 +109,43 @@ async function testTextJsonRouting() {
   });
   const response = await api.onRequestPost({
     request,
-    env: {
-      DB: sessionDb(),
-      OPENCODE_API_KEY: 'env-opencode-key',
-      OPENCODE_BASE_URL: 'https://example.test/v1'
-    }
+    env: { DB: sessionDb() }
   });
   assert.equal(response.status, 200);
   const payload = JSON.parse(calls[0].options.body);
-  assert.equal(calls[0].url, 'https://example.test/v1/chat/completions');
+  assert.equal(calls[0].url, 'https://api.243706.xyz/v1/chat/completions');
   assert.deepEqual(payload.response_format, { type: 'json_object' });
+  assert.equal(payload.model, 'gpt5.5');
 }
 
-async function testStoredModelRouting() {
-  const { api, calls } = await loadCloudflareProxy();
-  const request = new Request('https://app.test/api/ai-proxy', {
-    method: 'POST',
-    headers: { 'X-VM-Session': 'valid-session' },
-    body: JSON.stringify(proxyBody({
-      modelId: undefined,
-      clientConfig: undefined
-    }))
-  });
-  const response = await api.onRequestPost({
-    request,
-    env: {
-      DB: settingsDb({
-        aiActiveProvider: 'qwen',
-        aiClientConfigs: {
-          qwen: {
-            baseUrl: 'https://ignored-stored.example/v1',
-            apiKey: 'ignored-stored-key',
-            modelId: 'qwen-test-model'
-          }
-        }
-      }),
-      QWEN_API_KEY: 'env-qwen-key',
-      QWEN_BASE_URL: 'https://stored.example/v1'
-    }
-  });
-  assert.equal(response.status, 200);
-  assert.equal(calls[0].url, 'https://stored.example/v1/chat/completions');
-  assert.equal(calls[0].options.headers.Authorization, 'Bearer env-qwen-key');
-  assert.equal(JSON.parse(calls[0].options.body).model, 'qwen-test-model');
-}
-
-async function testModelListRouting() {
+async function testModelListRoutingIsFixed() {
   const { api, calls } = await loadCloudflareProxy();
   const request = new Request('https://app.test/api/ai-proxy', {
     method: 'POST',
     headers: { 'X-VM-Session': 'valid-session' },
     body: JSON.stringify({
-      action: 'models',
-      platform: 'qwen'
+      action: 'models'
     })
   });
   const response = await api.onRequestPost({
     request,
-    env: {
-      DB: settingsDb({}),
-      QWEN_API_KEY: 'env-qwen-key',
-      QWEN_BASE_URL: 'https://example.test/v1'
-    }
+    env: { DB: sessionDb() }
   });
   assert.equal(response.status, 200);
-  assert.equal(calls[0].url, 'https://example.test/v1/models');
-  assert.deepEqual(await response.json(), { models: ['qwen-test-model', 'qwen-other-model'] });
+  assert.equal(calls.length, 0);
+  assert.deepEqual(await response.json(), { models: ['gpt5.5'] });
+}
+
+async function testRequiresManualApiKey() {
+  const { api, calls } = await loadCloudflareProxy();
+  const request = new Request('https://app.test/api/ai-proxy', {
+    method: 'POST',
+    headers: { 'X-VM-Session': 'valid-session' },
+    body: JSON.stringify(proxyBody({ apiKey: '' }))
+  });
+  const response = await api.onRequestPost({ request, env: { DB: sessionDb() } });
+  assert.equal(response.status, 400);
+  assert.equal(calls.length, 0);
 }
 
 async function testRequiresSession() {
@@ -214,10 +159,10 @@ async function testRequiresSession() {
   assert.equal(calls.length, 0);
 }
 
-await testCloudflareImageRouting();
+await testManualKeyImageRouting();
 await testTextJsonRouting();
-await testStoredModelRouting();
-await testModelListRouting();
+await testModelListRoutingIsFixed();
+await testRequiresManualApiKey();
 await testRequiresSession();
 
 console.log('AI proxy routing tests passed');

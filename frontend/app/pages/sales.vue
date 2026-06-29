@@ -37,6 +37,7 @@ const {
 const activeType = shallowRef<SalesOrderType>('sale')
 const formOpen = shallowRef(false)
 const aiReviewOpen = shallowRef(false)
+const aiApiKeyOpen = shallowRef(false)
 const detailOpen = shallowRef(false)
 const voidOpen = shallowRef(false)
 const voidingOrder = shallowRef<SalesOrder | null>(null)
@@ -51,6 +52,10 @@ function openAiDialog() {
   activeType.value = 'sale'
   formInventoryError.value = null
   aiReviewOpen.value = true
+}
+
+function openAiApiKeyDialog() {
+  aiApiKeyOpen.value = true
 }
 
 function openDetail(order: SalesOrder) {
@@ -84,6 +89,10 @@ async function confirmVoid(order: SalesOrder) {
   await voidOrder(order)
   voidOpen.value = false
   detailOpen.value = false
+}
+
+async function recognizeWithApiKey(apiKey: string) {
+  await recognizeSalesScreenshot(apiKey)
 }
 
 watch(() => [filters.month, filters.type, filters.status, filters.machineId] as const, () => {
@@ -152,9 +161,15 @@ onMounted(async () => {
       @image-selected="saveSalesImage"
       @image-removed="removeSalesImage"
       @clear="clearSalesAiDraft"
-      @recognize="recognizeSalesScreenshot"
+      @recognize="openAiApiKeyDialog"
       @update-candidates="setAiCandidates"
       @confirm="submitAiOrder"
+    />
+
+    <AiApiKeyDialog
+      v-model:open="aiApiKeyOpen"
+      :submitting="recognizing"
+      @submit="recognizeWithApiKey"
     />
 
     <SalesOrderDrawer

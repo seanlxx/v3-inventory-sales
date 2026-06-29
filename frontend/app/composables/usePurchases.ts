@@ -356,11 +356,18 @@ export function usePurchases() {
     }
   }
 
-  async function recognizeReceipt() {
+  async function recognizeReceipt(apiKey: string) {
     if (purchaseImages.value.length === 0) {
       aiError.value = {
         code: 'BAD_REQUEST',
         message: '请先上传进货截图'
+      }
+      return []
+    }
+    if (!apiKey.trim()) {
+      aiError.value = {
+        code: 'BAD_REQUEST',
+        message: '请填写本次 AI 识别使用的 API Key'
       }
       return []
     }
@@ -377,6 +384,7 @@ export function usePurchases() {
       let recognizedMetadata: PurchaseAiMetadata | null = null
 
       const { warnings } = await aiRecognition.recognizeImageBatches<PurchaseAiRecognitionResult>({
+        apiKey: apiKey.trim(),
         images: purchaseImages.value,
         maxTokens: AI_RECOGNITION_MAX_TOKENS,
         signal: controller.signal,

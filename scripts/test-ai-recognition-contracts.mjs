@@ -25,6 +25,12 @@ assert.match(
 
 assert.match(
   sharedComposable,
+  /apiKey: string/,
+  'shared AI recognition composable should require a per-request API key'
+);
+
+assert.match(
+  sharedComposable,
   /AI 结果只用于人工确认，不能自动入账/,
   'shared AI recognition prompt rules must keep AI results out of automatic posting'
 );
@@ -58,6 +64,11 @@ for (const [label, source] of [
     source,
     /recognizeImageBatches/,
     `${label} recognition should use the shared image batch flow`
+  );
+  assert.match(
+    source,
+    /apiKey: apiKey\.trim\(\)/,
+    `${label} recognition should pass only the current manual API key into the shared flow`
   );
 }
 

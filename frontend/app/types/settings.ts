@@ -8,27 +8,8 @@ export type BusinessSettings = {
   restockTargetDays: number
 }
 
-export type AiProviderId = 'opencode' | 'qwen' | 'deepseek' | 'claude' | 'yunwu'
-
-export type AiProviderOption = {
-  id: AiProviderId
-  label: string
-  defaultBaseUrl: string
-  keyEnv: string
-  baseUrlEnv: string
-}
-
-export type AiClientConfig = {
-  modelId?: string
-  configured?: boolean
-}
-
-export type AiClientConfigs = Partial<Record<AiProviderId, AiClientConfig>>
-
 export type SettingsState = {
   businessSettings: BusinessSettings
   machines: string[]
   categories: string[]
-  aiActiveProvider: AiProviderId
-  aiClientConfigs: AiClientConfigs
 }

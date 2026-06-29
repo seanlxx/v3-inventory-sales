@@ -1,8 +1,5 @@
 import type { ApiError } from '~/types/api'
 import type {
-  AiClientConfigs,
-  AiProviderId,
-  AiProviderOption,
   BusinessSettings,
   SettingEntry,
   SettingsState
@@ -16,44 +13,6 @@ const defaultBusinessSettings: BusinessSettings = {
 
 const defaultMachines = ['1号机', '2号机']
 const defaultCategories = ['饮料', '零食', '日用品', '烟酒', '其他']
-
-export const aiProviderOptions: readonly AiProviderOption[] = [
-  {
-    id: 'opencode',
-    label: 'OpenCode 中转',
-    defaultBaseUrl: 'https://api.243706.xyz/v1',
-    keyEnv: 'OPENCODE_API_KEY',
-    baseUrlEnv: 'OPENCODE_BASE_URL'
-  },
-  {
-    id: 'qwen',
-    label: '通义千问',
-    defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    keyEnv: 'QWEN_API_KEY',
-    baseUrlEnv: 'QWEN_BASE_URL'
-  },
-  {
-    id: 'deepseek',
-    label: 'DeepSeek',
-    defaultBaseUrl: 'https://api.deepseek.com/v1',
-    keyEnv: 'DEEPSEEK_API_KEY',
-    baseUrlEnv: 'DEEPSEEK_BASE_URL'
-  },
-  {
-    id: 'claude',
-    label: 'Claude',
-    defaultBaseUrl: 'https://xcode.best/v1',
-    keyEnv: 'CLAUDE_API_KEY',
-    baseUrlEnv: 'CLAUDE_BASE_URL'
-  },
-  {
-    id: 'yunwu',
-    label: '云雾',
-    defaultBaseUrl: 'https://yunwu.ai/v1',
-    keyEnv: 'YUNWU_API_KEY',
-    baseUrlEnv: 'YUNWU_BASE_URL'
-  }
-] as const
 
 function normalizeInteger(value: unknown, fallback: number, min: number) {
   const number = Math.round(Number(value))
@@ -96,24 +55,12 @@ function normalizeBusinessSettings(entries: Map<string, unknown>): BusinessSetti
   }
 }
 
-function normalizeAiClientConfigs(value: unknown): AiClientConfigs {
-  const parsed = parseMaybeJson(value)
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
-  return parsed as AiClientConfigs
-}
-
-function normalizeAiProvider(value: unknown): AiProviderId {
-  return aiProviderOptions.some(provider => provider.id === value) ? value as AiProviderId : 'qwen'
-}
-
 function mapSettings(entries: SettingEntry[]): SettingsState {
   const byKey = new Map(entries.map(entry => [entry.key, entry.value]))
   return {
     businessSettings: normalizeBusinessSettings(byKey),
     machines: normalizeStringList(byKey.get('machines'), defaultMachines),
-    categories: normalizeStringList(byKey.get('categories'), defaultCategories),
-    aiActiveProvider: normalizeAiProvider(byKey.get('aiActiveProvider')),
-    aiClientConfigs: normalizeAiClientConfigs(byKey.get('aiClientConfigs'))
+    categories: normalizeStringList(byKey.get('categories'), defaultCategories)
   }
 }
 
@@ -125,9 +72,7 @@ export function useSettings() {
   const settings = shallowRef<SettingsState>({
     businessSettings: { ...defaultBusinessSettings },
     machines: [...defaultMachines],
-    categories: [...defaultCategories],
-    aiActiveProvider: 'qwen',
-    aiClientConfigs: {}
+    categories: [...defaultCategories]
   })
   const loading = shallowRef(false)
   const saving = shallowRef(false)
@@ -210,55 +155,6 @@ export function useSettings() {
     }
   }
 
-  async function saveAiClientConfigs(configs: AiClientConfigs) {
-    saving.value = true
-    error.value = null
-    try {
-      const response = await saveSetting('aiClientConfigs', configs)
-      settings.value = {
-        ...settings.value,
-        aiClientConfigs: normalizeAiClientConfigs(response.value)
-      }
-      toastStore.show('AI provider 设置已保存', 'success')
-    } catch (caught) {
-      error.value = normalizeApiError(caught)
-      throw error.value
-    } finally {
-      saving.value = false
-    }
-  }
-
-  async function saveAiClientSettings(activeProvider: AiProviderId, configs: AiClientConfigs) {
-    saving.value = true
-    error.value = null
-    try {
-      const normalizedProvider = normalizeAiProvider(activeProvider)
-      const response = await saveSetting('aiClientConfigs', configs)
-      await saveSetting('aiActiveProvider', normalizedProvider)
-      settings.value = {
-        ...settings.value,
-        aiActiveProvider: normalizedProvider,
-        aiClientConfigs: normalizeAiClientConfigs(response.value)
-      }
-      toastStore.show('AI 设置已保存', 'success')
-    } catch (caught) {
-      error.value = normalizeApiError(caught)
-      throw error.value
-    } finally {
-      saving.value = false
-    }
-  }
-
-  async function fetchAiModels(provider: AiProviderId) {
-    return await request<{ models: string[] }, Record<string, unknown>>('/ai-proxy', {
-      method: 'POST',
-      body: {
-        action: 'models',
-        platform: provider
-      }
-    })
-  }
-
   async function updateAccount(payload: UpdateAuthPayload) {
     accountSaving.value = true
     error.value = null
@@ -279,14 +175,10 @@ export function useSettings() {
     saving,
     accountSaving,
     error,
-    providerOptions: aiProviderOptions,
     loadSettings,
     saveBusinessSettings,
     saveMachines,
     saveCategories,
-    saveAiClientConfigs,
-    saveAiClientSettings,
-    fetchAiModels,
     updateAccount
   }
 }

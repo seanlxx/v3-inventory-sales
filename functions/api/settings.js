@@ -2,46 +2,10 @@ import { all, first, run } from './_shared/d1.js';
 import { json, methodNotAllowed, parseJsonBody } from './_shared/http.js';
 import { nowIso, stringOrNull } from './_shared/validators.js';
 
-function isObject(value) {
-  return value && typeof value === 'object' && !Array.isArray(value);
-}
-
-function sanitizeAiClientConfigs(value) {
-  if (!isObject(value)) return {};
-  return Object.fromEntries(Object.entries(value).map(([platform, config]) => {
-    if (!isObject(config)) return [platform, { modelId: '' }];
-    return [platform, {
-      modelId: typeof config.modelId === 'string' ? config.modelId : ''
-    }];
-  }));
-}
-
-function sanitizeSetting(key, value) {
-  if (key === 'aiClientConfigs') return sanitizeAiClientConfigs(value);
-  return value;
-}
-
-function resolveAiClientConfigsValue(nextValue) {
-  const incoming = isObject(nextValue) ? nextValue : {};
-  const merged = {};
-
-  for (const [platform, config] of Object.entries(incoming)) {
-    if (!isObject(config)) continue;
-    const modelId = typeof config.modelId === 'string' ? config.modelId.trim() : '';
-
-    if (!modelId) continue;
-    merged[platform] = {
-      modelId
-    };
-  }
-
-  return merged;
-}
-
 function parseSetting(row) {
   if (!row) return null;
   const data = JSON.parse(row.data || '{}');
-  return { key: row.record_id, value: sanitizeSetting(row.record_id, data.value) };
+  return { key: row.record_id, value: data.value };
 }
 
 export async function onRequestGet(context) {
@@ -70,9 +34,7 @@ export async function onRequestPost(context) {
   const key = stringOrNull(body?.key);
   if (!key) return json(400, { message: 'Missing setting key' });
   const timestamp = nowIso();
-  const value = key === 'aiClientConfigs'
-    ? resolveAiClientConfigsValue(body.value)
-    : body.value;
+  const value = body.value;
   const data = JSON.stringify({ key, value });
   await run(context.env.DB, `
     INSERT INTO vending_records (
@@ -82,7 +44,7 @@ export async function onRequestPost(context) {
       data = excluded.data,
       updated_at = excluded.updated_at
   `, [key, data, timestamp, timestamp]);
-  return json(200, { key, value: sanitizeSetting(key, value) });
+  return json(200, { key, value });
 }
 
 export async function onRequestPut(context) {

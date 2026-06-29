@@ -153,9 +153,9 @@
 │  ├─ reports/     → 报表聚合                               │
 │  ├─ settings.js  → 系统设置                               │
 │  ├─ images.js    → R2 图片读取                            │
-│  └─ ai-proxy.js  → AI 模型代理（多 provider 路由）         │
+│  └─ ai-proxy.js  → AI 模型代理（固定中转 + 手动 API Key） │
 │                                                          │
-│  绑定：DB (D1)  ·  IMAGES (R2)  ·  环境变量 (API Key)     │
+│  绑定：DB (D1)  ·  IMAGES (R2)                          │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -176,7 +176,7 @@
 │   ├── products.js         # 商品 CRUD
 │   ├── settings.js         # 系统设置 CRUD
 │   ├── images.js           # R2 图片读取
-│   └── ai-proxy.js         # AI 多模型代理路由
+│   └── ai-proxy.js         # AI 固定中转代理（每次手动填写 API Key）
 ├── migrations/             # D1 数据库迁移脚本
 ├── scripts/
 │   ├── build.ps1           # 构建 dist/（Nuxt generate + 复制 _headers）
@@ -246,20 +246,18 @@ C:\Users\Admin\WeChatProjects\minicode-1\MINIPROGRAM_IMPLEMENTATION.md
 - 图片二进制存储在 R2（`IMAGES` 绑定），由 `image_assets` 表 + R2 key 关联。
 - 认证相关：`app_auth`（单行密码）、`app_sessions`（会话 token）、`app_login_attempts`（限流）。
 
-### 1.5 AI 代理环境变量
+### 1.5 AI 代理配置
 
-支持多 AI provider，服务端环境变量或登录后在"设置"页面保存到数据库：
+AI 识别只保留一个固定中转与一个固定模型：
 
-| Provider | API Key 变量 | Base URL 变量 |
-| --- | --- | --- |
-| OpenCode | `OPENCODE_API_KEY` | `OPENCODE_BASE_URL` |
-| 通义千问 | `QWEN_API_KEY` | `QWEN_BASE_URL` |
-| DeepSeek | `DEEPSEEK_API_KEY` | `DEEPSEEK_BASE_URL` |
-| Claude | `CLAUDE_API_KEY` | `CLAUDE_BASE_URL` |
-| 云雾 | `YUNWU_API_KEY` | `YUNWU_BASE_URL` |
+| 项 | 值 |
+| --- | --- |
+| Base URL | `https://api.243706.xyz/v1` |
+| 模型 | `gpt5.5` |
 
-> **⚠️ 不要把 API Key 写入源码、`wrangler.jsonc` 或任何 Markdown。**
-> 生产环境使用 Cloudflare 环境变量 / Secret。
+API Key 必须在每次识别时由用户手动填写，只用于当次请求，不保存到浏览器、D1、R2、Cloudflare 环境变量或源码。
+
+> **⚠️ 不要把 API Key 写入源码、`wrangler.jsonc`、Markdown、Cloudflare Secret 或 D1。**
 
 ### 1.6 默认账号
 

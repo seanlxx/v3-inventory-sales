@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useSettings } from '~/composables/useSettings'
 import { useTheme } from '~/composables/useTheme'
-import type { AiClientConfigs, AiProviderId, BusinessSettings } from '~/types/settings'
+import type { BusinessSettings } from '~/types/settings'
 import type { UpdateAuthPayload } from '~/types/auth'
 
 definePageMeta({
@@ -9,15 +9,6 @@ definePageMeta({
 })
 
 const { theme, setTheme } = useTheme()
-
-type AiProviderDraft = {
-  baseUrl: string
-  modelId: string
-  models: string[]
-  modelLoading: boolean
-  modelError: string
-  configured: boolean
-}
 
 const {
   username,
@@ -30,13 +21,10 @@ const {
   saving,
   accountSaving,
   error,
-  providerOptions,
   loadSettings,
   saveBusinessSettings,
   saveMachines,
   saveCategories,
-  saveAiClientSettings,
-  fetchAiModels,
   updateAccount
 } = useSettings()
 
@@ -46,25 +34,6 @@ const businessDraft = reactive({
 })
 const machinesDraft = shallowRef('')
 const categoriesDraft = shallowRef('')
-const aiDraft = reactive<Record<AiProviderId, AiProviderDraft>>({
-  opencode: { baseUrl: '', modelId: '', models: [], modelLoading: false, modelError: '', configured: false },
-  qwen: { baseUrl: '', modelId: '', models: [], modelLoading: false, modelError: '', configured: false },
-  deepseek: { baseUrl: '', modelId: '', models: [], modelLoading: false, modelError: '', configured: false },
-  claude: { baseUrl: '', modelId: '', models: [], modelLoading: false, modelError: '', configured: false },
-  yunwu: { baseUrl: '', modelId: '', models: [], modelLoading: false, modelError: '', configured: false }
-})
-const activeAiProvider = shallowRef<AiProviderId>('qwen')
-const activeAiDraft = computed(() => aiDraft[activeAiProvider.value])
-const activeAiProviderOption = computed(() =>
-  providerOptions.find(provider => provider.id === activeAiProvider.value) ?? providerOptions[0]!
-)
-const activeAiModelOptions = computed(() => {
-  const draft = activeAiDraft.value
-  return Array.from(new Set([
-    draft.modelId,
-    ...draft.models
-  ].map(model => model.trim()).filter(Boolean)))
-})
 
 function syncDrafts() {
   const business = settings.value.businessSettings
@@ -72,20 +41,6 @@ function syncDrafts() {
   businessDraft.restockTargetDays = String(business.restockTargetDays)
   machinesDraft.value = settings.value.machines.join('\n')
   categoriesDraft.value = settings.value.categories.join('\n')
-  activeAiProvider.value = settings.value.aiActiveProvider
-
-  for (const provider of providerOptions) {
-    const config = settings.value.aiClientConfigs[provider.id]
-    const modelId = config?.modelId || ''
-    aiDraft[provider.id] = {
-      baseUrl: provider.defaultBaseUrl,
-      modelId,
-      models: modelId ? [modelId] : [],
-      modelLoading: false,
-      modelError: '',
-      configured: !!config?.configured
-    }
-  }
 }
 
 function parseLines(value: string) {
@@ -110,36 +65,6 @@ async function submitLists() {
     saveMachines(parseLines(machinesDraft.value)),
     saveCategories(parseLines(categoriesDraft.value))
   ])
-}
-
-async function submitAiConfigs() {
-  const configs = Object.fromEntries(providerOptions.map(provider => {
-    const draft = aiDraft[provider.id]
-    return [provider.id, {
-      modelId: draft.modelId.trim() || undefined
-    }]
-  })) as AiClientConfigs
-
-  await saveAiClientSettings(activeAiProvider.value, configs)
-}
-
-async function loadAiModels() {
-  const draft = activeAiDraft.value
-  draft.modelLoading = true
-  draft.modelError = ''
-  try {
-    const response = await fetchAiModels(activeAiProvider.value)
-    draft.models = response.models
-    const firstModel = response.models[0]
-    if (!draft.modelId && firstModel) {
-      draft.modelId = firstModel
-    }
-  } catch (caught) {
-    const normalized = normalizeApiError(caught)
-    draft.modelError = normalized.message
-  } finally {
-    draft.modelLoading = false
-  }
 }
 
 async function submitAccount(payload: UpdateAuthPayload) {
@@ -284,70 +209,6 @@ onMounted(async () => {
     </ClientOnly>
 
     <VendorSyncCard />
-
-    <SettingsSection title="AI provider" description="API Key 仅从 Cloudflare 环境变量读取；这里选择当前 provider 和模型。">
-      <form class="settings-page__form" @submit.prevent="submitAiConfigs">
-        <article class="settings-page__provider">
-          <div class="settings-page__provider-heading">
-            <div>
-              <h3>{{ activeAiProviderOption.label }}</h3>
-              <p>{{ activeAiProviderOption.baseUrlEnv }} / {{ activeAiProviderOption.keyEnv }}</p>
-            </div>
-            <StatusBadge
-              :label="activeAiDraft.configured ? '服务端已配置' : '服务端未配置'"
-              :tone="activeAiDraft.configured ? 'success' : 'neutral'"
-            />
-          </div>
-
-          <div class="settings-page__grid settings-page__grid--two">
-            <label class="settings-page__select-field">
-              <span>Provider</span>
-              <select v-model="activeAiProvider">
-                <option
-                  v-for="provider in providerOptions"
-                  :key="provider.id"
-                  :value="provider.id"
-                >
-                  {{ provider.label }}
-                </option>
-              </select>
-            </label>
-            <AppInput
-              v-model="activeAiDraft.baseUrl"
-              label="Base URL"
-              disabled
-            />
-            <label class="settings-page__select-field">
-              <span>模型</span>
-              <select v-model="activeAiDraft.modelId" :disabled="activeAiModelOptions.length === 0">
-                <option value="">
-                  {{ activeAiModelOptions.length === 0 ? '请先获取模型' : '选择模型' }}
-                </option>
-                <option
-                  v-for="model in activeAiModelOptions"
-                  :key="model"
-                  :value="model"
-                >
-                  {{ model }}
-                </option>
-              </select>
-            </label>
-          </div>
-
-          <p v-if="activeAiDraft.modelError" class="settings-page__provider-error">
-            {{ activeAiDraft.modelError }}
-          </p>
-        </article>
-        <div class="settings-page__actions">
-          <AppButton type="button" variant="secondary" :loading="activeAiDraft.modelLoading" @click="loadAiModels">
-            获取模型
-          </AppButton>
-          <AppButton type="submit" :loading="saving">
-            保存 AI 设置
-          </AppButton>
-        </div>
-      </form>
-    </SettingsSection>
   </div>
 </template>
 
@@ -380,8 +241,7 @@ onMounted(async () => {
   font-weight: 700;
 }
 
-.settings-page__form,
-.settings-page__providers {
+.settings-page__form {
   display: grid;
   gap: var(--space-4);
 }
@@ -409,34 +269,6 @@ onMounted(async () => {
   font-weight: 700;
 }
 
-.settings-page__select-field {
-  min-width: 0;
-  display: grid;
-  gap: 6px;
-}
-
-.settings-page__select-field span {
-  color: var(--color-text-muted);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.settings-page__select-field select {
-  width: 100%;
-  min-height: var(--control-height);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-2);
-  padding: 0 var(--space-3);
-  background: var(--color-surface);
-  color: var(--color-text);
-  font: inherit;
-}
-
-.settings-page__select-field select:disabled {
-  background: var(--color-surface-muted);
-  color: var(--color-text-soft);
-}
-
 .settings-page__field textarea {
   width: 100%;
   resize: vertical;
@@ -447,42 +279,6 @@ onMounted(async () => {
   color: var(--color-text);
   font: inherit;
   line-height: 1.5;
-}
-
-.settings-page__provider {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-2);
-  background: var(--color-surface-subtle);
-}
-
-.settings-page__provider-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.settings-page__provider-heading h3 {
-  margin: 0;
-  font-size: 15px;
-  line-height: 1.3;
-}
-
-.settings-page__provider-heading p {
-  margin: var(--space-1) 0 0;
-  color: var(--color-text-soft);
-  font-family: var(--font-mono);
-  font-size: 12px;
-}
-
-.settings-page__provider-error {
-  margin: 0;
-  color: var(--color-danger);
-  font-size: 13px;
-  font-weight: 700;
 }
 
 .settings-page__actions {
@@ -496,8 +292,7 @@ onMounted(async () => {
     gap: var(--space-3);
   }
 
-  .settings-page__error,
-  .settings-page__provider-heading {
+  .settings-page__error {
     display: grid;
   }
 
@@ -513,10 +308,6 @@ onMounted(async () => {
 
   .settings-page__actions :deep(.app-button) {
     width: 100%;
-  }
-
-  .settings-page__select-field select {
-    min-height: var(--control-height-mobile);
   }
 }
 

@@ -1,13 +1,8 @@
 const AI_TEXT_TIMEOUT_MS = 60000;
 const AI_IMAGE_TIMEOUT_MS = 90000;
-const DEFAULT_QWEN_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
-const DEFAULT_DEEPSEEK_BASE_URL = 'https://api.deepseek.com/v1';
-const DEFAULT_CLAUDE_BASE_URL = 'https://xcode.best/v1';
-const DEFAULT_OPENCODE_BASE_URL = 'https://api.243706.xyz/v1';
-const DEFAULT_YUNWU_BASE_URL = 'https://yunwu.ai/v1';
-const DEFAULT_QWEN_MODEL_ID = 'qwen3.5-omni-plus';
-const AI_MODEL_LIST_TIMEOUT_MS = 30000;
-const AI_PLATFORMS = new Set(['opencode', 'qwen', 'deepseek', 'claude', 'yunwu']);
+const AI_BASE_URL = 'https://api.243706.xyz/v1';
+const AI_MODEL_ID = 'gpt5.5';
+const AI_PLATFORM = 'opencode';
 
 function json(status, payload) {
   return Response.json(payload, {
@@ -55,120 +50,8 @@ async function requireSession(context) {
   return session ? { session } : { error: json(401, { error: 'Unauthorized' }) };
 }
 
-function getPlatform(modelId = '') {
-  if (modelId === DEFAULT_QWEN_MODEL_ID || modelId.startsWith('qwen')) return 'qwen';
-  if (modelId === 'gemini-3.1-flash-lite') return 'yunwu';
-  if (modelId.startsWith('deepseek')) return 'deepseek';
-  if (modelId.startsWith('claude')) return 'claude';
-  return 'opencode';
-}
-
-function normalizePlatform(value, fallback = 'qwen') {
-  return AI_PLATFORMS.has(value) ? value : fallback;
-}
-
-function getConfig(platform, env) {
-  if (platform === 'opencode') {
-    return {
-      apiKey: env.OPENCODE_API_KEY,
-      baseUrl: env.OPENCODE_BASE_URL || DEFAULT_OPENCODE_BASE_URL
-    };
-  }
-  if (platform === 'qwen') {
-    return {
-      apiKey: env.QWEN_API_KEY,
-      baseUrl: env.QWEN_BASE_URL || DEFAULT_QWEN_BASE_URL
-    };
-  }
-  if (platform === 'deepseek') {
-    return {
-      apiKey: env.DEEPSEEK_API_KEY,
-      baseUrl: env.DEEPSEEK_BASE_URL || DEFAULT_DEEPSEEK_BASE_URL
-    };
-  }
-  if (platform === 'claude') {
-    return {
-      apiKey: env.CLAUDE_API_KEY,
-      baseUrl: env.CLAUDE_BASE_URL || DEFAULT_CLAUDE_BASE_URL
-    };
-  }
-  if (platform === 'yunwu') {
-    return {
-      apiKey: env.YUNWU_API_KEY,
-      baseUrl: env.YUNWU_BASE_URL || DEFAULT_YUNWU_BASE_URL
-    };
-  }
-  return getConfig('opencode', env);
-}
-
-function safeParse(value, fallback = null) {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return fallback;
-  }
-}
-
-async function getSettingValue(db, key) {
-  if (!db) return null;
-  const row = await db.prepare(`
-    SELECT data
-    FROM vending_records
-    WHERE store = 'settings' AND record_id = ?
-    LIMIT 1
-  `).bind(key).first();
-  const data = safeParse(row?.data || '{}', {});
-  return data?.value ?? null;
-}
-
-async function getStoredAiSettings(db) {
-  const [configs, activeProvider] = await Promise.all([
-    getSettingValue(db, 'aiClientConfigs'),
-    getSettingValue(db, 'aiActiveProvider')
-  ]);
-  return {
-    configs: configs && typeof configs === 'object' && !Array.isArray(configs) ? configs : {},
-    activeProvider: normalizePlatform(activeProvider, 'qwen')
-  };
-}
-
-function storedModelId(storedConfig) {
-  const stored = storedConfig && typeof storedConfig === 'object' ? storedConfig : {};
-  return typeof stored.modelId === 'string' ? stored.modelId.trim() : '';
-}
-
-async function resolveAiRequest(context, body) {
-  if (body.modelId) {
-    const platform = normalizePlatform(body.platform, getPlatform(body.modelId));
-    const config = getConfig(platform, context.env);
-    return {
-      platform,
-      config: config?.apiKey ? config : null,
-      modelId: String(body.modelId).trim()
-    };
-  }
-
-  const storedSettings = await getStoredAiSettings(context.env.DB);
-  const platform = normalizePlatform(body.platform, storedSettings.activeProvider);
-  const storedConfig = storedSettings.configs[platform];
-  const config = getConfig(platform, context.env);
-  const modelId = storedModelId(storedConfig) || (platform === 'qwen' ? DEFAULT_QWEN_MODEL_ID : '');
-
-  return { platform, config: config?.apiKey ? config : null, modelId };
-}
-
-function configuredModels(env) {
-  return {
-    opencode: !!env.OPENCODE_API_KEY,
-    qwen: !!env.QWEN_API_KEY,
-    deepseek: !!env.DEEPSEEK_API_KEY,
-    claude: !!env.CLAUDE_API_KEY,
-    yunwu: !!env.YUNWU_API_KEY
-  };
-}
-
-function configuredModelSources(env) {
-  return configuredModels(env);
+function normalizeManualApiKey(value) {
+  return typeof value === 'string' ? value.trim() : '';
 }
 
 async function fetchWithTimeout(url, options, timeoutMs) {
@@ -202,14 +85,12 @@ function openAIBaseUrl(baseUrl) {
 
 function buildOpenAIPayload({ platform, body, stream }) {
   const messages = [];
-  if (body.systemPrompt && platform !== 'deepseek') {
+  if (body.systemPrompt) {
     messages.push({ role: 'system', content: body.systemPrompt });
   }
 
   const userContent = [];
-  const userPrompt = platform === 'deepseek' && body.systemPrompt
-    ? `系统要求：\n${body.systemPrompt}\n\n用户请求：\n${body.userPrompt || ''}`
-    : (body.userPrompt || '');
+  const userPrompt = body.userPrompt || '';
   if (userPrompt) userContent.push({ type: 'text', text: userPrompt });
   const images = Array.isArray(body.images) && body.images.length > 0
     ? body.images
@@ -256,28 +137,6 @@ async function callOpenAICompatible({ platform, config, body, timeoutMs }) {
     throw new Error(data.error?.message || data.error?.code || `${platform} HTTP ${res.status}`);
   }
   return data.choices?.[0]?.message?.content || '';
-}
-
-async function listOpenAICompatibleModels({ platform, config }) {
-  const res = await fetchWithTimeout(`${openAIBaseUrl(config.baseUrl)}/models`, {
-    method: 'GET',
-    headers: {
-      Accept: 'application/json',
-      Authorization: `Bearer ${config.apiKey}`
-    }
-  }, AI_MODEL_LIST_TIMEOUT_MS);
-
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data.error?.message || data.error?.code || `${platform} HTTP ${res.status}`);
-  }
-
-  const rawModels = Array.isArray(data.data) ? data.data : Array.isArray(data.models) ? data.models : [];
-  const models = rawModels
-    .map(model => typeof model === 'string' ? model : model?.id)
-    .map(model => String(model || '').trim())
-    .filter(Boolean);
-  return Array.from(new Set(models));
 }
 
 /**
@@ -424,7 +283,11 @@ export async function onRequestGet(context) {
   const auth = await requireSession(context);
   if (auth.error) return auth.error;
 
-  return json(200, { configured: await configuredModelSources(context.env) });
+  return json(200, {
+    baseUrl: AI_BASE_URL,
+    modelId: AI_MODEL_ID,
+    requiresApiKey: true
+  });
 }
 
 export async function onRequestPost(context) {
@@ -438,29 +301,17 @@ export async function onRequestPost(context) {
     return json(400, { error: 'Invalid JSON body' });
   }
 
-  const request = await resolveAiRequest(context, body);
   if (body.action === 'models') {
-    if (!request.config) {
-      return json(503, { error: `${request.platform} API key is not configured` });
-    }
-
-    try {
-      const models = await listOpenAICompatibleModels({ platform: request.platform, config: request.config });
-      return json(200, { models });
-    } catch (err) {
-      return json(502, { error: err.message || 'Failed to fetch AI models' });
-    }
+    return json(200, { models: [AI_MODEL_ID] });
   }
 
-  if (!request.modelId) {
-    return json(400, { error: 'Missing modelId' });
+  const apiKey = normalizeManualApiKey(body.apiKey);
+  if (!apiKey) {
+    return json(400, { error: '请填写本次 AI 识别使用的 API Key' });
   }
 
-  if (!request.config) {
-    return json(503, { error: `${request.platform} API key is not configured on the server` });
-  }
-
-  const requestBody = { ...body, modelId: request.modelId };
+  const config = { apiKey, baseUrl: AI_BASE_URL };
+  const requestBody = { ...body, apiKey: undefined, modelId: AI_MODEL_ID };
   const hasImages = requestBody.imageBase64 || (Array.isArray(requestBody.images) && requestBody.images.length > 0);
   const timeoutMs = hasImages ? AI_IMAGE_TIMEOUT_MS : AI_TEXT_TIMEOUT_MS;
 
@@ -469,11 +320,11 @@ export async function onRequestPost(context) {
   const wantStream = url.searchParams.get('stream') === '1' || requestBody.stream === true;
   if (wantStream) {
     // 流式路径不抛异常, 错误经 SSE event:error 下发
-    return streamOpenAICompatible({ platform: request.platform, config: request.config, body: requestBody, timeoutMs });
+    return streamOpenAICompatible({ platform: AI_PLATFORM, config, body: requestBody, timeoutMs });
   }
 
   try {
-    const text = await callOpenAICompatible({ platform: request.platform, config: request.config, body: requestBody, timeoutMs });
+    const text = await callOpenAICompatible({ platform: AI_PLATFORM, config, body: requestBody, timeoutMs });
     return json(200, { text });
   } catch (err) {
     return json(502, { error: err.message || 'AI request failed' });

@@ -12,7 +12,6 @@ $tests = @(
   "scripts/test-ai-purchase-recognition.mjs",
   "scripts/test-ai-recognition-contracts.mjs",
   "scripts/test-ai-proxy-routing.mjs",
-  "scripts/test-settings-ai-secrets.mjs",
   "scripts/test-ai-product-match.mjs",
   "scripts/test-ai-product-match-cases.mjs",
   "scripts/test-dashboard-report.mjs",
