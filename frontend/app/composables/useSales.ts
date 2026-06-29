@@ -10,6 +10,7 @@ import type {
   SalesOrderType
 } from '~/types/sale'
 import { AI_PRODUCT_MATCHING_RULES, extractAiJsonObject, roundAiMoney, useAiRecognition } from '~/composables/useAiRecognition'
+import { useAiSessionKey } from '~/composables/useAiSessionKey'
 import { displayMachineName, machineOptionsWithDefaults } from '~/utils/machines'
 import { buildProductCatalogPrompt, matchProductByName, normalizeProductName } from '~/utils/product-match'
 
@@ -169,6 +170,7 @@ function buildSalesRecognitionPrompt(options: AiRecognitionPromptOptions & {
 export function useSales() {
   const { request } = useApi()
   const aiRecognition = useAiRecognition()
+  const aiSessionKey = useAiSessionKey()
   const toastStore = useToastStore()
 
   const orders = shallowRef<SalesOrder[]>([])
@@ -394,7 +396,7 @@ export function useSales() {
     }
   }
 
-  async function recognizeSalesScreenshot(apiKey: string) {
+  async function recognizeSalesScreenshot() {
     if (salesImages.value.length === 0) {
       aiError.value = {
         code: 'BAD_REQUEST',
@@ -402,10 +404,11 @@ export function useSales() {
       }
       return []
     }
-    if (!apiKey.trim()) {
+    const apiKey = aiSessionKey.getApiKey()
+    if (!apiKey) {
       aiError.value = {
         code: 'BAD_REQUEST',
-        message: '请填写本次 AI 识别使用的 API Key'
+        message: '请先在设置页填写本次登录使用的 AI API Key'
       }
       return []
     }
@@ -420,7 +423,7 @@ export function useSales() {
       const catalog = buildProductCatalogPrompt(matchableProducts)
       const recognizedCandidates: SalesAiCandidate[] = []
       const { warnings } = await aiRecognition.recognizeImageBatches<{ items?: Array<Record<string, unknown>> }>({
-        apiKey: apiKey.trim(),
+        apiKey,
         images: salesImages.value,
         maxTokens: AI_RECOGNITION_MAX_TOKENS,
         signal: controller.signal,

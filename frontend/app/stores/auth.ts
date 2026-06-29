@@ -6,6 +6,7 @@ import type {
   LoginPayload,
   UpdateAuthPayload
 } from '~/types/auth'
+import { clearStoredAiSessionKey } from '~/composables/useAiSessionKey'
 
 const AUTH_STORAGE_KEY = 'vendingAuthSession'
 
@@ -29,16 +30,25 @@ function readStoredSession(): AuthSession | null {
   if (!import.meta.client) return null
   try {
     const raw = window.sessionStorage.getItem(AUTH_STORAGE_KEY)
-    if (!raw) return null
+    if (!raw) {
+      clearStoredAiSessionKey()
+      return null
+    }
     const parsed = JSON.parse(raw) as AuthSession
-    if (!parsed.token || !parsed.expiresAt) return null
+    if (!parsed.token || !parsed.expiresAt) {
+      window.sessionStorage.removeItem(AUTH_STORAGE_KEY)
+      clearStoredAiSessionKey()
+      return null
+    }
     if (Date.parse(parsed.expiresAt) <= Date.now()) {
       window.sessionStorage.removeItem(AUTH_STORAGE_KEY)
+      clearStoredAiSessionKey()
       return null
     }
     return parsed
   } catch {
     window.sessionStorage.removeItem(AUTH_STORAGE_KEY)
+    clearStoredAiSessionKey()
     return null
   }
 }
@@ -47,6 +57,7 @@ function writeStoredSession(session: AuthSession | null) {
   if (!import.meta.client) return
   if (!session) {
     window.sessionStorage.removeItem(AUTH_STORAGE_KEY)
+    clearStoredAiSessionKey()
     return
   }
   window.sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session))
@@ -79,6 +90,7 @@ export const useAuthStore = defineStore('auth', () => {
   function setSession(nextSession: AuthSession | null) {
     session.value = nextSession
     if (!nextSession) profile.value = null
+    clearStoredAiSessionKey()
     writeStoredSession(nextSession)
   }
 

@@ -201,6 +201,11 @@ export function useAiRecognition() {
 
     if (!response.ok || !response.body) {
       const data = await response.json().catch(() => null) as { error?: string; message?: string } | null
+      if (response.status === 401) {
+        const toastStore = useToastStore()
+        authStore.handleUnauthorized()
+        toastStore.show('登录已过期，请重新登录', 'warning')
+      }
       throw streamError(data?.message || data?.error || `AI 请求失败：${response.status}`)
     }
 

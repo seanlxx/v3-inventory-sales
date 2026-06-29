@@ -67,8 +67,13 @@ for (const [label, source] of [
   );
   assert.match(
     source,
-    /apiKey: apiKey\.trim\(\)/,
-    `${label} recognition should pass only the current manual API key into the shared flow`
+    /useAiSessionKey\(\)/,
+    `${label} recognition should read the current login session AI key`
+  );
+  assert.match(
+    source,
+    /apiKey,\s*\n\s*images:/,
+    `${label} recognition should pass the current login session AI key into the shared flow`
   );
 }
 

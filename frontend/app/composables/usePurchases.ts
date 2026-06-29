@@ -3,6 +3,7 @@ import type { AiRecognitionImage, AiRecognitionPromptOptions } from '~/composabl
 import type { PurchaseAiCandidate, PurchaseAiMetadata, PurchaseListFilters, PurchaseOrder, PurchaseOrderPayload } from '~/types/purchase'
 import type { Product } from '~/types/product'
 import { AI_PRODUCT_MATCHING_RULES, extractAiJsonObject, roundAiMoney, useAiRecognition } from '~/composables/useAiRecognition'
+import { useAiSessionKey } from '~/composables/useAiSessionKey'
 import { buildProductCatalogPrompt, matchProductByName, normalizeProductName } from '~/utils/product-match'
 
 type PurchaseAiImage = AiRecognitionImage
@@ -189,6 +190,7 @@ function normalizeAiCandidates(rawItems: Array<Record<string, unknown>>, product
 export function usePurchases() {
   const { request } = useApi()
   const aiRecognition = useAiRecognition()
+  const aiSessionKey = useAiSessionKey()
   const toastStore = useToastStore()
 
   const orders = shallowRef<PurchaseOrder[]>([])
@@ -356,7 +358,7 @@ export function usePurchases() {
     }
   }
 
-  async function recognizeReceipt(apiKey: string) {
+  async function recognizeReceipt() {
     if (purchaseImages.value.length === 0) {
       aiError.value = {
         code: 'BAD_REQUEST',
@@ -364,10 +366,11 @@ export function usePurchases() {
       }
       return []
     }
-    if (!apiKey.trim()) {
+    const apiKey = aiSessionKey.getApiKey()
+    if (!apiKey) {
       aiError.value = {
         code: 'BAD_REQUEST',
-        message: '请填写本次 AI 识别使用的 API Key'
+        message: '请先在设置页填写本次登录使用的 AI API Key'
       }
       return []
     }
@@ -384,7 +387,7 @@ export function usePurchases() {
       let recognizedMetadata: PurchaseAiMetadata | null = null
 
       const { warnings } = await aiRecognition.recognizeImageBatches<PurchaseAiRecognitionResult>({
-        apiKey: apiKey.trim(),
+        apiKey,
         images: purchaseImages.value,
         maxTokens: AI_RECOGNITION_MAX_TOKENS,
         signal: controller.signal,

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useSettings } from '~/composables/useSettings'
+import { useAiSessionKey } from '~/composables/useAiSessionKey'
 import { useTheme } from '~/composables/useTheme'
 import type { BusinessSettings } from '~/types/settings'
 import type { UpdateAuthPayload } from '~/types/auth'
@@ -15,6 +16,7 @@ const {
   usesDefaultPassword
 } = useAuth()
 
+const aiSessionKey = useAiSessionKey()
 const {
   settings,
   loading,
@@ -34,6 +36,9 @@ const businessDraft = reactive({
 })
 const machinesDraft = shallowRef('')
 const categoriesDraft = shallowRef('')
+const aiApiKeyDraft = shallowRef('')
+const aiApiKeyError = shallowRef('')
+const aiApiKeyConfigured = computed(() => aiSessionKey.isConfigured.value)
 
 function syncDrafts() {
   const business = settings.value.businessSettings
@@ -67,6 +72,22 @@ async function submitLists() {
   ])
 }
 
+function submitAiSessionKey() {
+  const saved = aiSessionKey.saveApiKey(aiApiKeyDraft.value)
+  if (!saved) {
+    aiApiKeyError.value = '请填写本次登录使用的 AI API Key'
+    return
+  }
+  aiApiKeyDraft.value = ''
+  aiApiKeyError.value = ''
+}
+
+function clearAiSessionKey() {
+  aiSessionKey.clearApiKey()
+  aiApiKeyDraft.value = ''
+  aiApiKeyError.value = ''
+}
+
 async function submitAccount(payload: UpdateAuthPayload) {
   await updateAccount(payload)
 }
@@ -74,6 +95,7 @@ async function submitAccount(payload: UpdateAuthPayload) {
 watch(settings, syncDrafts)
 
 onMounted(async () => {
+  aiSessionKey.initialize()
   await loadSettings()
   syncDrafts()
 })
@@ -204,6 +226,41 @@ onMounted(async () => {
       </form>
     </SettingsSection>
 
+    <SettingsSection title="AI 识别密钥" description="本次登录填写一次，退出或登录失效后自动清除。">
+      <template #aside>
+        <StatusBadge
+          :label="aiApiKeyConfigured ? '本次登录已填写' : '未填写'"
+          :tone="aiApiKeyConfigured ? 'success' : 'warning'"
+        />
+      </template>
+      <form class="settings-page__form" @submit.prevent="submitAiSessionKey">
+        <div class="settings-page__grid settings-page__grid--two">
+          <AppInput
+            v-model="aiApiKeyDraft"
+            label="API Key"
+            type="password"
+            autocomplete="off"
+            placeholder="填写本次登录使用的 key"
+            :error="aiApiKeyError"
+          />
+          <div class="settings-page__ai-meta">
+            <span>中转</span>
+            <strong>https://api.243706.xyz/v1</strong>
+            <span>模型</span>
+            <strong>gpt5.5</strong>
+          </div>
+        </div>
+        <div class="settings-page__actions">
+          <AppButton type="button" variant="secondary" :disabled="!aiApiKeyConfigured" @click="clearAiSessionKey">
+            清除本次密钥
+          </AppButton>
+          <AppButton type="submit">
+            保存到本次登录
+          </AppButton>
+        </div>
+      </form>
+    </SettingsSection>
+
     <ClientOnly>
       <ZnImportCard />
     </ClientOnly>
@@ -279,6 +336,32 @@ onMounted(async () => {
   color: var(--color-text);
   font: inherit;
   line-height: 1.5;
+}
+
+.settings-page__ai-meta {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-content: start;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2);
+  background: var(--color-surface-subtle);
+}
+
+.settings-page__ai-meta span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.settings-page__ai-meta strong {
+  min-width: 0;
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .settings-page__actions {

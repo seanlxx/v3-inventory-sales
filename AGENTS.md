@@ -255,7 +255,7 @@ AI 识别只保留一个固定中转与一个固定模型：
 | Base URL | `https://api.243706.xyz/v1` |
 | 模型 | `gpt5.5` |
 
-API Key 必须在每次识别时由用户手动填写，只用于当次请求，不保存到浏览器、D1、R2、Cloudflare 环境变量或源码。
+API Key 必须在每次登录后由用户在设置页手动填写，只保留在当前登录会话中；退出登录、登录失效或切换登录 session 后自动清除，不保存到 D1、R2、Cloudflare 环境变量或源码。
 
 > **⚠️ 不要把 API Key 写入源码、`wrangler.jsonc`、Markdown、Cloudflare Secret 或 D1。**
 

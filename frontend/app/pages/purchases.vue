@@ -37,7 +37,6 @@ const {
 
 const formOpen = shallowRef(false)
 const aiReviewOpen = shallowRef(false)
-const aiApiKeyOpen = shallowRef(false)
 const detailOpen = shallowRef(false)
 const voidOpen = shallowRef(false)
 const voidingOrder = shallowRef<PurchaseOrder | null>(null)
@@ -48,10 +47,6 @@ function openCreateDialog() {
 
 function openAiDialog() {
   aiReviewOpen.value = true
-}
-
-function openAiApiKeyDialog() {
-  aiApiKeyOpen.value = true
 }
 
 function openDetail(order: PurchaseOrder) {
@@ -74,10 +69,6 @@ async function confirmVoid(order: PurchaseOrder) {
   await voidOrder(order)
   voidOpen.value = false
   detailOpen.value = false
-}
-
-async function recognizeWithApiKey(apiKey: string) {
-  await recognizeReceipt(apiKey)
 }
 
 watch(() => [filters.month, filters.status] as const, () => {
@@ -140,15 +131,9 @@ onMounted(async () => {
       @image-selected="saveReceiptImage"
       @image-removed="removeReceiptImage"
       @clear-images="clearReceiptImages"
-      @recognize="openAiApiKeyDialog"
+      @recognize="recognizeReceipt"
       @update-candidates="setAiCandidates"
       @confirm="submitOrder"
-    />
-
-    <AiApiKeyDialog
-      v-model:open="aiApiKeyOpen"
-      :submitting="recognizing"
-      @submit="recognizeWithApiKey"
     />
 
     <PurchaseOrderDrawer
