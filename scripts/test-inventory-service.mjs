@@ -89,6 +89,7 @@ class D1Statement {
 }
 
 const env = { DB: new D1Database() };
+const SHARED_STOCK = '总库存';
 env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0006_v3_structured_inventory_schema.sql'), 'utf8'));
 env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0007_shengma_integration.sql'), 'utf8'));
 env.DB.exec(readFileSync(join(projectRoot, 'migrations', '0008_zn_order_fees.sql'), 'utf8'));
@@ -114,7 +115,7 @@ const purchase = await createPurchases(env, {
   date: '2026-05-01'
 });
 assert.equal(purchase.purchases[0].quantity, 3);
-assert.deepEqual(await balance('p1', 'machine-a'), {
+assert.deepEqual(await balance('p1', SHARED_STOCK), {
   quantity_on_hand: 3,
   avg_cost_cents: 333,
   inventory_value_cents: 1000,
@@ -130,7 +131,7 @@ const sale = await createSalesOrder(env, {
 }, 'sale');
 assert.equal(sale.totalAmount, 10);
 assert.equal(sale.totalCogs, 6.66);
-assert.deepEqual(await balance('p1', 'machine-a'), {
+assert.deepEqual(await balance('p1', SHARED_STOCK), {
   quantity_on_hand: 1,
   avg_cost_cents: 334,
   inventory_value_cents: 334,
@@ -170,23 +171,28 @@ const inferredMachineSale = await createSalesOrder(env, {
   items: [{ productId: 'p-inferred-machine', quantity: 1 }]
 }, 'sale');
 assert.equal(inferredMachineSale.machineId, 'machine-b');
-assert.deepEqual(await balance('p-inferred-machine', 'machine-b'), {
+assert.deepEqual(await balance('p-inferred-machine', SHARED_STOCK), {
   quantity_on_hand: 1,
   avg_cost_cents: 400,
   inventory_value_cents: 400,
   total_purchase_qty: 2,
   total_purchase_cost_cents: 800
 });
-await assert.rejects(
-  () => createSalesOrder(env, {
-    id: 'so-wrong-machine',
-    machineId: 'machine-a',
-    date: '2026-05-02',
-    items: [{ productId: 'p-inferred-machine', quantity: 1 }]
-  }, 'sale'),
-  /不能记入 machine-a/
-);
-assert.equal(await rowCount('sales_orders'), 2, 'machine mismatch should not write a partial order');
+const crossMachineSale = await createSalesOrder(env, {
+  id: 'so-cross-machine-shared-stock',
+  machineId: 'machine-a',
+  date: '2026-05-02',
+  items: [{ productId: 'p-inferred-machine', quantity: 1 }]
+}, 'sale');
+assert.equal(crossMachineSale.machineId, 'machine-a', 'shared stock sale should keep the requested vending machine');
+assert.deepEqual(await balance('p-inferred-machine', SHARED_STOCK), {
+  quantity_on_hand: 0,
+  avg_cost_cents: 0,
+  inventory_value_cents: 0,
+  total_purchase_qty: 2,
+  total_purchase_cost_cents: 800
+});
+assert.equal(await rowCount('sales_orders'), 3, 'cross-machine sale should write one complete order');
 
 await saveProduct(env, {
   id: 'p-cross-machine',
@@ -207,9 +213,9 @@ const balancesResponse = await listInventoryBalances({
 });
 const inventoryBalances = await balancesResponse.json();
 const crossMachineBalance = inventoryBalances.find(
-  row => row.productId === 'p-cross-machine' && row.machineId === 'machine-a'
+  row => row.productId === 'p-cross-machine' && row.machineId === SHARED_STOCK
 );
-assert.equal(crossMachineBalance?.quantityOnHand, 4, 'inventory balances API should list actual balance machine');
+assert.equal(crossMachineBalance?.quantityOnHand, 4, 'inventory balances API should list shared stock pool');
 
 const refund = await createSalesOrder(env, {
   id: 'rf1',
@@ -218,7 +224,7 @@ const refund = await createSalesOrder(env, {
   items: [{ productId: 'p1', quantity: -1 }]
 }, 'refund');
 assert.equal(refund.type, 'refund');
-assert.deepEqual(await balance('p1', 'machine-a'), {
+assert.deepEqual(await balance('p1', SHARED_STOCK), {
   quantity_on_hand: 2,
   avg_cost_cents: 334,
   inventory_value_cents: 668,
@@ -234,7 +240,7 @@ const loss = await createSalesOrder(env, {
 }, 'loss');
 assert.equal(loss.totalAmount, 0);
 assert.equal(loss.totalCogs, 3.34);
-assert.deepEqual(await balance('p1', 'machine-a'), {
+assert.deepEqual(await balance('p1', SHARED_STOCK), {
   quantity_on_hand: 1,
   avg_cost_cents: 334,
   inventory_value_cents: 334,
@@ -243,7 +249,7 @@ assert.deepEqual(await balance('p1', 'machine-a'), {
 });
 
 await voidDocument(env, { refType: 'sales_order', id: 'lo1' });
-assert.deepEqual(await balance('p1', 'machine-a'), {
+assert.deepEqual(await balance('p1', SHARED_STOCK), {
   quantity_on_hand: 2,
   avg_cost_cents: 334,
   inventory_value_cents: 668,
@@ -254,7 +260,7 @@ assert.deepEqual(await balance('p1', 'machine-a'), {
 await saveProduct(env, {
   id: 'p-shared',
   name: 'Shared Pool Drink',
-  machineId: '1/2号机',
+  machineId: '1号机',
   category: 'drink',
   sellPrice: 4
 });
@@ -266,7 +272,7 @@ await createPurchases(env, {
   totalPrice: 20,
   date: '2026-05-04'
 });
-assert.deepEqual(await balance('p-shared', '2号机'), {
+assert.deepEqual(await balance('p-shared', SHARED_STOCK), {
   quantity_on_hand: 10,
   avg_cost_cents: 200,
   inventory_value_cents: 2000,
@@ -280,7 +286,7 @@ const sharedSale = await createSalesOrder(env, {
   items: [{ productId: 'p-shared', quantity: 3 }]
 }, 'sale');
 assert.equal(sharedSale.machineId, '2号机', 'sales order should keep the actual vending machine');
-assert.deepEqual(await balance('p-shared', '2号机'), {
+assert.deepEqual(await balance('p-shared', SHARED_STOCK), {
   quantity_on_hand: 7,
   avg_cost_cents: 200,
   inventory_value_cents: 1400,
@@ -292,8 +298,8 @@ const sharedBalancesResponse = await listInventoryBalances({
   env
 });
 const sharedInventoryBalances = await sharedBalancesResponse.json();
-const sharedInventoryBalance = sharedInventoryBalances.find(row => row.productId === 'p-shared' && row.machineId === '2号机');
-assert.equal(sharedInventoryBalance?.machineId, '2号机', 'shared product purchase should write real machine inventory');
+const sharedInventoryBalance = sharedInventoryBalances.find(row => row.productId === 'p-shared' && row.machineId === SHARED_STOCK);
+assert.equal(sharedInventoryBalance?.machineId, SHARED_STOCK, 'shared product purchase should write the shared stock pool');
 assert.equal(
   sharedInventoryBalances.some(row => row.productId === 'p-shared' && row.machineId === '1/2号机'),
   false,
@@ -304,7 +310,7 @@ await createAdjustment(env, {
   machineId: '2号机',
   quantityOnHand: 9
 });
-assert.deepEqual(await balance('p-shared', '2号机'), {
+assert.deepEqual(await balance('p-shared', SHARED_STOCK), {
   quantity_on_hand: 9,
   avg_cost_cents: 200,
   inventory_value_cents: 1800,
@@ -319,28 +325,25 @@ const count = await createCycleCount(env, {
   items: [{ productId: 'p-shared', observedQty: 6 }]
 });
 assert.equal(count.changedCount, 1);
-assert.deepEqual(await balance('p-shared', '1号机'), {
+assert.deepEqual(await balance('p-shared', SHARED_STOCK), {
   quantity_on_hand: 6,
   avg_cost_cents: 200,
   inventory_value_cents: 1200,
-  total_purchase_qty: 0,
-  total_purchase_cost_cents: 0
+  total_purchase_qty: 10,
+  total_purchase_cost_cents: 2000
 });
 const [sharedProduct] = await listProducts(env, { id: 'p-shared' });
-assert.equal(sharedProduct.currentStock, 15, 'shared product total stock should sum real machine balances');
+assert.equal(sharedProduct.currentStock, 6, 'shared product total stock should read from the shared stock pool');
 assert.deepEqual(sharedProduct.inventoryByMachine, {
-  '1号机': 6,
-  '2号机': 9
-}, 'shared product inventory should expose real machines only');
+  [SHARED_STOCK]: 6
+}, 'shared product inventory should expose the shared stock pool');
 assert.equal(await refTypeCount('cycle_count'), 1, 'cycle count should write adjustment movements');
-await assert.rejects(
-  () => createCycleCount(env, {
-    machineId: '1号机',
-    reason: 'wrong machine count',
-    items: [{ productId: 'p1', observedQty: 2 }]
-  }),
-  /不能盘点到 1号机/
-);
+const nonTrackCount = await createCycleCount(env, {
+  machineId: '1号机',
+  reason: 'shared stock no-op count',
+  items: [{ productId: 'p1', observedQty: 2 }]
+});
+assert.equal(nonTrackCount.changedCount, 0, 'non-track products should be countable through shared stock');
 await assert.rejects(
   () => createCycleCount(env, {
     machineId: '1号机',
@@ -353,12 +356,57 @@ await assert.rejects(
   /重复商品/
 );
 
+await saveProduct(env, {
+  id: 'p-track',
+  name: 'Track Machine Soda',
+  machineId: '轨道机',
+  category: 'drink',
+  sellPrice: 6
+});
+await createPurchases(env, {
+  id: 'po-track',
+  productId: 'p-track',
+  machineId: '轨道机',
+  quantity: 5,
+  totalPrice: 15,
+  date: '2026-05-04'
+});
+assert.deepEqual(await balance('p-track', '轨道机'), {
+  quantity_on_hand: 5,
+  avg_cost_cents: 300,
+  inventory_value_cents: 1500,
+  total_purchase_qty: 5,
+  total_purchase_cost_cents: 1500
+});
+await assert.rejects(
+  () => createSalesOrder(env, {
+    id: 'so-track-wrong-machine',
+    machineId: '1号机',
+    date: '2026-05-04',
+    items: [{ productId: 'p-track', quantity: 1 }]
+  }, 'sale'),
+  /不能记入 1号机/
+);
+await createSalesOrder(env, {
+  id: 'so-track',
+  machineId: '轨道机',
+  date: '2026-05-04',
+  items: [{ productId: 'p-track', quantity: 2 }]
+}, 'sale');
+assert.deepEqual(await balance('p-track', '轨道机'), {
+  quantity_on_hand: 3,
+  avg_cost_cents: 300,
+  inventory_value_cents: 900,
+  total_purchase_qty: 5,
+  total_purchase_cost_cents: 1500
+});
+
 await createAdjustment(env, {
   productId: 'p1',
   machineId: 'machine-a',
   quantityOnHand: 5
 });
-assert.deepEqual(await balance('p1', 'machine-a'), {
+assert.deepEqual(await balance('p1', SHARED_STOCK), {
   quantity_on_hand: 5,
   avg_cost_cents: 334,
   inventory_value_cents: 1670,
@@ -381,7 +429,7 @@ await createPurchases(env, {
   date: '2026-05-05'
 });
 await voidDocument(env, { refType: 'purchase_order', id: 'po-rounding' });
-assert.deepEqual(await balance('p2', 'machine-a'), {
+assert.deepEqual(await balance('p2', SHARED_STOCK), {
   quantity_on_hand: 0,
   avg_cost_cents: 0,
   inventory_value_cents: 0,
@@ -452,7 +500,7 @@ await createAdjustment(env, {
   quantityOnHand: -2,
   unitCost: 3
 });
-assert.deepEqual(await balance('p-negative', 'machine-negative'), {
+assert.deepEqual(await balance('p-negative', SHARED_STOCK), {
   quantity_on_hand: -2,
   avg_cost_cents: 0,
   inventory_value_cents: 0,
@@ -466,7 +514,7 @@ await createPurchases(env, {
   totalPrice: 15,
   date: '2026-05-05'
 });
-assert.deepEqual(await balance('p-negative', 'machine-negative'), {
+assert.deepEqual(await balance('p-negative', SHARED_STOCK), {
   quantity_on_hand: 3,
   avg_cost_cents: 300,
   inventory_value_cents: 900,

@@ -1,5 +1,6 @@
 import { all } from '../_shared/d1.js';
 import { json, methodNotAllowed } from '../_shared/http.js';
+import { stockMachineIdForInventory } from '../_shared/inventory-balance.js';
 import { centsToMoney } from '../_shared/validators.js';
 
 function addFilter(conditions, params, sql, value) {
@@ -14,7 +15,10 @@ export async function onRequestGet(context) {
   const params = [];
 
   addFilter(conditions, params, 'm.product_id = ?', url.searchParams.get('productId'));
-  const machineId = url.searchParams.get('machineId');
+  const requestedMachineId = url.searchParams.get('machineId');
+  const machineId = requestedMachineId && requestedMachineId !== 'all'
+    ? stockMachineIdForInventory(requestedMachineId)
+    : requestedMachineId;
   addFilter(conditions, params, 'm.machine_id = ?', machineId);
   addFilter(conditions, params, 'm.movement_type = ?', url.searchParams.get('movementType'));
   addFilter(conditions, params, 'm.ref_type = ?', url.searchParams.get('refType'));

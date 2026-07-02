@@ -1,7 +1,7 @@
 import { all, first } from '../../_shared/d1.js';
 import { json, methodNotAllowed, parseJsonBody } from '../../_shared/http.js';
 import { nonNegativeCents } from '../../_shared/money.js';
-import { applyBalanceDelta, getBalance, normalizeMachineId, upsertBalanceStatement } from '../../_shared/inventory-balance.js';
+import { applyBalanceDelta, getBalance, normalizeMachineId, stockMachineIdForInventory, upsertBalanceStatement } from '../../_shared/inventory-balance.js';
 import { normalizeProductName } from '../../_shared/shengma/mapper.js';
 import { nowIso, yearMonthFromDate } from '../../_shared/validators.js';
 import { ZN_INTEGRATION, mapZnDeviceLabelToMachine } from '../../_shared/zn/constants.js';
@@ -208,6 +208,7 @@ async function importOneRefund(env, refund, summary, warnings, timestamp) {
   }
 
   const machineId = mapZnDeviceLabelToMachine(refund.deviceName) || normalizeMachineId(originalOrder.machine_id);
+  const stockMachineId = stockMachineIdForInventory(machineId);
   const orderDate = toDateOnly(refund.refundTime) || toDateOnly(refund.paidAt) || toDateOnly(refund.purchaseTime) || originalOrder.record_date;
   const originalItems = await getOriginalItems(env, originalOrder.id);
   const usedIds = new Set();
@@ -301,13 +302,13 @@ async function importOneRefund(env, refund, summary, warnings, timestamp) {
 
     if (isStockReturn) {
       const movementCreatedAt = createdAtFromDate(orderDate);
-      const balance = await getBalance(env, item.original.product_id, machineId, balanceCache);
+      const balance = await getBalance(env, item.original.product_id, stockMachineId, balanceCache);
       const nextBalance = applyBalanceDelta(balance, {
         qtyDelta: item.quantity,
         valueDeltaCents: lineCogsCents,
         timestamp: movementCreatedAt
       });
-      balanceCache.set(`${item.original.product_id}\u0000${machineId}`, nextBalance);
+      balanceCache.set(`${item.original.product_id}\u0000${stockMachineId}`, nextBalance);
       statements.push(env.DB.prepare(`
         INSERT INTO stock_movements (
           id, product_id, machine_id, movement_type, qty_delta, unit_cost_cents,
@@ -316,7 +317,7 @@ async function importOneRefund(env, refund, summary, warnings, timestamp) {
       `).bind(
         `sales_order:${orderId}:${item.original.product_id}:${index}`,
         item.original.product_id,
-        machineId,
+        stockMachineId,
         item.quantity,
         unitCostCents,
         orderId,

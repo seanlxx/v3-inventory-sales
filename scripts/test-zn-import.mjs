@@ -563,7 +563,7 @@ assert.equal(preProductsResult.summary.productsParsed, 9, '商品预导入应按
 assert.equal(preProductsResult.summary.productsCreated, 9, '商品预导入应先创建缺失商品');
 assert.equal(preProductsResult.summary.rowsSkipped, 1, '0 数量商品行应跳过');
 const preProduct = envPreProducts.DB.queryOne('SELECT machine_id, name, normalized_name, external_id FROM products WHERE normalized_name = ?', '冰露饮用纯净水500ml');
-assert.equal(preProduct.machine_id, '1/2号机', 'zn 商品预导入应写入折叠商品机台');
+assert.equal(preProduct.machine_id, '1号机', 'zn 商品预导入应写入真实商品机台');
 assert.equal(preProduct.name, '冰露饮用纯净水500ml', '商品展示名应重命名为标准商品名称');
 assert.equal(preProduct.normalized_name, '冰露饮用纯净水500ml', '商品 normalized_name 应写入标准化名称');
 assert.equal(preProduct.external_id, '冰露饮用纯净水500ml', '新建 zn 商品 external_id 应使用标准化名称');
@@ -613,7 +613,7 @@ await envMergedFallback.DB.prepare(`
     id, machine_id, name, category, sell_price_cents, status,
     created_at, updated_at, normalized_name, external_id
   ) VALUES (
-    'merged-target-product', '1/2号机', '标准商品500ml', '饮料', 300, 'active',
+    'merged-target-product', '1号机', '标准商品500ml', '饮料', 300, 'active',
     ?, ?, '标准商品500ml', '标准商品500ml'
   )
 `).bind(mergedFallbackTimestamp, mergedFallbackTimestamp).run();
@@ -622,7 +622,7 @@ await envMergedFallback.DB.prepare(`
     id, machine_id, name, category, sell_price_cents, status,
     created_at, updated_at, normalized_name, external_id
   ) VALUES (
-    'merged-archived-product', '1/2号机', '旧名称商品500ml', '饮料', 300, 'archived',
+    'merged-archived-product', '1号机', '旧名称商品500ml', '饮料', 300, 'archived',
     ?, ?, 'merged:标准商品500ml', NULL
   )
 `).bind(mergedFallbackTimestamp, mergedFallbackTimestamp).run();
@@ -630,7 +630,7 @@ await envMergedFallback.DB.prepare(`
   INSERT INTO inventory_balances (
     product_id, machine_id, quantity_on_hand, avg_cost_cents, inventory_value_cents,
     total_purchase_qty, total_purchase_cost_cents, updated_at
-  ) VALUES ('merged-target-product', '1号机', 5, 120, 600, 5, 600, ?)
+  ) VALUES ('merged-target-product', '总库存', 5, 120, 600, 5, 600, ?)
 `).bind(mergedFallbackTimestamp).run();
 
 const mergedFallbackOrders = [{
@@ -663,7 +663,7 @@ assert.equal(
   '销售明细应落到合并后的标准商品'
 );
 assert.equal(
-  envMergedFallback.DB.queryOne('SELECT quantity_on_hand FROM inventory_balances WHERE product_id = ? AND machine_id = ?', 'merged-target-product', '1号机').quantity_on_hand,
+  envMergedFallback.DB.queryOne('SELECT quantity_on_hand FROM inventory_balances WHERE product_id = ? AND machine_id = ?', 'merged-target-product', '总库存').quantity_on_hand,
   4,
   '归档旧名称销售应扣减标准商品库存'
 );
@@ -703,7 +703,7 @@ await envRefunds.DB.prepare(`
     id, machine_id, name, category, sell_price_cents, status,
     created_at, updated_at, normalized_name, external_id
   ) VALUES (
-    'refund-water', '1/2号机', '冰露饮用纯净水500ml', '饮料', 100, 'active',
+    'refund-water', '1号机', '冰露饮用纯净水500ml', '饮料', 100, 'active',
     ?, ?, '冰露饮用纯净水500ml', '6928804013740'
   )
 `).bind(refundTimestamp, refundTimestamp).run();
@@ -711,7 +711,7 @@ await envRefunds.DB.prepare(`
   INSERT INTO inventory_balances (
     product_id, machine_id, quantity_on_hand, avg_cost_cents, inventory_value_cents,
     total_purchase_qty, total_purchase_cost_cents, updated_at
-  ) VALUES ('refund-water', '1号机', 9, 60, 540, 10, 600, ?)
+  ) VALUES ('refund-water', '总库存', 9, 60, 540, 10, 600, ?)
 `).bind(refundTimestamp).run();
 await envRefunds.DB.prepare(`
   INSERT INTO sales_orders (
@@ -819,7 +819,7 @@ assert.deepEqual(
   '退款单应分别记录全额退款和仅金额退款'
 );
 assert.equal(
-  envRefunds.DB.queryOne('SELECT quantity_on_hand FROM inventory_balances WHERE product_id = ? AND machine_id = ?', 'refund-water', '1号机').quantity_on_hand,
+  envRefunds.DB.queryOne('SELECT quantity_on_hand FROM inventory_balances WHERE product_id = ? AND machine_id = ?', 'refund-water', '总库存').quantity_on_hand,
   10,
   '只有全额退款应回补库存数量'
 );
@@ -1253,16 +1253,16 @@ await envReconcile.DB.prepare(`
     id, machine_id, name, category, sell_price_cents, status,
     created_at, updated_at, normalized_name, external_id
   ) VALUES
-    ('broken-water', '1/2号机', '冰露饮用纯净水500ml', '饮料', 100, 'active', ?, ?, '冰露饮用纯净水500ml', '6928804013740'),
-    ('broken-dp', '1/2号机', '东鹏补水啦电解质水柠檬味1L', '饮料', 550, 'active', ?, ?, '东鹏补水啦电解质水柠檬味1l', '6934502302277')
+    ('broken-water', '1号机', '冰露饮用纯净水500ml', '饮料', 100, 'active', ?, ?, '冰露饮用纯净水500ml', '6928804013740'),
+    ('broken-dp', '1号机', '东鹏补水啦电解质水柠檬味1L', '饮料', 550, 'active', ?, ?, '东鹏补水啦电解质水柠檬味1l', '6934502302277')
 `).bind(timestamp, timestamp, timestamp, timestamp).run();
 await envReconcile.DB.prepare(`
   INSERT INTO inventory_balances (
     product_id, machine_id, quantity_on_hand, avg_cost_cents, inventory_value_cents,
     total_purchase_qty, total_purchase_cost_cents, updated_at
   ) VALUES
-    ('broken-water', '1号机', 9, 60, 540, 10, 600, ?),
-    ('broken-dp', '1号机', 10, 400, 4000, 10, 4000, ?)
+    ('broken-water', '总库存', 9, 60, 540, 10, 600, ?),
+    ('broken-dp', '总库存', 10, 400, 4000, 10, 4000, ?)
 `).bind(timestamp, timestamp).run();
 await envReconcile.DB.prepare(`
   INSERT INTO sales_orders (
@@ -1290,7 +1290,7 @@ await envReconcile.DB.prepare(`
     ref_type, ref_id, ref_item_id, voids_movement_id, external_id, reason, created_at
   ) VALUES (
     'sales_order:zn:visionpaySFTS20260525083347733X:broken-water:0',
-    'broken-water', '1号机', 'sale', -1, 60, 'sales_order',
+    'broken-water', '总库存', 'sale', -1, 60, 'sales_order',
     'zn:visionpaySFTS20260525083347733X', 'zn:visionpaySFTS20260525083347733X:0',
     NULL, 'zn:sale:visionpaySFTS20260525083347733X:0', '历史错误导入', ?
   )
@@ -1328,7 +1328,7 @@ const fixedBalances = envReconcile.DB.query(`
   SELECT product_id, quantity_on_hand
   FROM inventory_balances
   WHERE product_id IN ('broken-dp', 'broken-water')
-    AND machine_id = '1号机'
+    AND machine_id = '总库存'
   ORDER BY product_id
 `);
 assert.deepEqual(
@@ -1337,7 +1337,7 @@ assert.deepEqual(
     ['broken-dp', 9],
     ['broken-water', 9]
   ],
-  '历史错单校正应按真实销售机台恢复旧库存影响并扣减两种商品'
+  '历史错单校正应按共享库存池恢复旧库存影响并扣减两种商品'
 );
 
 console.log('\n✅ 多商品错单校正测试通过：重复导入能修正已存在的一单多商品错误明细');
@@ -1349,15 +1349,15 @@ async function seedCostProducts(targetEnv) {
       id, machine_id, name, category, sell_price_cents, status,
       created_at, updated_at, normalized_name, external_id
     ) VALUES
-      ('cost-dp-1', '1/2号机', '东鹏特饮维生素功能饮料', '饮料', 600, 'active', ?, ?, '东鹏特饮维生素功能饮料', NULL),
-      ('cost-water-2', '1/2号机', '怡宝饮用纯净水1.55L', '饮料', 350, 'active', ?, ?, '怡宝饮用纯净水155l', '6901285991271')
+      ('cost-dp-1', '1号机', '东鹏特饮维生素功能饮料', '饮料', 600, 'active', ?, ?, '东鹏特饮维生素功能饮料', NULL),
+      ('cost-water-2', '2号机', '怡宝饮用纯净水1.55L', '饮料', 350, 'active', ?, ?, '怡宝饮用纯净水155l', '6901285991271')
   `).bind(timestamp, timestamp, timestamp, timestamp).run();
   await targetEnv.DB.prepare(`
     INSERT INTO purchase_orders (
       id, machine_id, record_date, source, note, image_asset_id, voided_at, created_at, updated_at
     ) VALUES
-      ('seed-cost-po-1', '1号机', '2026-05-01', '测试', NULL, NULL, NULL, ?, ?),
-      ('seed-cost-po-2', '2号机', '2026-05-01', '测试', NULL, NULL, NULL, ?, ?)
+      ('seed-cost-po-1', '总库存', '2026-05-01', '测试', NULL, NULL, NULL, ?, ?),
+      ('seed-cost-po-2', '总库存', '2026-05-01', '测试', NULL, NULL, NULL, ?, ?)
   `).bind(timestamp, timestamp, timestamp, timestamp).run();
   await targetEnv.DB.prepare(`
     INSERT INTO purchase_items (

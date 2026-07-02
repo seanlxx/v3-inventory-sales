@@ -1,5 +1,6 @@
 import { all } from '../_shared/d1.js';
 import { json, methodNotAllowed } from '../_shared/http.js';
+import { stockMachineIdForInventory } from '../_shared/inventory-balance.js';
 import { centsToMoney } from '../_shared/validators.js';
 
 const DEFAULT_LOW_STOCK_THRESHOLD = 5;
@@ -21,7 +22,10 @@ export async function onRequestGet(context) {
   const params = ['active'];
 
   addFilter(conditions, params, 'product_id = ?', url.searchParams.get('productId'));
-  const machineId = url.searchParams.get('machineId');
+  const requestedMachineId = url.searchParams.get('machineId');
+  const machineId = requestedMachineId && requestedMachineId !== 'all'
+    ? stockMachineIdForInventory(requestedMachineId)
+    : requestedMachineId;
   addFilter(conditions, params, 'machine_id = ?', machineId);
   addFilter(conditions, params, 'category = ?', url.searchParams.get('category'));
 
@@ -78,8 +82,8 @@ export async function onRequestGet(context) {
         p.category,
         p.status,
         CASE
-          WHEN p.machine_id IN ('1/2号机', '1/2号机总库存', '总库存') THEN '1号机'
-          ELSE p.machine_id
+          WHEN p.machine_id IN ('轨道机', '三号机') THEN p.machine_id
+          ELSE '总库存'
         END AS machine_id,
         0 AS quantity_on_hand,
         0 AS avg_cost_cents,
@@ -109,12 +113,12 @@ export async function onRequestGet(context) {
         FROM inventory_balances b
         WHERE b.product_id = p.id
           AND b.machine_id = CASE
-            WHEN p.machine_id IN ('1/2号机', '1/2号机总库存', '总库存') THEN '1号机'
-            ELSE p.machine_id
+            WHEN p.machine_id IN ('轨道机', '三号机') THEN p.machine_id
+            ELSE '总库存'
           END
       )
         AND NOT (
-          p.machine_id IN ('1/2号机', '1/2号机总库存', '总库存')
+          p.machine_id IN ('1/2号机', '1/2号机总库存')
           AND EXISTS (
             SELECT 1
             FROM inventory_balances b

@@ -7,6 +7,7 @@ import {
   applyBalanceDelta as applyBalanceDeltaToRow,
   getBalance,
   normalizeMachineId,
+  stockMachineIdForInventory,
   upsertBalanceStatement
 } from '../inventory-balance.js';
 
@@ -24,8 +25,6 @@ const EMPTY_SUMMARY = {
 };
 
 const COST_MATCH_THRESHOLD = 0.72;
-const ZN_PRODUCT_MACHINE_ID = '1/2号机';
-
 function newSummary() {
   return { ...EMPTY_SUMMARY };
 }
@@ -115,10 +114,7 @@ function standardProductName(value) {
 }
 
 function znProductMachineIdFor(machineId) {
-  const stockMachineId = normalizeMachineId(machineId);
-  return stockMachineId === '1号机' || stockMachineId === '2号机'
-    ? ZN_PRODUCT_MACHINE_ID
-    : stockMachineId;
+  return normalizeMachineId(machineId);
 }
 
 function hasProductLine(row) {
@@ -367,7 +363,7 @@ export async function preImportZnProducts(env, body) {
 }
 
 async function loadPurchaseCostCandidates(env, machineId, cache) {
-  const stockMachineId = normalizeMachineId(machineId);
+  const stockMachineId = stockMachineIdForInventory(machineId);
   if (cache.has(stockMachineId)) return cache.get(stockMachineId);
   const rows = await all(env.DB, `
     SELECT
@@ -481,7 +477,7 @@ async function rebuildExistingOrder(env, existing, lines, fees, summary, timesta
 
   for (const line of lines) {
     if (!line.vendorProductName) continue;
-    const stockMachineId = normalizeMachineId(existing.machine_id);
+    const stockMachineId = stockMachineIdForInventory(existing.machine_id);
     const product = await findOrCreateProduct(env, existing.machine_id, line, statements, summary, timestamp, costCandidateCache, productCache);
     const quantity = Math.max(1, Number(line.quantity) || 1);
     const unitPriceCents = Math.max(0, Number(line.unitPriceCents) || 0);
@@ -687,7 +683,7 @@ async function reconcileExistingOrder(env, existing, lines, fees, summary, times
 }
 
 async function importOneOrder(env, machineId, vendorOrderNo, lines, summary, warnings, balanceCache, costCandidateCache, timestamp) {
-  const stockMachineId = normalizeMachineId(machineId);
+  const stockMachineId = stockMachineIdForInventory(machineId);
   const orderId = `zn:${vendorOrderNo}`.slice(0, 120);
 
   // 订单级聚合（同一订单号多行 Excel 通常重复列出相同手续费，取首行而非求和）

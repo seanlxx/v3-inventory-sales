@@ -1,7 +1,9 @@
 import { first } from './d1.js';
 import { nowIso } from './validators.js';
 
-export const LEGACY_SHARED_MACHINE_IDS = new Set(['1/2号机', '1/2号机总库存', '总库存']);
+export const SHARED_INVENTORY_MACHINE_ID = '总库存';
+export const LEGACY_SHARED_MACHINE_IDS = new Set(['1/2号机', '1/2号机总库存']);
+export const TRACK_MACHINE_IDS = new Set(['轨道机', '三号机']);
 export const DEFAULT_MACHINE_ID = '1号机';
 
 export function normalizeMachineId(value, fallback = DEFAULT_MACHINE_ID) {
@@ -12,12 +14,32 @@ export function isLegacySharedMachine(machineId) {
   return LEGACY_SHARED_MACHINE_IDS.has(normalizeMachineId(machineId, ''));
 }
 
+export function isSharedInventoryMachine(machineId) {
+  const normalized = normalizeMachineId(machineId, '');
+  return normalized === SHARED_INVENTORY_MACHINE_ID || isLegacySharedMachine(normalized);
+}
+
+export function isTrackMachine(machineId) {
+  return TRACK_MACHINE_IDS.has(normalizeMachineId(machineId, ''));
+}
+
+export function stockMachineIdForInventory(machineId, productMachineId = '') {
+  const requestedMachine = normalizeMachineId(machineId, '');
+  const productMachine = normalizeMachineId(productMachineId, '');
+  if (isTrackMachine(productMachine)) return productMachine;
+  if (isTrackMachine(requestedMachine)) return requestedMachine;
+  return SHARED_INVENTORY_MACHINE_ID;
+}
+
 export function productCanServeMachine(productMachineId, orderMachineId) {
   const productMachine = normalizeMachineId(productMachineId, '');
   const orderMachine = normalizeMachineId(orderMachineId);
   if (!productMachine) return true;
+  if (isTrackMachine(orderMachine)) return isTrackMachine(productMachine);
+  if (isTrackMachine(productMachine)) return false;
+  if (isSharedInventoryMachine(productMachine)) return true;
   if (productMachine === orderMachine) return true;
-  return isLegacySharedMachine(productMachine) && (orderMachine === '1号机' || orderMachine === '2号机');
+  return !isSharedInventoryMachine(orderMachine);
 }
 
 export function balanceKey(productId, machineId) {

@@ -17,10 +17,14 @@ import {
 import {
   applyBalanceDelta,
   applyMovement,
+  DEFAULT_MACHINE_ID,
   getBalance,
   isLegacySharedMachine,
+  isSharedInventoryMachine,
+  isTrackMachine,
   normalizeMachineId,
   productCanServeMachine,
+  stockMachineIdForInventory,
 } from './inventory-balance.js';
 
 export class InventoryValidationError extends Error {
@@ -38,6 +42,25 @@ function salesMachineFilterValues(value) {
   if (!machineId || machineId === 'all') return [];
   if (machineId === '轨道机') return ['轨道机', '三号机'];
   return [machineId];
+}
+
+function actualSalesMachineId(value, productMachineIds = []) {
+  const requestedMachineId = stringOrNull(value);
+  if (requestedMachineId && !isSharedInventoryMachine(requestedMachineId)) {
+    return normalizeMachineId(requestedMachineId);
+  }
+  const inferredMachineId = productMachineIds.length === 1 && !isSharedInventoryMachine(productMachineIds[0])
+    ? productMachineIds[0]
+    : DEFAULT_MACHINE_ID;
+  return normalizeMachineId(inferredMachineId);
+}
+
+function purchaseStockMachineId(value, product) {
+  return stockMachineIdForInventory(value || product?.machine_id, product?.machine_id);
+}
+
+function salesStockMachineId(value, product) {
+  return stockMachineIdForInventory(value, product?.machine_id);
 }
 
 function validationError(message) {
@@ -219,6 +242,26 @@ async function getProductByNameMachine(env, name, machineId) {
     SELECT *
     FROM products
     WHERE name = ? AND machine_id = ? AND status = 'active'
+    LIMIT 1
+  `, [name, stockMachineId]);
+}
+
+async function getProductByNameForStock(env, name, machineId) {
+  const stockMachineId = normalizeMachineId(machineId, '');
+  if (isTrackMachine(stockMachineId)) {
+    return await getProductByNameMachine(env, name, stockMachineId);
+  }
+  return await first(env.DB, `
+    SELECT *
+    FROM products
+    WHERE name = ?
+      AND status = 'active'
+      AND machine_id NOT IN ('轨道机', '三号机')
+    ORDER BY CASE
+      WHEN machine_id = ? THEN 0
+      WHEN machine_id IN ('总库存', '1/2号机', '1/2号机总库存') THEN 1
+      ELSE 2
+    END, updated_at DESC
     LIMIT 1
   `, [name, stockMachineId]);
 }
@@ -522,7 +565,7 @@ async function ensurePurchaseProduct(env, purchase, statements) {
   const machineId = normalizeMachineId(stringOrNull(purchase.machineId) || product?.machine_id || '1号机');
 
   if (!product && productName) {
-    product = await getProductByNameMachine(env, productName, machineId);
+    product = await getProductByNameForStock(env, productName, machineId);
     if (!product && (machineId === '1号机' || machineId === '2号机')) {
       product = await getProductByNameMachine(env, productName, '1/2号机');
     }
@@ -574,9 +617,7 @@ export async function createPurchases(env, payload) {
 
     const date = recordDate(input.date);
     const itemId = `${orderId}:0`;
-    const machineId = normalizeMachineId(input.machineId || (
-      isLegacySharedMachine(product.machine_id) ? '1号机' : product.machine_id
-    ));
+    const machineId = purchaseStockMachineId(input.machineId, product);
 
     statements.push(env.DB.prepare(`
       INSERT INTO purchase_orders (
@@ -658,7 +699,7 @@ export async function createPurchaseOrder(env, payload) {
     if (!orderMachineId) orderMachineId = product.machine_id;
   }
   orderMachineId = normalizeMachineId(orderMachineId || '1号机');
-  if (isLegacySharedMachine(orderMachineId)) orderMachineId = '1号机';
+  orderMachineId = purchaseStockMachineId(orderMachineId, products[0]?.product);
 
   const date = recordDate(payload.date);
   const imageAssetId = stringOrNull(payload.imageAssetId) || sharedImage?.id || null;
@@ -904,10 +945,7 @@ export async function createSalesOrder(env, payload, forcedType = null) {
   const yearMonth = yearMonthFromDate(date);
   const orderId = stringOrNull(payload.id) || newId();
   const productMachineIds = [...new Set(Array.from(productMap.values()).map(product => normalizeMachineId(product.machine_id)).filter(Boolean))];
-  const requestedMachineId = stringOrNull(payload.machineId);
-  const requestedOrInferredMachineId = requestedMachineId || (productMachineIds.length === 1 ? productMachineIds[0] : '1号机');
-  const stockMachineId = normalizeMachineId(requestedOrInferredMachineId);
-  const machineId = isLegacySharedMachine(stockMachineId) ? '1号机' : stockMachineId;
+  const machineId = actualSalesMachineId(payload.machineId, productMachineIds);
   const mismatchedProduct = Array.from(productMap.values()).find(product => !productCanServeMachine(product.machine_id, machineId));
   if (mismatchedProduct) {
     throw validationError(`${mismatchedProduct.name} 属于 ${mismatchedProduct.machine_id}，不能记入 ${machineId}`);
@@ -949,7 +987,8 @@ export async function createSalesOrder(env, payload, forcedType = null) {
     const qty = positiveQuantity(item.quantity);
     if (qty <= 0) continue;
 
-    const balance = await getBalance(env, product.id, machineId, balanceCache);
+    const stockMachineId = salesStockMachineId(machineId, product);
+    const balance = await getBalance(env, product.id, stockMachineId, balanceCache);
     if ((type === 'sale' || type === 'loss') && qty > balance.quantity_on_hand) {
       throw validationError(`${product.name} 库存不足：当前 ${balance.quantity_on_hand}，本次 ${qty}`);
     }
@@ -983,7 +1022,7 @@ export async function createSalesOrder(env, payload, forcedType = null) {
     await applyMovement(env, balanceCache, {
       id: `sales_order:${orderId}:${product.id}:${index}`,
       product_id: product.id,
-      machine_id: machineId,
+      machine_id: stockMachineId,
       movement_type: type,
       qty_delta: qtyDelta,
       unit_cost_cents: unitCostCents,
@@ -1174,8 +1213,8 @@ export async function createAdjustment(env, payload) {
   const product = productId ? await getProduct(env, productId) : null;
   if (!product) throw new Error('Product not found');
 
-  let machineId = normalizeMachineId(stringOrNull(payload.machineId) || product.machine_id);
-  if (isLegacySharedMachine(machineId)) machineId = '1号机';
+  const requestedMachineId = normalizeMachineId(stringOrNull(payload.machineId) || product.machine_id);
+  const machineId = stockMachineIdForInventory(requestedMachineId, product.machine_id);
   const balanceCache = new Map();
   const current = await getBalance(env, product.id, machineId, balanceCache);
   const target = hasOwn(payload, 'quantityOnHand') ? quantity(payload.quantityOnHand) : null;
@@ -1231,7 +1270,8 @@ export async function createCycleCount(env, payload) {
     if (!product) throw validationError('盘点明细中包含不存在的商品');
     if (product.status !== 'active') throw validationError(`${product.name} 已下架，不能盘点`);
 
-    const current = await getBalance(env, product.id, machineId, balanceCache);
+    const stockMachineId = stockMachineIdForInventory(machineId, product.machine_id);
+    const current = await getBalance(env, product.id, stockMachineId, balanceCache);
     if (!productCanServeMachine(product.machine_id, machineId) && Number(current.quantity_on_hand) === 0) {
       throw validationError(`${product.name} 属于 ${product.machine_id}，不能盘点到 ${machineId}`);
     }
@@ -1249,7 +1289,7 @@ export async function createCycleCount(env, payload) {
     await applyMovement(env, balanceCache, {
       id: `cycle_count:${countId}:${product.id}:${index}`,
       product_id: product.id,
-      machine_id: machineId,
+      machine_id: stockMachineId,
       movement_type: 'adjustment',
       qty_delta: qtyDelta,
       unit_cost_cents: unitCostCents,

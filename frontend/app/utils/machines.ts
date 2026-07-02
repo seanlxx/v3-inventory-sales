@@ -1,6 +1,7 @@
 export const DEFAULT_MACHINE_OPTIONS = ['1号机', '2号机', '3号机', '轨道机'] as const
 
 const LEGACY_SHARED_MACHINE_IDS = new Set(['1/2号机', '1/2号机总库存', '总库存'])
+const SHARED_INVENTORY_MACHINE_ID = '总库存'
 
 const MACHINE_ALIASES = new Map<string, string>([
   ['三号机', '轨道机']
@@ -17,7 +18,9 @@ export function canonicalMachineOption(value: string | null | undefined) {
 }
 
 export function displayMachineName(value: string | null | undefined, fallback = '-') {
-  return canonicalMachineOption(value) || fallback
+  const machine = String(value || '').trim()
+  if (machine === SHARED_INVENTORY_MACHINE_ID) return SHARED_INVENTORY_MACHINE_ID
+  return canonicalMachineOption(machine) || fallback
 }
 
 export function machineMatchesOption(machine: string | null | undefined, option: string) {
