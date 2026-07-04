@@ -82,7 +82,7 @@ export async function onRequestGet(context) {
         p.category,
         p.status,
         CASE
-          WHEN p.machine_id IN ('轨道机', '三号机') THEN p.machine_id
+          WHEN p.machine_id IN ('轨道机', '三号机') THEN '轨道机'
           ELSE '总库存'
         END AS machine_id,
         0 AS quantity_on_hand,
@@ -113,7 +113,7 @@ export async function onRequestGet(context) {
         FROM inventory_balances b
         WHERE b.product_id = p.id
           AND b.machine_id = CASE
-            WHEN p.machine_id IN ('轨道机', '三号机') THEN p.machine_id
+            WHEN p.machine_id IN ('轨道机', '三号机') THEN '轨道机'
             ELSE '总库存'
           END
       )

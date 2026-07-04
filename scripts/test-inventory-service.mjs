@@ -170,7 +170,7 @@ const inferredMachineSale = await createSalesOrder(env, {
   date: '2026-05-02',
   items: [{ productId: 'p-inferred-machine', quantity: 1 }]
 }, 'sale');
-assert.equal(inferredMachineSale.machineId, 'machine-b');
+assert.equal(inferredMachineSale.machineId, '1号机');
 assert.deepEqual(await balance('p-inferred-machine', SHARED_STOCK), {
   quantity_on_hand: 1,
   avg_cost_cents: 400,

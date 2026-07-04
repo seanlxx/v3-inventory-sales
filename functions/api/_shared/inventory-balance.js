@@ -3,11 +3,16 @@ import { nowIso } from './validators.js';
 
 export const SHARED_INVENTORY_MACHINE_ID = '总库存';
 export const LEGACY_SHARED_MACHINE_IDS = new Set(['1/2号机', '1/2号机总库存']);
-export const TRACK_MACHINE_IDS = new Set(['轨道机', '三号机']);
+export const MACHINE_ALIASES = new Map([
+  ['三号机', '轨道机']
+]);
+export const TRACK_MACHINE_IDS = new Set(['轨道机']);
 export const DEFAULT_MACHINE_ID = '1号机';
 
 export function normalizeMachineId(value, fallback = DEFAULT_MACHINE_ID) {
-  return String(value || '').trim() || fallback;
+  const machineId = String(value || '').trim();
+  if (!machineId) return fallback;
+  return MACHINE_ALIASES.get(machineId) || machineId;
 }
 
 export function isLegacySharedMachine(machineId) {

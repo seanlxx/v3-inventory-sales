@@ -40,7 +40,6 @@ const IN_CLAUSE_BATCH_SIZE = 50;
 function salesMachineFilterValues(value) {
   const machineId = normalizeMachineId(value, '');
   if (!machineId || machineId === 'all') return [];
-  if (machineId === '轨道机') return ['轨道机', '三号机'];
   return [machineId];
 }
 
@@ -207,7 +206,8 @@ function saleItemToLegacy(row) {
 
 function productRowFromPayload(payload, existing = null) {
   const timestamp = nowIso();
-  const machineId = normalizeMachineId(stringOrNull(payload.machineId) || existing?.machine_id || '1号机');
+  const requestedMachineId = stringOrNull(payload.machineId) || existing?.machine_id || '1号机';
+  const machineId = stockMachineIdForInventory(requestedMachineId, existing?.machine_id);
   return {
     id: stringOrNull(payload.id) || existing?.id || newId(),
     machine_id: machineId,
@@ -237,7 +237,7 @@ async function getProduct(env, productId) {
 }
 
 async function getProductByNameMachine(env, name, machineId) {
-  const stockMachineId = normalizeMachineId(machineId);
+  const stockMachineId = stockMachineIdForInventory(machineId);
   return await first(env.DB, `
     SELECT *
     FROM products
@@ -258,12 +258,12 @@ async function getProductByNameForStock(env, name, machineId) {
       AND status = 'active'
       AND machine_id NOT IN ('轨道机', '三号机')
     ORDER BY CASE
-      WHEN machine_id = ? THEN 0
-      WHEN machine_id IN ('总库存', '1/2号机', '1/2号机总库存') THEN 1
+      WHEN machine_id = '总库存' THEN 0
+      WHEN machine_id IN ('1/2号机', '1/2号机总库存') THEN 1
       ELSE 2
     END, updated_at DESC
     LIMIT 1
-  `, [name, stockMachineId]);
+  `, [name]);
 }
 
 async function getPurchaseAvgCostCents(env, productId, cache = new Map()) {

@@ -563,7 +563,7 @@ assert.equal(preProductsResult.summary.productsParsed, 9, '商品预导入应按
 assert.equal(preProductsResult.summary.productsCreated, 9, '商品预导入应先创建缺失商品');
 assert.equal(preProductsResult.summary.rowsSkipped, 1, '0 数量商品行应跳过');
 const preProduct = envPreProducts.DB.queryOne('SELECT machine_id, name, normalized_name, external_id FROM products WHERE normalized_name = ?', '冰露饮用纯净水500ml');
-assert.equal(preProduct.machine_id, '1号机', 'zn 商品预导入应写入真实商品机台');
+assert.equal(preProduct.machine_id, '总库存', 'zn 商品预导入应写入共享库存商品池');
 assert.equal(preProduct.name, '冰露饮用纯净水500ml', '商品展示名应重命名为标准商品名称');
 assert.equal(preProduct.normalized_name, '冰露饮用纯净水500ml', '商品 normalized_name 应写入标准化名称');
 assert.equal(preProduct.external_id, '冰露饮用纯净水500ml', '新建 zn 商品 external_id 应使用标准化名称');
@@ -613,7 +613,7 @@ await envMergedFallback.DB.prepare(`
     id, machine_id, name, category, sell_price_cents, status,
     created_at, updated_at, normalized_name, external_id
   ) VALUES (
-    'merged-target-product', '1号机', '标准商品500ml', '饮料', 300, 'active',
+    'merged-target-product', '总库存', '标准商品500ml', '饮料', 300, 'active',
     ?, ?, '标准商品500ml', '标准商品500ml'
   )
 `).bind(mergedFallbackTimestamp, mergedFallbackTimestamp).run();
@@ -622,7 +622,7 @@ await envMergedFallback.DB.prepare(`
     id, machine_id, name, category, sell_price_cents, status,
     created_at, updated_at, normalized_name, external_id
   ) VALUES (
-    'merged-archived-product', '1号机', '旧名称商品500ml', '饮料', 300, 'archived',
+    'merged-archived-product', '总库存', '旧名称商品500ml', '饮料', 300, 'archived',
     ?, ?, 'merged:标准商品500ml', NULL
   )
 `).bind(mergedFallbackTimestamp, mergedFallbackTimestamp).run();

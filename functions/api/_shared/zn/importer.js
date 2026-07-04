@@ -114,7 +114,7 @@ function standardProductName(value) {
 }
 
 function znProductMachineIdFor(machineId) {
-  return normalizeMachineId(machineId);
+  return stockMachineIdForInventory(machineId);
 }
 
 function hasProductLine(row) {
