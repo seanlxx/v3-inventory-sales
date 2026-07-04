@@ -69,24 +69,18 @@ export function wranglerEnv() {
 }
 
 export function runD1Query(sql, options = {}) {
-  ensureOutputDir();
-  const file = join(outputDir, `_q-${Date.now()}-${Math.random().toString(16).slice(2)}.sql`);
-  writeFileSync(file, `${String(sql).trim()}\n`);
-  try {
-    const wrangler = wranglerCommand();
-    const raw = execWrangler(wrangler.command, [...wrangler.prefix, ...wranglerArgs({
-      ...options,
-      json: true,
-      file
-    })], {
-      encoding: 'utf8',
-      maxBuffer: 1024 * 1024 * 80,
-      env: wranglerEnv()
-    });
-    return parseWranglerJson(raw).flatMap(item => item.results || []);
-  } finally {
-    rmSync(file, { force: true });
-  }
+  const command = String(sql).replace(/\s+/g, ' ').trim();
+  const wrangler = wranglerCommand();
+  const raw = execWrangler(wrangler.command, [...wrangler.prefix, ...wranglerArgs({
+    ...options,
+    json: true,
+    command
+  })], {
+    encoding: 'utf8',
+    maxBuffer: 1024 * 1024 * 80,
+    env: wranglerEnv()
+  });
+  return parseWranglerJson(raw).flatMap(item => item.results || []);
 }
 
 export function runD1File(sql, options = {}) {
