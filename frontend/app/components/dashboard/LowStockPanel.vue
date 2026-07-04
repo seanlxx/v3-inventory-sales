@@ -5,24 +5,27 @@ import { formatMoney, formatQuantity } from '~/utils/format'
 const props = defineProps<{
   items: readonly InventoryBalance[]
   loading?: boolean
+  variant?: 'stock' | 'cost'
 }>()
+
+const isCostMode = computed(() => props.variant === 'cost')
 </script>
 
 <template>
-  <section class="low-stock surface-panel" aria-label="库存风险榜">
+  <section class="low-stock surface-panel" :aria-label="isCostMode ? '成本缺口榜' : '库存风险榜'">
     <header class="low-stock__header">
       <div>
-        <h2 class="low-stock__title">库存风险</h2>
-        <p class="low-stock__description">低于阈值的商品</p>
+        <h2 class="low-stock__title">{{ isCostMode ? '成本缺口' : '库存风险' }}</h2>
+        <p class="low-stock__description">{{ isCostMode ? '缺少成本快照的销售商品' : '低于阈值的商品' }}</p>
       </div>
       <StatusBadge :label="`${props.items.length} 项`" :tone="props.items.length ? 'warning' : 'success'" />
     </header>
 
     <div v-if="props.loading" class="low-stock__empty">
-      加载库存风险
+      {{ isCostMode ? '加载成本缺口' : '加载库存风险' }}
     </div>
     <div v-else-if="props.items.length === 0" class="low-stock__empty">
-      暂无低库存商品
+      {{ isCostMode ? '暂无成本缺口' : '暂无低库存商品' }}
     </div>
     <div v-else class="low-stock__list">
       <article v-for="item in props.items" :key="item.productId" class="low-stock__item">
@@ -32,7 +35,8 @@ const props = defineProps<{
         </div>
         <div class="low-stock__meta">
           <strong class="numeric">{{ formatQuantity(item.quantityOnHand) }} 件</strong>
-          <span>阈值 {{ formatQuantity(item.lowStockThreshold) }} · 货值 {{ formatMoney(item.inventoryValue) }}</span>
+          <span v-if="isCostMode">销售额 {{ formatMoney(item.inventoryValue) }}</span>
+          <span v-else>阈值 {{ formatQuantity(item.lowStockThreshold) }} · 货值 {{ formatMoney(item.inventoryValue) }}</span>
         </div>
       </article>
     </div>

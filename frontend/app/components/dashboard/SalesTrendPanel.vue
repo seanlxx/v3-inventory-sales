@@ -147,7 +147,7 @@ const chartData = computed<ChartData<'line'>>(() => {
         yAxisID: 'y'
       },
       {
-        label: '到账',
+      label: '净收入',
         data: receivedValues,
         borderColor: '#16a34a',
         backgroundColor: 'rgba(22, 163, 74, 0.10)',
@@ -382,7 +382,7 @@ function formatMoneyTick(value: number) {
     <header class="sales-trend__header">
       <div class="sales-trend__heading">
         <h2 class="sales-trend__title">销售趋势</h2>
-        <p class="sales-trend__description">最近 {{ trendRangeLabel }} 销售额 · 到账 · 毛利走势</p>
+        <p class="sales-trend__description">最近 {{ trendRangeLabel }} 销售额 · 净收入 · 毛利走势</p>
       </div>
       <div class="sales-trend__range" aria-label="销售趋势时间跨度">
         <div class="sales-trend__preset-group" role="group" aria-label="常用时间跨度">

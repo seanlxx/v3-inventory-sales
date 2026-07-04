@@ -58,6 +58,9 @@ onMounted(() => {
         <ExceptionsPanel
           :items="report?.recentExceptions ?? []"
           :loading="loading"
+          title="商品合并"
+          description="旧商品归并到全局商品的结果"
+          empty-message="暂无商品合并"
         />
       </div>
       <div class="dashboard-page__column">
@@ -68,6 +71,7 @@ onMounted(() => {
         <LowStockPanel
           :items="report?.lowStock ?? []"
           :loading="loading"
+          variant="cost"
         />
       </div>
     </div>

@@ -5,10 +5,15 @@ import { formatDateTime } from '~/utils/format'
 const props = defineProps<{
   items: readonly DashboardException[]
   loading?: boolean
+  title?: string
+  description?: string
+  emptyMessage?: string
 }>()
 
 function toneFor(type: DashboardException['type']) {
   if (type === 'low_stock') return 'warning'
+  if (type === 'cost_gap') return 'warning'
+  if (type === 'product_merge') return 'info'
   if (type === 'void') return 'danger'
   return 'info'
 }
@@ -17,6 +22,8 @@ function labelFor(type: DashboardException['type']) {
   if (type === 'refund') return '退款'
   if (type === 'loss') return '损耗'
   if (type === 'void') return '作废'
+  if (type === 'cost_gap') return '成本'
+  if (type === 'product_merge') return '合并'
   return '低库存'
 }
 </script>
@@ -25,8 +32,8 @@ function labelFor(type: DashboardException['type']) {
   <section class="exceptions-panel surface-panel" aria-label="最近异常">
     <header class="exceptions-panel__header">
       <div>
-        <h2 class="exceptions-panel__title">最近异常</h2>
-        <p class="exceptions-panel__description">退款、损耗、作废和低库存提醒</p>
+        <h2 class="exceptions-panel__title">{{ props.title || '最近异常' }}</h2>
+        <p class="exceptions-panel__description">{{ props.description || '退款、损耗、作废和低库存提醒' }}</p>
       </div>
     </header>
 
@@ -34,7 +41,7 @@ function labelFor(type: DashboardException['type']) {
       加载异常提醒
     </div>
     <div v-else-if="props.items.length === 0" class="exceptions-panel__empty">
-      暂无异常提醒
+      {{ props.emptyMessage || '暂无异常提醒' }}
     </div>
     <div v-else class="exceptions-panel__list">
       <article v-for="item in props.items" :key="item.id" class="exceptions-panel__item">

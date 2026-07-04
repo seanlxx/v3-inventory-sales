@@ -82,6 +82,21 @@ Phase 2 验收：
 - `summary` 的销售额、成本、毛利与 Phase 1 校验口径一致。
 - 成本缺失商品继续作为阻断项展示，不自动填成本。
 
+## Phase 3：前端逐页切换
+
+先切两个页面：
+
+| 页面 | 切换结果 |
+| --- | --- |
+| 仪表盘 | 改读 `/api/profit/summary`；低库存区域替换为成本缺口，异常区域替换为商品合并结果。 |
+| 商品 | 改读 `/api/profit/products`；展示全局商品利润档案，不再展示库存、机台库存、库存流水、上下架操作。 |
+
+剩余页面：
+
+- 进货页切到 `purchase_records` / `purchase_record_items`。
+- 销售页切到 `sales_records` / `sales_record_items`。
+- 库存页最后下线或改成归档入口，不再作为主业务页面。
+
 ## 商品合并规则
 
 全局商品按旧 `products.normalized_name` 归并：

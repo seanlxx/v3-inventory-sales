@@ -255,20 +255,42 @@ async function getDailyTrend(env, days, machineId) {
 async function getMachineRanking(env, month) {
   const displayMachineSql = machineSql('machine_id');
   const rows = await all(env.DB, `
+    WITH totals_by_machine AS (
+      SELECT
+        ${displayMachineSql} AS machine_id,
+        COALESCE(SUM(net_revenue_cents), 0) AS net_revenue_cents,
+        COALESCE(SUM(${signedCogsSql()}), 0) AS cogs_cents,
+        COALESCE(SUM(gross_profit_cents), 0) AS gross_profit_cents,
+        COUNT(*) AS order_count
+      FROM sales_records
+      WHERE status = 'active'
+        AND type IN ('sale', 'refund')
+        AND year_month = ?
+      GROUP BY ${displayMachineSql}
+    ),
+    quantity_by_machine AS (
+      SELECT
+        ${machineSql('sr.machine_id')} AS machine_id,
+        COALESCE(SUM(sri.quantity), 0) AS quantity
+      FROM sales_records sr
+      JOIN sales_record_items sri ON sri.sales_record_id = sr.id
+      WHERE sr.status = 'active'
+        AND sr.type = 'sale'
+        AND sr.year_month = ?
+      GROUP BY ${machineSql('sr.machine_id')}
+    )
     SELECT
-      ${displayMachineSql} AS machine_id,
-      COALESCE(SUM(net_revenue_cents), 0) AS net_revenue_cents,
-      COALESCE(SUM(${signedCogsSql()}), 0) AS cogs_cents,
-      COALESCE(SUM(gross_profit_cents), 0) AS gross_profit_cents,
-      COUNT(*) AS order_count
-    FROM sales_records
-    WHERE status = 'active'
-      AND type IN ('sale', 'refund')
-      AND year_month = ?
-    GROUP BY ${displayMachineSql}
-    ORDER BY net_revenue_cents DESC
+      t.machine_id,
+      t.net_revenue_cents,
+      t.cogs_cents,
+      t.gross_profit_cents,
+      t.order_count,
+      COALESCE(q.quantity, 0) AS quantity
+    FROM totals_by_machine t
+    LEFT JOIN quantity_by_machine q ON q.machine_id = t.machine_id
+    ORDER BY t.net_revenue_cents DESC
     LIMIT 20
-  `, [month]);
+  `, [month, month]);
 
   return rows.map(row => ({
     machineId: row.machine_id,
@@ -276,7 +298,8 @@ async function getMachineRanking(env, month) {
     cogs: money(row.cogs_cents),
     grossProfit: money(row.gross_profit_cents),
     profitRate: profitRatePercent(row.net_revenue_cents, row.gross_profit_cents),
-    orderCount: Number(row.order_count) || 0
+    orderCount: Number(row.order_count) || 0,
+    quantity: Number(row.quantity) || 0
   }));
 }
 

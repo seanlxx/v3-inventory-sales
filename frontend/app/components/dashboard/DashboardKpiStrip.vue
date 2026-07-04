@@ -10,19 +10,19 @@ const props = defineProps<{
 const kpiItems = computed(() => [
   {
     key: 'todayRevenue',
-    label: '今日销售额',
+    label: '今日净收入',
     value: formatMoney(props.kpis?.todayRevenue),
     tone: 'primary'
   },
   {
     key: 'monthRevenue',
-    label: '本月销售额',
+    label: '本月净收入',
     value: formatMoney(props.kpis?.monthRevenue),
     tone: 'primary'
   },
   {
     key: 'monthGrossProfit',
-    label: '本月到账毛利',
+    label: '本月毛利',
     value: formatMoney(props.kpis?.monthGrossProfit),
     tone: Number(props.kpis?.monthGrossProfit || 0) >= 0 ? 'success' : 'danger'
   },
@@ -46,7 +46,7 @@ const kpiItems = computed(() => [
   },
   {
     key: 'lowStockCount',
-    label: '低库存',
+    label: '成本缺口',
     value: `${Number(props.kpis?.lowStockCount || 0)} 项`,
     tone: Number(props.kpis?.lowStockCount || 0) > 0 ? 'danger' : 'success'
   }

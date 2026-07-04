@@ -23,7 +23,7 @@ function widthFor(item: MachineRankingItem) {
     <header class="machine-ranking__header">
       <div>
         <h2 class="machine-ranking__title">毛利拆分</h2>
-        <p class="machine-ranking__description">按真实售货机拆分销售额、销量和毛利</p>
+        <p class="machine-ranking__description">按真实售货机拆分净收入、销量和毛利</p>
       </div>
     </header>
 
@@ -43,7 +43,7 @@ function widthFor(item: MachineRankingItem) {
           <span class="machine-ranking__bar" :style="{ width: widthFor(item) }" />
         </div>
         <div class="machine-ranking__row machine-ranking__row--muted">
-          <span>销售额 {{ formatMoney(item.revenue) }}</span>
+          <span>净收入 {{ formatMoney(item.revenue) }}</span>
           <span>{{ formatQuantity(item.quantity) }} 件</span>
         </div>
       </article>

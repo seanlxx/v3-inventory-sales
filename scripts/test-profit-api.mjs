@@ -84,6 +84,7 @@ assert.equal(summary.kpis.mergedProductCount, 1);
 assert.equal(summary.machineRanking.length, 2);
 assert.equal(summary.machineRanking[0].machineId, '1号机');
 assert.equal(summary.machineRanking[0].netRevenue, 7);
+assert.equal(summary.machineRanking[0].quantity, 2);
 assert.equal(summary.productRanking[0].productName, 'Cola');
 assert.equal(summary.costGaps.length, 1);
 assert.equal(summary.costGaps[0].productName, 'Water');
