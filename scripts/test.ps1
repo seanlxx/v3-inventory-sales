@@ -15,6 +15,7 @@ $tests = @(
   "scripts/test-ai-product-match.mjs",
   "scripts/test-ai-product-match-cases.mjs",
   "scripts/test-profit-system-phase1.mjs",
+  "scripts/test-profit-api.mjs",
   "scripts/test-dashboard-report.mjs",
   "scripts/test-shengma-integration.mjs"
 )

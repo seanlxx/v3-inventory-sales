@@ -66,6 +66,22 @@ node scripts/profit-system/verify-phase1.mjs --local --month 2026-06
 
 生产执行时去掉 `--local`。远程 D1 数据迁移脚本不包事务，保持幂等，可重复运行。
 
+## Phase 2：新利润 API
+
+本阶段先提供只读 API，供前端逐页切换。所有接口只读新利润表，不读库存余额或库存流水。
+
+| API | 用途 |
+| --- | --- |
+| `GET /api/profit/summary?month=YYYY-MM&days=30&machineId=...` | 新利润仪表盘口径：销售额、退款、费用、净收入、成本、毛利、趋势、机台排行、商品排行。 |
+| `GET /api/profit/cost-gaps?month=YYYY-MM&machineId=...` | 成本缺失商品清单。只暴露缺口，不猜成本金额。 |
+| `GET /api/profit/products?search=...&includeArchived=false` | 全局商品档案、别名数量、进货成本、销售毛利和最近成本。 |
+
+Phase 2 验收：
+
+- 新 API 不引用 `inventory_balances` / `stock_movements` / `inventory-service`。
+- `summary` 的销售额、成本、毛利与 Phase 1 校验口径一致。
+- 成本缺失商品继续作为阻断项展示，不自动填成本。
+
 ## 商品合并规则
 
 全局商品按旧 `products.normalized_name` 归并：
