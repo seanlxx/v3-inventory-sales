@@ -197,6 +197,10 @@ export type ProfitSalesItem = {
   lineAmount: number
   unitCost: number
   lineCogs: number
+  costSnapshotId?: string | null
+  costSnapshotSourceType?: string | null
+  costSnapshotEffectiveAt?: string | null
+  costSnapshotCreatedAt?: string | null
 }
 
 export type ProfitSalesRecord = {

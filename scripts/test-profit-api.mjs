@@ -311,6 +311,8 @@ assert.equal(manualSale.grossProfit, 8.65);
 assert.equal(manualSale.items.length, 2);
 assert.equal(manualSale.items.find(item => item.productGlobalId === manualProductId).unitCost, 1.5);
 assert.equal(manualSale.items.find(item => item.productGlobalId === 'pg-cola').unitCost, 2.25);
+assert.equal(manualSale.items.find(item => item.productGlobalId === manualProductId).costSnapshotSourceType, 'sale_item');
+assert.equal(manualSale.items.find(item => item.productGlobalId === manualProductId).costSnapshotEffectiveAt, '2026-06-11');
 
 const afterManualSummaryResponse = await getSummary({
   request: new Request('https://example.test/api/profit/summary?month=2026-06&machineId=1号机'),

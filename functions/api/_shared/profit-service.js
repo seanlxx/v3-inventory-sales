@@ -1131,9 +1131,14 @@ async function salesItemMap(env, recordIds) {
       sri.unit_price_cents,
       sri.line_amount_cents,
       sri.unit_cost_cents,
-      sri.line_cogs_cents
+      sri.line_cogs_cents,
+      cs.id AS cost_snapshot_id,
+      cs.source_type AS cost_snapshot_source_type,
+      cs.effective_at AS cost_snapshot_effective_at,
+      cs.created_at AS cost_snapshot_created_at
     FROM sales_record_items sri
     JOIN products_global pg ON pg.id = sri.product_global_id
+    LEFT JOIN cost_snapshots cs ON cs.source_type = 'sale_item' AND cs.source_item_id = sri.id
     WHERE sri.sales_record_id IN (${placeholders(recordIds.length)})
     ORDER BY pg.canonical_name, sri.id
   `, recordIds);
@@ -1147,7 +1152,11 @@ async function salesItemMap(env, recordIds) {
       unitPrice: money(row.unit_price_cents),
       lineAmount: money(row.line_amount_cents),
       unitCost: money(row.unit_cost_cents),
-      lineCogs: money(row.line_cogs_cents)
+      lineCogs: money(row.line_cogs_cents),
+      costSnapshotId: row.cost_snapshot_id || null,
+      costSnapshotSourceType: row.cost_snapshot_source_type || null,
+      costSnapshotEffectiveAt: row.cost_snapshot_effective_at || null,
+      costSnapshotCreatedAt: row.cost_snapshot_created_at || null
     };
     const items = itemMap.get(row.sales_record_id) || [];
     items.push(item);

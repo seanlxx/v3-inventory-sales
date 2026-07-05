@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ProfitSalesRecord } from '~/types/profit'
+import type { ProfitSalesItem, ProfitSalesRecord } from '~/types/profit'
 import { formatMoney, formatQuantity } from '~/utils/format'
 
 const props = defineProps<{
@@ -18,6 +18,12 @@ function typeLabel(type: ProfitSalesRecord['type']) {
 
 function statusLabel(status: ProfitSalesRecord['status']) {
   return status === 'voided' ? '已作废' : '有效'
+}
+
+function costSnapshotLabel(item: ProfitSalesItem) {
+  if (!item.costSnapshotId) return ''
+  const source = item.costSnapshotSourceType === 'sale_item' ? '销售快照' : '成本快照'
+  return `${source} ${item.costSnapshotEffectiveAt || '未标日期'}`
 }
 </script>
 
@@ -87,6 +93,9 @@ function statusLabel(status: ProfitSalesRecord['status']) {
         <div class="profit-detail__product">
           <strong>{{ item.productName }}</strong>
           <span>{{ item.productGlobalId }}</span>
+          <span v-if="costSnapshotLabel(item)" class="profit-detail__snapshot">
+            {{ costSnapshotLabel(item) }}
+          </span>
         </div>
         <div>
           <span>数量</span>
@@ -228,6 +237,10 @@ function statusLabel(status: ProfitSalesRecord['status']) {
   font-family: var(--font-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.profit-detail__product .profit-detail__snapshot {
+  font-family: inherit;
 }
 
 @media (max-width: 1080px) {
