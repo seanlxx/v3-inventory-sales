@@ -5,9 +5,21 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { onRequestGet as getCostGaps } from '../functions/api/profit/cost-gaps.js';
-import { onRequestGet as getPurchases } from '../functions/api/profit/purchases.js';
-import { onRequestGet as getProducts } from '../functions/api/profit/products.js';
-import { onRequestGet as getSales } from '../functions/api/profit/sales.js';
+import {
+  onRequestGet as getPurchases,
+  onRequestPatch as patchPurchase,
+  onRequestPost as postPurchase
+} from '../functions/api/profit/purchases.js';
+import {
+  onRequestGet as getProducts,
+  onRequestPatch as patchProduct,
+  onRequestPost as postProduct
+} from '../functions/api/profit/products.js';
+import {
+  onRequestGet as getSales,
+  onRequestPatch as patchSale,
+  onRequestPost as postSale
+} from '../functions/api/profit/sales.js';
 import { onRequestGet as getSummary } from '../functions/api/profit/summary.js';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -154,6 +166,105 @@ assert.equal(filteredSales.rows.length, 1);
 assert.equal(filteredSales.rows[0].id, 'sr-water');
 assert.equal(filteredSales.rows[0].netRevenue, 3);
 
+const manualProductResponse = await postProduct({
+  request: jsonRequest('https://example.test/api/profit/products', {
+    productName: 'Manual Tea',
+    category: 'drink',
+    defaultSellPrice: 4.5,
+    status: 'active'
+  }),
+  env
+});
+assert.equal(manualProductResponse.status, 200);
+const manualProductBody = await manualProductResponse.json();
+assert.equal(manualProductBody.product.productName, 'Manual Tea');
+assert.equal(manualProductBody.product.defaultSellPrice, 4.5);
+const manualProductId = manualProductBody.product.productGlobalId;
+
+const archivedProductResponse = await patchProduct({
+  request: jsonRequest('https://example.test/api/profit/products', {
+    productGlobalId: manualProductId,
+    status: 'archived'
+  }),
+  env
+});
+assert.equal(archivedProductResponse.status, 200);
+assert.equal((await archivedProductResponse.json()).product.status, 'archived');
+
+const restoredProductResponse = await patchProduct({
+  request: jsonRequest('https://example.test/api/profit/products', {
+    productGlobalId: manualProductId,
+    status: 'active'
+  }),
+  env
+});
+assert.equal((await restoredProductResponse.json()).product.status, 'active');
+
+const manualPurchaseResponse = await postPurchase({
+  request: jsonRequest('https://example.test/api/profit/purchases', {
+    recordDate: '2026-06-10',
+    source: 'manual',
+    note: 'manual purchase',
+    items: [{
+      productGlobalId: manualProductId,
+      quantity: 2,
+      unitCost: 1.5
+    }]
+  }),
+  env
+});
+assert.equal(manualPurchaseResponse.status, 200);
+const manualPurchase = (await manualPurchaseResponse.json()).record;
+assert.equal(manualPurchase.totalCost, 3);
+assert.equal(manualPurchase.items[0].unitCost, 1.5);
+
+const manualSaleResponse = await postSale({
+  request: jsonRequest('https://example.test/api/profit/sales', {
+    type: 'sale',
+    machineId: '1号机',
+    recordDate: '2026-06-11',
+    source: 'manual',
+    platformFee: 0.2,
+    serviceFee: 0.1,
+    discount: 0.3,
+    items: [{
+      productGlobalId: manualProductId,
+      quantity: 2,
+      unitPrice: 4.5
+    }]
+  }),
+  env
+});
+assert.equal(manualSaleResponse.status, 200);
+const manualSale = (await manualSaleResponse.json()).record;
+assert.equal(manualSale.grossAmount, 9);
+assert.equal(manualSale.netRevenue, 8.4);
+assert.equal(manualSale.totalCogs, 3);
+assert.equal(manualSale.grossProfit, 5.4);
+assert.equal(manualSale.items[0].unitCost, 1.5);
+
+const afterManualSummaryResponse = await getSummary({
+  request: new Request('https://example.test/api/profit/summary?month=2026-06&machineId=1号机'),
+  env
+});
+const afterManualSummary = await afterManualSummaryResponse.json();
+assert.equal(afterManualSummary.kpis.netRevenue, 15.4);
+assert.equal(afterManualSummary.kpis.cogs, 6.2);
+
+const voidSaleResponse = await patchSale({
+  request: jsonRequest('https://example.test/api/profit/sales', { id: manualSale.id }),
+  env
+});
+assert.equal(voidSaleResponse.status, 200);
+assert.equal((await voidSaleResponse.json()).record.status, 'voided');
+
+const voidPurchaseResponse = await patchPurchase({
+  request: jsonRequest('https://example.test/api/profit/purchases', { id: manualPurchase.id }),
+  env
+});
+assert.equal(voidPurchaseResponse.status, 200);
+assert.equal((await voidPurchaseResponse.json()).record.status, 'voided');
+
 const serviceSource = readFileSync(
   join(projectRoot, 'functions', 'api', '_shared', 'profit-service.js'),
   'utf8'
@@ -163,6 +274,14 @@ for (const forbidden of ['inventory_balances', 'stock_movements', 'inventory-ser
 }
 
 console.log('profit API tests passed');
+
+function jsonRequest(url, body) {
+  return new Request(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+}
 
 function seedProfitRows() {
   env.DB.exec(`

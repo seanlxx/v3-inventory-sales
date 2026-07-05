@@ -1,5 +1,14 @@
-import { all, first, placeholders } from './d1.js';
-import { centsToMoney } from './validators.js';
+import { all, first, placeholders, run } from './d1.js';
+import {
+  centsToMoney,
+  moneyToCents,
+  newId,
+  nowIso,
+  positiveQuantity,
+  recordDate,
+  stringOrNull,
+  yearMonthFromDate
+} from './validators.js';
 
 const MAX_TREND_DAYS = 90;
 const DEFAULT_TREND_DAYS = 30;
@@ -8,6 +17,8 @@ const MAX_LIMIT = 200;
 const MACHINE_ALIASES = new Map([
   ['三号机', '轨道机']
 ]);
+
+export class ProfitValidationError extends Error {}
 
 export function normalizeMonth(value) {
   const text = String(value || '').trim();
@@ -88,6 +99,20 @@ function normalizeStatus(value) {
 function normalizeSalesType(value) {
   const text = String(value || '').trim();
   return ['sale', 'refund', 'loss', 'all'].includes(text) ? text : 'all';
+}
+
+function normalizeProductName(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function normalizeProductStatus(value) {
+  return value === 'archived' ? 'archived' : 'active';
+}
+
+function requireText(value, message) {
+  const text = String(value || '').trim();
+  if (!text) throw new ProfitValidationError(message);
+  return text;
 }
 
 function toSummaryKpis(row, quantity, purchaseCost, missingCostProductCount, mergedProductCount) {
@@ -425,9 +450,14 @@ export async function listProfitProducts(env, options = {}) {
   const limit = normalizeLimit(options.limit);
   const includeArchived = options.includeArchived === true || options.includeArchived === 'true';
   const search = String(options.search || '').trim();
+  const id = stringOrNull(options.id);
   const params = [];
   const filters = [];
   if (!includeArchived) filters.push("pg.status = 'active'");
+  if (id) {
+    filters.push('pg.id = ?');
+    params.push(id);
+  }
   if (search) {
     filters.push('(pg.canonical_name LIKE ? OR pg.normalized_name LIKE ?)');
     params.push(`%${search}%`, `%${search.toLowerCase()}%`);
@@ -525,6 +555,232 @@ export async function listProfitProducts(env, options = {}) {
       lastCostAt: row.last_cost_at || null
     };
   });
+}
+
+export async function saveProfitProduct(env, payload = {}) {
+  const timestamp = nowIso();
+  const id = stringOrNull(payload.id || payload.productGlobalId) || `pg:manual:${newId()}`;
+  const productName = requireText(payload.productName || payload.canonicalName || payload.name, '请填写商品名称');
+  const normalizedName = normalizeProductName(payload.normalizedName || productName);
+  if (!normalizedName) throw new ProfitValidationError('商品名称无效');
+
+  const existing = await first(env.DB, 'SELECT id FROM products_global WHERE normalized_name = ? AND id != ? LIMIT 1', [normalizedName, id]);
+  if (existing) throw new ProfitValidationError('已有同名全局商品');
+
+  const row = await first(env.DB, 'SELECT id FROM products_global WHERE id = ? LIMIT 1', [id]);
+  if (row) {
+    await run(env.DB, `
+      UPDATE products_global
+      SET canonical_name = ?,
+          normalized_name = ?,
+          category = ?,
+          default_sell_price_cents = ?,
+          status = ?,
+          updated_at = ?
+      WHERE id = ?
+    `, [
+      productName,
+      normalizedName,
+      stringOrNull(payload.category) || '其他',
+      moneyToCents(payload.defaultSellPrice),
+      normalizeProductStatus(payload.status),
+      timestamp,
+      id
+    ]);
+  } else {
+    await run(env.DB, `
+      INSERT INTO products_global (
+        id, canonical_name, normalized_name, category, default_sell_price_cents,
+        status, legacy_product_count, source_product_ids_json, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, 0, '[]', ?, ?)
+    `, [
+      id,
+      productName,
+      normalizedName,
+      stringOrNull(payload.category) || '其他',
+      moneyToCents(payload.defaultSellPrice),
+      normalizeProductStatus(payload.status),
+      timestamp,
+      timestamp
+    ]);
+  }
+
+  await run(env.DB, `
+    INSERT INTO product_aliases (
+      id, product_global_id, alias_name, normalized_alias, source, status, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, 'manual', 'active', ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      product_global_id = excluded.product_global_id,
+      alias_name = excluded.alias_name,
+      normalized_alias = excluded.normalized_alias,
+      status = excluded.status,
+      updated_at = excluded.updated_at
+  `, [`pa:manual:${id}`, id, productName, normalizedName, timestamp, timestamp]);
+
+  return await getProfitProduct(env, id);
+}
+
+export async function archiveProfitProduct(env, id, status = 'archived') {
+  const productId = requireText(id, '缺少商品 ID');
+  await run(env.DB, `
+    UPDATE products_global
+    SET status = ?, updated_at = ?
+    WHERE id = ?
+  `, [normalizeProductStatus(status), nowIso(), productId]);
+  return await getProfitProduct(env, productId);
+}
+
+export async function saveProfitPurchase(env, payload = {}) {
+  const timestamp = nowIso();
+  const date = recordDate(payload.recordDate);
+  const items = normalizePurchaseItems(payload.items);
+  const id = stringOrNull(payload.id) || `pr:manual:${newId()}`;
+  const existing = await first(env.DB, 'SELECT * FROM purchase_records WHERE id = ? LIMIT 1', [id]);
+  if (existing?.legacy_purchase_id) throw new ProfitValidationError('历史进货单已归档，不支持编辑');
+  if (existing?.status === 'voided') throw new ProfitValidationError('已作废进货单不能编辑');
+
+  for (const item of items) await ensureProductExists(env, item.productGlobalId);
+
+  if (existing) {
+    await run(env.DB, `
+      UPDATE purchase_records
+      SET record_date = ?, source = ?, note = ?, updated_at = ?
+      WHERE id = ?
+    `, [date, stringOrNull(payload.source) || 'manual', stringOrNull(payload.note), timestamp, id]);
+    await replacePurchaseItems(env, id, items, date, timestamp);
+  } else {
+    await run(env.DB, `
+      INSERT INTO purchase_records (
+        id, record_date, source, note, status, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, 'active', ?, ?)
+    `, [id, date, stringOrNull(payload.source) || 'manual', stringOrNull(payload.note), timestamp, timestamp]);
+    await replacePurchaseItems(env, id, items, date, timestamp);
+  }
+
+  return await getProfitPurchase(env, id);
+}
+
+export async function voidProfitPurchase(env, id) {
+  const recordId = requireText(id, '缺少进货单 ID');
+  const existing = await first(env.DB, 'SELECT * FROM purchase_records WHERE id = ? LIMIT 1', [recordId]);
+  if (!existing) throw new ProfitValidationError('进货单不存在');
+  if (existing.legacy_purchase_id) throw new ProfitValidationError('历史进货单已归档，不支持作废');
+  const timestamp = nowIso();
+  await run(env.DB, `
+    UPDATE purchase_records
+    SET status = 'voided', voided_at = ?, updated_at = ?
+    WHERE id = ?
+  `, [timestamp, timestamp, recordId]);
+  await run(env.DB, "DELETE FROM cost_snapshots WHERE source_type = 'purchase_item' AND source_record_id = ?", [recordId]);
+  return await getProfitPurchase(env, recordId);
+}
+
+export async function saveProfitSale(env, payload = {}) {
+  const timestamp = nowIso();
+  const date = recordDate(payload.recordDate);
+  const type = normalizeSalesType(payload.type);
+  if (type === 'all') throw new ProfitValidationError('销售类型无效');
+  const machineId = normalizeMachineId(payload.machineId) || requireText(payload.machineId, '请选择设备');
+  const items = await normalizeSalesItems(env, payload.items, date);
+  const id = stringOrNull(payload.id) || `sr:manual:${newId()}`;
+  const existing = await first(env.DB, 'SELECT * FROM sales_records WHERE id = ? LIMIT 1', [id]);
+  if (existing?.legacy_sales_id) throw new ProfitValidationError('历史销售单已归档，不支持编辑');
+  if (existing?.status === 'voided') throw new ProfitValidationError('已作废销售单不能编辑');
+
+  for (const item of items) await ensureProductExists(env, item.productGlobalId);
+
+  const totals = salesTotals(type, items, payload);
+  if (existing) {
+    await run(env.DB, `
+      UPDATE sales_records
+      SET type = ?,
+          machine_id = ?,
+          record_date = ?,
+          year_month = ?,
+          source = ?,
+          external_id = ?,
+          gross_amount_cents = ?,
+          refund_amount_cents = ?,
+          platform_fee_cents = ?,
+          service_fee_cents = ?,
+          discount_cents = ?,
+          net_revenue_cents = ?,
+          total_cogs_cents = ?,
+          gross_profit_cents = ?,
+          note = ?,
+          updated_at = ?
+      WHERE id = ?
+    `, [
+      type,
+      machineId,
+      date,
+      yearMonthFromDate(date),
+      stringOrNull(payload.source) || 'manual',
+      stringOrNull(payload.externalId),
+      totals.grossAmountCents,
+      totals.refundAmountCents,
+      totals.platformFeeCents,
+      totals.serviceFeeCents,
+      totals.discountCents,
+      totals.netRevenueCents,
+      totals.totalCogsCents,
+      totals.grossProfitCents,
+      stringOrNull(payload.note),
+      timestamp,
+      id
+    ]);
+    await replaceSalesItems(env, id, items, date, timestamp);
+  } else {
+    await run(env.DB, `
+      INSERT INTO sales_records (
+        id, type, machine_id, record_date, year_month, source, external_id,
+        gross_amount_cents, refund_amount_cents, platform_fee_cents, service_fee_cents,
+        discount_cents, net_revenue_cents, total_cogs_cents, gross_profit_cents,
+        note, status, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+    `, [
+      id,
+      type,
+      machineId,
+      date,
+      yearMonthFromDate(date),
+      stringOrNull(payload.source) || 'manual',
+      stringOrNull(payload.externalId),
+      totals.grossAmountCents,
+      totals.refundAmountCents,
+      totals.platformFeeCents,
+      totals.serviceFeeCents,
+      totals.discountCents,
+      totals.netRevenueCents,
+      totals.totalCogsCents,
+      totals.grossProfitCents,
+      stringOrNull(payload.note),
+      timestamp,
+      timestamp
+    ]);
+    await replaceSalesItems(env, id, items, date, timestamp);
+  }
+
+  return await getProfitSale(env, id);
+}
+
+export async function voidProfitSale(env, id) {
+  const recordId = requireText(id, '缺少销售单 ID');
+  const existing = await first(env.DB, 'SELECT * FROM sales_records WHERE id = ? LIMIT 1', [recordId]);
+  if (!existing) throw new ProfitValidationError('销售单不存在');
+  if (existing.legacy_sales_id) throw new ProfitValidationError('历史销售单已归档，不支持作废');
+  const timestamp = nowIso();
+  await run(env.DB, `
+    UPDATE sales_records
+    SET status = 'voided', voided_at = ?, updated_at = ?
+    WHERE id = ?
+  `, [timestamp, timestamp, recordId]);
+  await run(env.DB, "DELETE FROM cost_snapshots WHERE source_type = 'sale_item' AND source_record_id = ?", [recordId]);
+  return await getProfitSale(env, recordId);
 }
 
 export async function listProfitPurchases(env, options = {}) {
@@ -802,4 +1058,216 @@ function safeJson(value, fallback) {
   } catch {
     return fallback;
   }
+}
+
+async function getProfitProduct(env, id) {
+  const rows = await listProfitProducts(env, { includeArchived: true, id, limit: 1 });
+  return rows.find(row => row.productGlobalId === id) || null;
+}
+
+async function getProfitPurchase(env, id) {
+  const row = await first(env.DB, 'SELECT record_date FROM purchase_records WHERE id = ? LIMIT 1', [id]);
+  if (!row) return null;
+  const rows = await listProfitPurchases(env, {
+    month: String(row.record_date || '').slice(0, 7),
+    status: 'all',
+    search: id,
+    limit: MAX_LIMIT
+  });
+  return rows.find(record => record.id === id) || null;
+}
+
+async function getProfitSale(env, id) {
+  const row = await first(env.DB, 'SELECT year_month FROM sales_records WHERE id = ? LIMIT 1', [id]);
+  if (!row) return null;
+  const rows = await listProfitSales(env, {
+    month: row.year_month,
+    status: 'all',
+    type: 'all',
+    search: id,
+    limit: MAX_LIMIT
+  });
+  return rows.find(record => record.id === id) || null;
+}
+
+async function ensureProductExists(env, id) {
+  const productId = requireText(id, '请选择商品');
+  const product = await first(env.DB, 'SELECT id FROM products_global WHERE id = ? LIMIT 1', [productId]);
+  if (!product) throw new ProfitValidationError('商品不存在');
+}
+
+function normalizePurchaseItems(rawItems) {
+  const items = Array.isArray(rawItems) ? rawItems : [];
+  if (items.length === 0) throw new ProfitValidationError('请至少填写一条进货明细');
+  return items.map(item => {
+    const quantity = positiveQuantity(item.quantity);
+    if (quantity <= 0) throw new ProfitValidationError('进货数量必须大于 0');
+    const explicitTotal = moneyToCents(item.totalCost);
+    const unitCost = moneyToCents(item.unitCost) || (explicitTotal > 0 ? Math.round(explicitTotal / quantity) : 0);
+    const totalCost = explicitTotal || unitCost * quantity;
+    if (unitCost <= 0 && totalCost <= 0) throw new ProfitValidationError('请填写进货成本');
+    return {
+      productGlobalId: requireText(item.productGlobalId, '请选择商品'),
+      quantity,
+      unitCostCents: unitCost,
+      totalCostCents: totalCost
+    };
+  });
+}
+
+async function normalizeSalesItems(env, rawItems, date) {
+  const items = Array.isArray(rawItems) ? rawItems : [];
+  if (items.length === 0) throw new ProfitValidationError('请至少填写一条销售明细');
+  const normalized = [];
+  for (const item of items) {
+    const quantity = positiveQuantity(item.quantity);
+    if (quantity <= 0) throw new ProfitValidationError('销售数量必须大于 0');
+    const productGlobalId = requireText(item.productGlobalId, '请选择商品');
+    const explicitLineAmount = moneyToCents(item.lineAmount);
+    const unitPrice = moneyToCents(item.unitPrice) || (explicitLineAmount > 0 ? Math.round(explicitLineAmount / quantity) : 0);
+    const lineAmount = explicitLineAmount || unitPrice * quantity;
+    const latestCost = await latestCostCents(env, productGlobalId, date);
+    const explicitLineCogs = moneyToCents(item.lineCogs);
+    const unitCost = moneyToCents(item.unitCost) || (explicitLineCogs > 0 ? Math.round(explicitLineCogs / quantity) : latestCost);
+    const lineCogs = explicitLineCogs || unitCost * quantity;
+    normalized.push({
+      productGlobalId,
+      quantity,
+      unitPriceCents: unitPrice,
+      lineAmountCents: lineAmount,
+      unitCostCents: unitCost,
+      lineCogsCents: lineCogs
+    });
+  }
+  return normalized;
+}
+
+function salesTotals(type, items, payload) {
+  const lineAmountCents = items.reduce((sum, item) => sum + item.lineAmountCents, 0);
+  const totalCogsCents = items.reduce((sum, item) => sum + item.lineCogsCents, 0);
+  const platformFeeCents = moneyToCents(payload.platformFee);
+  const serviceFeeCents = moneyToCents(payload.serviceFee);
+  const discountCents = moneyToCents(payload.discount);
+  const fees = platformFeeCents + serviceFeeCents;
+  if (type === 'refund') {
+    const refundAmountCents = moneyToCents(payload.refundAmount) || lineAmountCents;
+    return {
+      grossAmountCents: 0,
+      refundAmountCents,
+      platformFeeCents,
+      serviceFeeCents,
+      discountCents,
+      netRevenueCents: -refundAmountCents - fees - discountCents,
+      totalCogsCents,
+      grossProfitCents: -refundAmountCents - fees - discountCents + totalCogsCents
+    };
+  }
+  if (type === 'loss') {
+    return {
+      grossAmountCents: 0,
+      refundAmountCents: 0,
+      platformFeeCents: 0,
+      serviceFeeCents: 0,
+      discountCents: 0,
+      netRevenueCents: 0,
+      totalCogsCents,
+      grossProfitCents: -totalCogsCents
+    };
+  }
+  return {
+    grossAmountCents: lineAmountCents,
+    refundAmountCents: 0,
+    platformFeeCents,
+    serviceFeeCents,
+    discountCents,
+    netRevenueCents: lineAmountCents - fees - discountCents,
+    totalCogsCents,
+    grossProfitCents: lineAmountCents - fees - discountCents - totalCogsCents
+  };
+}
+
+async function replacePurchaseItems(env, recordId, items, date, timestamp) {
+  await run(env.DB, "DELETE FROM cost_snapshots WHERE source_type = 'purchase_item' AND source_record_id = ?", [recordId]);
+  await run(env.DB, 'DELETE FROM purchase_record_items WHERE purchase_record_id = ?', [recordId]);
+  for (const item of items) {
+    const itemId = `pri:manual:${newId()}`;
+    await run(env.DB, `
+      INSERT INTO purchase_record_items (
+        id, purchase_record_id, product_global_id, quantity, unit_cost_cents, total_cost_cents, created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [itemId, recordId, item.productGlobalId, item.quantity, item.unitCostCents, item.totalCostCents, timestamp]);
+    await run(env.DB, `
+      INSERT INTO cost_snapshots (
+        id, product_global_id, source_type, source_record_id, source_item_id,
+        unit_cost_cents, quantity_context, total_cost_cents, effective_at, created_at
+      )
+      VALUES (?, ?, 'purchase_item', ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      `cs:purchase:${itemId}`,
+      item.productGlobalId,
+      recordId,
+      itemId,
+      item.unitCostCents,
+      item.quantity,
+      item.totalCostCents,
+      date,
+      timestamp
+    ]);
+  }
+}
+
+async function replaceSalesItems(env, recordId, items, date, timestamp) {
+  await run(env.DB, "DELETE FROM cost_snapshots WHERE source_type = 'sale_item' AND source_record_id = ?", [recordId]);
+  await run(env.DB, 'DELETE FROM sales_record_items WHERE sales_record_id = ?', [recordId]);
+  for (const item of items) {
+    const itemId = `sri:manual:${newId()}`;
+    await run(env.DB, `
+      INSERT INTO sales_record_items (
+        id, sales_record_id, product_global_id, quantity, unit_price_cents,
+        line_amount_cents, unit_cost_cents, line_cogs_cents, created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      itemId,
+      recordId,
+      item.productGlobalId,
+      item.quantity,
+      item.unitPriceCents,
+      item.lineAmountCents,
+      item.unitCostCents,
+      item.lineCogsCents,
+      timestamp
+    ]);
+    await run(env.DB, `
+      INSERT INTO cost_snapshots (
+        id, product_global_id, source_type, source_record_id, source_item_id,
+        unit_cost_cents, quantity_context, total_cost_cents, effective_at, created_at
+      )
+      VALUES (?, ?, 'sale_item', ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      `cs:sale:${itemId}`,
+      item.productGlobalId,
+      recordId,
+      itemId,
+      item.unitCostCents,
+      item.quantity,
+      item.lineCogsCents,
+      date,
+      timestamp
+    ]);
+  }
+}
+
+async function latestCostCents(env, productGlobalId, date) {
+  const row = await first(env.DB, `
+    SELECT unit_cost_cents
+    FROM cost_snapshots
+    WHERE product_global_id = ?
+      AND unit_cost_cents > 0
+      AND effective_at <= ?
+    ORDER BY effective_at DESC, created_at DESC
+    LIMIT 1
+  `, [productGlobalId, date]);
+  return Number(row?.unit_cost_cents) || 0;
 }

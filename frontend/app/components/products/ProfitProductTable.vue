@@ -11,6 +11,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   retry: []
+  edit: [product: ProfitProduct]
+  updateStatus: [product: ProfitProduct, status: ProfitProduct['status']]
 }>()
 
 function profitTone(product: ProfitProduct) {
@@ -36,14 +38,15 @@ function profitTone(product: ProfitProduct) {
             <th scope="col" class="profit-product-table__center">销售额</th>
             <th scope="col" class="profit-product-table__center">毛利</th>
             <th scope="col" class="profit-product-table__center">状态</th>
+            <th scope="col" class="profit-product-table__center">操作</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="props.loading">
-            <td class="profit-product-table__state" colspan="10">正在加载全局商品</td>
+            <td class="profit-product-table__state" colspan="11">正在加载全局商品</td>
           </tr>
           <tr v-else-if="props.error">
-            <td class="profit-product-table__state profit-product-table__state--error" colspan="10">
+            <td class="profit-product-table__state profit-product-table__state--error" colspan="11">
               <div class="profit-product-table__state-stack">
                 <strong>{{ props.error.message }}</strong>
                 <AppButton variant="secondary" size="sm" @click="emit('retry')">
@@ -53,7 +56,7 @@ function profitTone(product: ProfitProduct) {
             </td>
           </tr>
           <tr v-else-if="props.products.length === 0">
-            <td class="profit-product-table__state" colspan="10">没有符合筛选条件的全局商品</td>
+            <td class="profit-product-table__state" colspan="11">没有符合筛选条件的全局商品</td>
           </tr>
           <tr v-for="product in props.products" v-else :key="product.productGlobalId">
             <td>
@@ -81,6 +84,20 @@ function profitTone(product: ProfitProduct) {
                 :label="product.status === 'archived' ? '已归档' : '在售'"
                 :tone="product.status === 'archived' ? 'warning' : 'success'"
               />
+            </td>
+            <td class="profit-product-table__center">
+              <div class="profit-product-table__actions">
+                <AppButton size="sm" variant="secondary" @click="emit('edit', product)">
+                  编辑
+                </AppButton>
+                <AppButton
+                  size="sm"
+                  :variant="product.status === 'archived' ? 'secondary' : 'ghost'"
+                  @click="emit('updateStatus', product, product.status === 'archived' ? 'active' : 'archived')"
+                >
+                  {{ product.status === 'archived' ? '恢复' : '归档' }}
+                </AppButton>
+              </div>
             </td>
           </tr>
         </tbody>
@@ -126,6 +143,18 @@ function profitTone(product: ProfitProduct) {
             <span>成本 {{ formatMoney(product.cogs) }}</span>
             <span>毛利 {{ formatMoney(product.grossProfit) }}</span>
           </div>
+          <footer class="profit-product-table__card-actions">
+            <AppButton size="sm" variant="secondary" @click="emit('edit', product)">
+              编辑
+            </AppButton>
+            <AppButton
+              size="sm"
+              :variant="product.status === 'archived' ? 'secondary' : 'ghost'"
+              @click="emit('updateStatus', product, product.status === 'archived' ? 'active' : 'archived')"
+            >
+              {{ product.status === 'archived' ? '恢复' : '归档' }}
+            </AppButton>
+          </footer>
         </MobileCard>
       </template>
     </div>
@@ -226,6 +255,12 @@ function profitTone(product: ProfitProduct) {
   gap: var(--space-3);
 }
 
+.profit-product-table__actions {
+  display: inline-flex;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
 .profit-product-table__cards {
   display: none;
 }
@@ -302,6 +337,12 @@ tbody tr:hover {
     color: var(--mobile-muted);
     font-size: 12px;
     font-weight: 700;
+  }
+
+  .profit-product-table__card-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
   }
 }
 </style>

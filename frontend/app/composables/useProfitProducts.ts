@@ -1,5 +1,11 @@
 import type { ApiError } from '~/types/api'
-import type { ProfitProduct, ProfitProductFilters, ProfitProductsResponse } from '~/types/profit'
+import type {
+  ProfitProduct,
+  ProfitProductFilters,
+  ProfitProductMutationResponse,
+  ProfitProductPayload,
+  ProfitProductsResponse
+} from '~/types/profit'
 
 const defaultFilters: ProfitProductFilters = {
   search: '',
@@ -19,6 +25,7 @@ export function useProfitProducts() {
   const products = shallowRef<ProfitProduct[]>([])
   const filters = reactive<ProfitProductFilters>({ ...defaultFilters })
   const loading = shallowRef(false)
+  const saving = shallowRef(false)
   const error = shallowRef<ApiError | null>(null)
 
   const categoryOptions = computed(() => {
@@ -57,14 +64,45 @@ export function useProfitProducts() {
     }
   }
 
+  async function saveProduct(payload: ProfitProductPayload) {
+    saving.value = true
+    try {
+      const response = await request<ProfitProductMutationResponse, ProfitProductPayload>('/profit/products', {
+        method: payload.id || payload.productGlobalId ? 'PUT' : 'POST',
+        body: payload
+      })
+      await loadProducts()
+      return response.product
+    } finally {
+      saving.value = false
+    }
+  }
+
+  async function updateProductStatus(productGlobalId: string, status: ProfitProduct['status']) {
+    saving.value = true
+    try {
+      const response = await request<ProfitProductMutationResponse>('/profit/products', {
+        method: 'PATCH',
+        body: { productGlobalId, status }
+      })
+      await loadProducts()
+      return response.product
+    } finally {
+      saving.value = false
+    }
+  }
+
   return {
     products,
     filters,
     loading,
+    saving,
     error,
     filteredProducts,
     categoryOptions,
     updateFilters,
-    loadProducts
+    loadProducts,
+    saveProduct,
+    updateProductStatus
   }
 }

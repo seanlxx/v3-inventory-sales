@@ -11,6 +11,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   retry: []
+  edit: [record: ProfitPurchaseRecord]
+  void: [record: ProfitPurchaseRecord]
 }>()
 
 function statusLabel(status: ProfitPurchaseRecord['status']) {
@@ -19,6 +21,10 @@ function statusLabel(status: ProfitPurchaseRecord['status']) {
 
 function firstItems(record: ProfitPurchaseRecord) {
   return record.items.slice(0, 3).map(item => item.productName).join(' / ')
+}
+
+function canMutate(record: ProfitPurchaseRecord) {
+  return record.status === 'active' && !record.legacyPurchaseId && record.itemCount <= 1
 }
 </script>
 
@@ -34,14 +40,15 @@ function firstItems(record: ProfitPurchaseRecord) {
             <th scope="col" class="profit-purchase-table__center">数量</th>
             <th scope="col" class="profit-purchase-table__center">成本金额</th>
             <th scope="col" class="profit-purchase-table__center">状态</th>
+            <th scope="col" class="profit-purchase-table__center">操作</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="props.loading">
-            <td class="profit-purchase-table__state" colspan="6">正在加载成本凭证</td>
+            <td class="profit-purchase-table__state" colspan="7">正在加载成本凭证</td>
           </tr>
           <tr v-else-if="props.error">
-            <td class="profit-purchase-table__state profit-purchase-table__state--error" colspan="6">
+            <td class="profit-purchase-table__state profit-purchase-table__state--error" colspan="7">
               <div class="profit-purchase-table__state-stack">
                 <strong>{{ props.error.message }}</strong>
                 <AppButton variant="secondary" size="sm" @click="emit('retry')">
@@ -51,7 +58,7 @@ function firstItems(record: ProfitPurchaseRecord) {
             </td>
           </tr>
           <tr v-else-if="props.records.length === 0">
-            <td class="profit-purchase-table__state" colspan="6">没有符合筛选条件的成本凭证</td>
+            <td class="profit-purchase-table__state" colspan="7">没有符合筛选条件的成本凭证</td>
           </tr>
           <tr v-for="record in props.records" v-else :key="record.id">
             <td class="numeric">{{ record.recordDate }}</td>
@@ -75,6 +82,17 @@ function firstItems(record: ProfitPurchaseRecord) {
                 :label="statusLabel(record.status)"
                 :tone="record.status === 'voided' ? 'warning' : 'success'"
               />
+            </td>
+            <td class="profit-purchase-table__center">
+              <div v-if="canMutate(record)" class="profit-purchase-table__actions">
+                <AppButton size="sm" variant="secondary" @click="emit('edit', record)">
+                  编辑
+                </AppButton>
+                <AppButton size="sm" variant="ghost" @click="emit('void', record)">
+                  作废
+                </AppButton>
+              </div>
+              <span v-else class="profit-purchase-table__muted">—</span>
             </td>
           </tr>
         </tbody>
@@ -116,6 +134,14 @@ function firstItems(record: ProfitPurchaseRecord) {
             <span>明细 {{ formatQuantity(record.itemCount) }} 项</span>
             <span>{{ firstItems(record) || '无明细' }}</span>
           </div>
+          <footer v-if="canMutate(record)" class="profit-purchase-table__card-actions">
+            <AppButton size="sm" variant="secondary" @click="emit('edit', record)">
+              编辑
+            </AppButton>
+            <AppButton size="sm" variant="ghost" @click="emit('void', record)">
+              作废
+            </AppButton>
+          </footer>
         </MobileCard>
       </template>
     </div>
@@ -218,6 +244,16 @@ function firstItems(record: ProfitPurchaseRecord) {
   gap: var(--space-3);
 }
 
+.profit-purchase-table__actions {
+  display: inline-flex;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.profit-purchase-table__muted {
+  color: var(--color-text-soft);
+}
+
 .profit-purchase-table__cards {
   display: none;
 }
@@ -288,6 +324,12 @@ tbody tr:hover {
     color: var(--mobile-muted);
     font-size: 12px;
     font-weight: 700;
+  }
+
+  .profit-purchase-table__card-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
   }
 }
 </style>

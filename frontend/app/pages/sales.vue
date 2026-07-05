@@ -1,20 +1,57 @@
 <script setup lang="ts">
 import { useProfitSales } from '~/composables/useProfitSales'
+import { useProfitProducts } from '~/composables/useProfitProducts'
+import type { ProfitSalesPayload, ProfitSalesRecord } from '~/types/profit'
 
 definePageMeta({
   title: '销售'
 })
 
+const toast = useToastStore()
 const {
   records,
   filters,
   summary,
   machineOptions,
   loading,
+  saving,
   error,
   updateFilters,
-  loadRecords
+  loadRecords,
+  saveRecord,
+  voidRecord
 } = useProfitSales()
+
+const {
+  products,
+  loadProducts
+} = useProfitProducts()
+
+const showEditor = shallowRef(false)
+const editingRecord = shallowRef<ProfitSalesRecord | null>(null)
+
+function openCreate() {
+  editingRecord.value = null
+  showEditor.value = true
+}
+
+function openEdit(record: ProfitSalesRecord) {
+  editingRecord.value = record
+  showEditor.value = true
+}
+
+async function submitRecord(payload: ProfitSalesPayload) {
+  await saveRecord(payload)
+  showEditor.value = false
+  editingRecord.value = null
+  toast.show('销售已保存', 'success')
+}
+
+async function voidSale(record: ProfitSalesRecord) {
+  if (!window.confirm('确认作废这笔销售？')) return
+  await voidRecord(record.id)
+  toast.show('销售已作废', 'success')
+}
 
 watch(() => [filters.month, filters.type, filters.status, filters.machineId, filters.search] as const, () => {
   loadRecords()
@@ -22,11 +59,28 @@ watch(() => [filters.month, filters.type, filters.status, filters.machineId, fil
 
 onMounted(() => {
   loadRecords()
+  loadProducts()
 })
 </script>
 
 <template>
   <div class="sales-page">
+    <div class="sales-page__actions">
+      <AppButton type="button" @click="openCreate">
+        新增销售
+      </AppButton>
+    </div>
+
+    <ProfitSalesEditor
+      v-if="showEditor"
+      :record="editingRecord"
+      :products="products"
+      :machines="machineOptions"
+      :saving="saving"
+      @submit="submitRecord"
+      @cancel="showEditor = false"
+    />
+
     <SalesSummaryStrip
       :sales-amount="summary.salesAmount"
       :refund-amount="summary.refundAmount"
@@ -49,6 +103,8 @@ onMounted(() => {
       :loading="loading"
       :error="error"
       @retry="loadRecords"
+      @edit="openEdit"
+      @void="voidSale"
     />
   </div>
 </template>
@@ -60,9 +116,18 @@ onMounted(() => {
   gap: var(--space-4);
 }
 
+.sales-page__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 @media (max-width: 760px) {
   .sales-page {
     gap: var(--space-3);
+  }
+
+  .sales-page__actions {
+    display: grid;
   }
 }
 </style>

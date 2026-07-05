@@ -96,6 +96,19 @@ export type ProfitProductsResponse = {
   rows: ProfitProduct[]
 }
 
+export type ProfitProductPayload = {
+  id?: string
+  productGlobalId?: string
+  productName: string
+  category: string
+  defaultSellPrice: number
+  status: 'active' | 'archived'
+}
+
+export type ProfitProductMutationResponse = {
+  product: ProfitProduct
+}
+
 export type ProfitProductFilters = {
   search: string
   category: string
@@ -129,6 +142,23 @@ export type ProfitPurchaseRecord = {
 
 export type ProfitPurchasesResponse = {
   rows: ProfitPurchaseRecord[]
+}
+
+export type ProfitPurchasePayload = {
+  id?: string
+  recordDate: string
+  source?: string
+  note?: string
+  items: Array<{
+    productGlobalId: string
+    quantity: number
+    unitCost: number
+    totalCost?: number
+  }>
+}
+
+export type ProfitPurchaseMutationResponse = {
+  record: ProfitPurchaseRecord
 }
 
 export type ProfitPurchaseFilters = {
@@ -179,6 +209,32 @@ export type ProfitSalesRecord = {
 
 export type ProfitSalesResponse = {
   rows: ProfitSalesRecord[]
+}
+
+export type ProfitSalesPayload = {
+  id?: string
+  type: Exclude<ProfitSalesRecordType, 'all'>
+  machineId: string
+  recordDate: string
+  source?: string
+  externalId?: string
+  note?: string
+  platformFee?: number
+  serviceFee?: number
+  discount?: number
+  refundAmount?: number
+  items: Array<{
+    productGlobalId: string
+    quantity: number
+    unitPrice: number
+    lineAmount?: number
+    unitCost?: number
+    lineCogs?: number
+  }>
+}
+
+export type ProfitSalesMutationResponse = {
+  record: ProfitSalesRecord
 }
 
 export type ProfitSalesFilters = {

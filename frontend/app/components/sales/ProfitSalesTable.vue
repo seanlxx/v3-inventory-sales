@@ -11,6 +11,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   retry: []
+  edit: [record: ProfitSalesRecord]
+  void: [record: ProfitSalesRecord]
 }>()
 
 function typeLabel(type: ProfitSalesRecord['type']) {
@@ -35,6 +37,10 @@ function profitTone(record: ProfitSalesRecord) {
 function firstItems(record: ProfitSalesRecord) {
   return record.items.slice(0, 3).map(item => item.productName).join(' / ')
 }
+
+function canMutate(record: ProfitSalesRecord) {
+  return record.status === 'active' && !record.legacySalesId && record.itemCount <= 1
+}
 </script>
 
 <template>
@@ -52,14 +58,15 @@ function firstItems(record: ProfitSalesRecord) {
             <th scope="col" class="profit-sales-table__center">费用</th>
             <th scope="col" class="profit-sales-table__center">毛利</th>
             <th scope="col" class="profit-sales-table__center">状态</th>
+            <th scope="col" class="profit-sales-table__center">操作</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="props.loading">
-            <td class="profit-sales-table__state" colspan="9">正在加载销售记录</td>
+            <td class="profit-sales-table__state" colspan="10">正在加载销售记录</td>
           </tr>
           <tr v-else-if="props.error">
-            <td class="profit-sales-table__state profit-sales-table__state--error" colspan="9">
+            <td class="profit-sales-table__state profit-sales-table__state--error" colspan="10">
               <div class="profit-sales-table__state-stack">
                 <strong>{{ props.error.message }}</strong>
                 <AppButton variant="secondary" size="sm" @click="emit('retry')">
@@ -69,7 +76,7 @@ function firstItems(record: ProfitSalesRecord) {
             </td>
           </tr>
           <tr v-else-if="props.records.length === 0">
-            <td class="profit-sales-table__state" colspan="9">没有符合筛选条件的销售记录</td>
+            <td class="profit-sales-table__state" colspan="10">没有符合筛选条件的销售记录</td>
           </tr>
           <tr v-for="record in props.records" v-else :key="record.id">
             <td class="numeric">{{ record.recordDate }}</td>
@@ -94,6 +101,17 @@ function firstItems(record: ProfitSalesRecord) {
                 :label="record.status === 'voided' ? '已作废' : '有效'"
                 :tone="record.status === 'voided' ? 'warning' : 'success'"
               />
+            </td>
+            <td class="profit-sales-table__center">
+              <div v-if="canMutate(record)" class="profit-sales-table__actions">
+                <AppButton size="sm" variant="secondary" @click="emit('edit', record)">
+                  编辑
+                </AppButton>
+                <AppButton size="sm" variant="ghost" @click="emit('void', record)">
+                  作废
+                </AppButton>
+              </div>
+              <span v-else class="profit-sales-table__muted">—</span>
             </td>
           </tr>
         </tbody>
@@ -134,6 +152,14 @@ function firstItems(record: ProfitSalesRecord) {
             <span>数量 {{ formatQuantity(record.quantity) }}</span>
             <span>{{ record.status === 'voided' ? '已作废' : '有效' }}</span>
           </div>
+          <footer v-if="canMutate(record)" class="profit-sales-table__card-actions">
+            <AppButton size="sm" variant="secondary" @click="emit('edit', record)">
+              编辑
+            </AppButton>
+            <AppButton size="sm" variant="ghost" @click="emit('void', record)">
+              作废
+            </AppButton>
+          </footer>
         </MobileCard>
       </template>
     </div>
@@ -229,6 +255,16 @@ function firstItems(record: ProfitSalesRecord) {
   gap: var(--space-3);
 }
 
+.profit-sales-table__actions {
+  display: inline-flex;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.profit-sales-table__muted {
+  color: var(--color-text-soft);
+}
+
 .profit-sales-table__cards {
   display: none;
 }
@@ -299,6 +335,12 @@ tbody tr:hover {
     color: var(--mobile-muted);
     font-size: 12px;
     font-weight: 700;
+  }
+
+  .profit-sales-table__card-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
   }
 }
 </style>

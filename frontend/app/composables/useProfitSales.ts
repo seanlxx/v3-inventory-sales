@@ -1,6 +1,8 @@
 import type { ApiError } from '~/types/api'
 import type {
   ProfitSalesFilters,
+  ProfitSalesMutationResponse,
+  ProfitSalesPayload,
   ProfitSalesRecord,
   ProfitSalesResponse
 } from '~/types/profit'
@@ -20,6 +22,7 @@ export function useProfitSales() {
   const records = shallowRef<ProfitSalesRecord[]>([])
   const filters = reactive<ProfitSalesFilters>({ ...defaultFilters })
   const loading = shallowRef(false)
+  const saving = shallowRef(false)
   const error = shallowRef<ApiError | null>(null)
 
   const summary = computed(() =>
@@ -76,14 +79,47 @@ export function useProfitSales() {
     }
   }
 
+  async function saveRecord(payload: ProfitSalesPayload) {
+    saving.value = true
+    try {
+      const response = await request<ProfitSalesMutationResponse, ProfitSalesPayload>('/profit/sales', {
+        method: payload.id ? 'PUT' : 'POST',
+        body: payload
+      })
+      filters.month = payload.recordDate.slice(0, 7)
+      filters.status = 'active'
+      await loadRecords()
+      return response.record
+    } finally {
+      saving.value = false
+    }
+  }
+
+  async function voidRecord(id: string) {
+    saving.value = true
+    try {
+      const response = await request<ProfitSalesMutationResponse>('/profit/sales', {
+        method: 'PATCH',
+        body: { id }
+      })
+      await loadRecords()
+      return response.record
+    } finally {
+      saving.value = false
+    }
+  }
+
   return {
     records,
     filters,
     summary,
     machineOptions,
     loading,
+    saving,
     error,
     updateFilters,
-    loadRecords
+    loadRecords,
+    saveRecord,
+    voidRecord
   }
 }

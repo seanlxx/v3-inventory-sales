@@ -1,6 +1,8 @@
 import type { ApiError } from '~/types/api'
 import type {
   ProfitPurchaseFilters,
+  ProfitPurchaseMutationResponse,
+  ProfitPurchasePayload,
   ProfitPurchaseRecord,
   ProfitPurchasesResponse
 } from '~/types/profit'
@@ -17,6 +19,7 @@ export function useProfitPurchases() {
   const records = shallowRef<ProfitPurchaseRecord[]>([])
   const filters = reactive<ProfitPurchaseFilters>({ ...defaultFilters })
   const loading = shallowRef(false)
+  const saving = shallowRef(false)
   const error = shallowRef<ApiError | null>(null)
 
   const summary = computed(() =>
@@ -53,13 +56,46 @@ export function useProfitPurchases() {
     }
   }
 
+  async function saveRecord(payload: ProfitPurchasePayload) {
+    saving.value = true
+    try {
+      const response = await request<ProfitPurchaseMutationResponse, ProfitPurchasePayload>('/profit/purchases', {
+        method: payload.id ? 'PUT' : 'POST',
+        body: payload
+      })
+      filters.month = payload.recordDate.slice(0, 7)
+      filters.status = 'active'
+      await loadRecords()
+      return response.record
+    } finally {
+      saving.value = false
+    }
+  }
+
+  async function voidRecord(id: string) {
+    saving.value = true
+    try {
+      const response = await request<ProfitPurchaseMutationResponse>('/profit/purchases', {
+        method: 'PATCH',
+        body: { id }
+      })
+      await loadRecords()
+      return response.record
+    } finally {
+      saving.value = false
+    }
+  }
+
   return {
     records,
     filters,
     summary,
     loading,
+    saving,
     error,
     updateFilters,
-    loadRecords
+    loadRecords,
+    saveRecord,
+    voidRecord
   }
 }
