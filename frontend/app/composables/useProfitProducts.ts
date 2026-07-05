@@ -16,7 +16,8 @@ const defaultFilters: ProfitProductFilters = {
 function matchesSearch(product: ProfitProduct, search: string) {
   const keyword = search.trim().toLowerCase()
   if (!keyword) return true
-  return `${product.productName} ${product.normalizedName} ${product.category}`.toLowerCase().includes(keyword)
+  const aliases = product.aliases.map(alias => `${alias.aliasName} ${alias.normalizedAlias} ${alias.sourceProductId || ''}`).join(' ')
+  return `${product.productName} ${product.normalizedName} ${product.category} ${aliases}`.toLowerCase().includes(keyword)
 }
 
 export function useProfitProducts() {

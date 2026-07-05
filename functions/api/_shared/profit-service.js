@@ -459,8 +459,24 @@ export async function listProfitProducts(env, options = {}) {
     params.push(id);
   }
   if (search) {
-    filters.push('(pg.canonical_name LIKE ? OR pg.normalized_name LIKE ?)');
-    params.push(`%${search}%`, `%${search.toLowerCase()}%`);
+    filters.push(`(
+      pg.canonical_name LIKE ?
+      OR pg.normalized_name LIKE ?
+      OR EXISTS (
+        SELECT 1
+        FROM product_aliases search_pa
+        WHERE search_pa.product_global_id = pg.id
+          AND (
+            search_pa.alias_name LIKE ?
+            OR search_pa.normalized_alias LIKE ?
+            OR search_pa.source_product_id LIKE ?
+            OR search_pa.source_external_id LIKE ?
+          )
+      )
+    )`);
+    const keyword = `%${search}%`;
+    const normalizedKeyword = `%${search.toLowerCase()}%`;
+    params.push(keyword, normalizedKeyword, keyword, normalizedKeyword, keyword, keyword);
   }
   params.push(limit);
 
@@ -534,6 +550,7 @@ export async function listProfitProducts(env, options = {}) {
     LIMIT ?
   `, params);
 
+  const aliasMap = await productAliasMap(env, rows.map(row => row.id));
   return rows.map(row => {
     const grossProfitCents = (Number(row.sales_amount_cents) || 0) - (Number(row.cogs_cents) || 0);
     return {
@@ -552,7 +569,8 @@ export async function listProfitProducts(env, options = {}) {
       cogs: money(row.cogs_cents),
       grossProfit: money(grossProfitCents),
       lastCost: money(row.last_cost_cents),
-      lastCostAt: row.last_cost_at || null
+      lastCostAt: row.last_cost_at || null,
+      aliases: aliasMap.get(row.id) || []
     };
   });
 }
@@ -1050,6 +1068,42 @@ async function salesItemMap(env, recordIds) {
     itemMap.set(row.sales_record_id, items);
   }
   return itemMap;
+}
+
+async function productAliasMap(env, productIds) {
+  if (productIds.length === 0) return new Map();
+  const rows = await all(env.DB, `
+    SELECT
+      id,
+      product_global_id,
+      alias_name,
+      normalized_alias,
+      source,
+      source_product_id,
+      source_external_id,
+      source_machine_id,
+      status
+    FROM product_aliases
+    WHERE product_global_id IN (${placeholders(productIds.length)})
+    ORDER BY source, alias_name, id
+  `, productIds);
+  const aliasMap = new Map();
+  for (const row of rows) {
+    const alias = {
+      id: row.id,
+      aliasName: row.alias_name,
+      normalizedAlias: row.normalized_alias,
+      source: row.source,
+      sourceProductId: row.source_product_id || null,
+      sourceExternalId: row.source_external_id || null,
+      sourceMachineId: row.source_machine_id || null,
+      status: row.status
+    };
+    const aliases = aliasMap.get(row.product_global_id) || [];
+    aliases.push(alias);
+    aliasMap.set(row.product_global_id, aliases);
+  }
+  return aliasMap;
 }
 
 function safeJson(value, fallback) {

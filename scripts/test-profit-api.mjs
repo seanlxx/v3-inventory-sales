@@ -131,6 +131,21 @@ assert.equal(products.rows.length, 1);
 assert.equal(products.rows[0].productGlobalId, 'pg-cola');
 assert.equal(products.rows[0].lastCost, 2);
 assert.equal(products.rows[0].saleQuantity, 2);
+assert.equal(products.rows[0].aliasCount, 2);
+assert.equal(products.rows[0].aliases.length, 2);
+assert.deepEqual(
+  products.rows[0].aliases.map(alias => alias.aliasName),
+  ['Cola A', 'Cola B']
+);
+assert.equal(products.rows[0].aliases[0].sourceMachineId, '1号机');
+
+const aliasSearchResponse = await getProducts({
+  request: new Request('https://example.test/api/profit/products?search=Cola%20A'),
+  env
+});
+const aliasSearch = await aliasSearchResponse.json();
+assert.equal(aliasSearch.rows.length, 1);
+assert.equal(aliasSearch.rows[0].productGlobalId, 'pg-cola');
 
 const purchasesResponse = await getPurchases({
   request: new Request('https://example.test/api/profit/purchases?month=2026-06&search=cola'),
@@ -179,6 +194,9 @@ assert.equal(manualProductResponse.status, 200);
 const manualProductBody = await manualProductResponse.json();
 assert.equal(manualProductBody.product.productName, 'Manual Tea');
 assert.equal(manualProductBody.product.defaultSellPrice, 4.5);
+assert.equal(manualProductBody.product.aliases.length, 1);
+assert.equal(manualProductBody.product.aliases[0].aliasName, 'Manual Tea');
+assert.equal(manualProductBody.product.aliases[0].source, 'manual');
 const manualProductId = manualProductBody.product.productGlobalId;
 
 const archivedProductResponse = await patchProduct({

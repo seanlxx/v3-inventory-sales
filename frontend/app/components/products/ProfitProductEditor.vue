@@ -20,6 +20,13 @@ const draft = reactive({
 })
 
 const title = computed(() => props.product ? '编辑商品' : '新增商品')
+const aliases = computed(() => props.product?.aliases ?? [])
+
+function aliasSourceLabel(source: string) {
+  if (source === 'legacy-products') return '旧商品'
+  if (source === 'manual') return '手工'
+  return source || '来源'
+}
 
 function syncDraft() {
   draft.productName = props.product?.productName || ''
@@ -76,6 +83,30 @@ watch(() => props.product, syncDraft, { immediate: true })
         </AppButton>
       </div>
     </form>
+
+    <section v-if="aliases.length" class="profit-editor__aliases" aria-label="商品别名">
+      <header class="profit-editor__alias-header">
+        <h3>合并别名</h3>
+        <StatusBadge :label="`${aliases.length} 个`" tone="info" />
+      </header>
+      <div class="profit-editor__alias-list">
+        <article
+          v-for="alias in aliases"
+          :key="alias.id"
+          class="profit-editor__alias"
+        >
+          <div class="profit-editor__alias-main">
+            <strong>{{ alias.aliasName }}</strong>
+            <span>{{ alias.normalizedAlias }}</span>
+          </div>
+          <div class="profit-editor__alias-meta">
+            <span>{{ aliasSourceLabel(alias.source) }}</span>
+            <span v-if="alias.sourceMachineId">{{ alias.sourceMachineId }}</span>
+            <span v-if="alias.sourceProductId">{{ alias.sourceProductId }}</span>
+          </div>
+        </article>
+      </div>
+    </section>
   </section>
 </template>
 
@@ -138,6 +169,75 @@ watch(() => props.product, syncDraft, { immediate: true })
   gap: var(--space-2);
 }
 
+.profit-editor__aliases {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.profit-editor__alias-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.profit-editor__alias-header h3 {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.profit-editor__alias-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.profit-editor__alias {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2);
+  background: var(--color-surface-subtle);
+}
+
+.profit-editor__alias-main,
+.profit-editor__alias-meta {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.profit-editor__alias-main strong {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profit-editor__alias-main span,
+.profit-editor__alias-meta span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.profit-editor__alias-meta span {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2);
+  padding: 0 var(--space-2);
+  background: var(--color-surface);
+}
+
 @media (max-width: 980px) {
   .profit-editor__form {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -163,6 +263,10 @@ watch(() => props.product, syncDraft, { immediate: true })
 
   .profit-editor__actions {
     display: grid;
+  }
+
+  .profit-editor__alias-list {
+    grid-template-columns: 1fr;
   }
 }
 </style>

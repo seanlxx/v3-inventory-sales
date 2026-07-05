@@ -90,6 +90,18 @@ export type ProfitProduct = {
   grossProfit: number
   lastCost: number
   lastCostAt?: string | null
+  aliases: ProfitProductAlias[]
+}
+
+export type ProfitProductAlias = {
+  id: string
+  aliasName: string
+  normalizedAlias: string
+  source: string
+  sourceProductId?: string | null
+  sourceExternalId?: string | null
+  sourceMachineId?: string | null
+  status: 'active' | 'archived'
 }
 
 export type ProfitProductsResponse = {
