@@ -25,3 +25,10 @@ export function formatQuantity(value: number | null | undefined) {
     maximumFractionDigits: 0
   }).format(Number(value) || 0)
 }
+
+export function formatPercent(value: number | null | undefined) {
+  return `${new Intl.NumberFormat('zh-CN', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1
+  }).format(Number(value) || 0)}%`
+}

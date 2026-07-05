@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useReports } from '~/composables/useReports'
-import type { DashboardCostGapItem, DashboardException } from '~/types/report'
+import type { DashboardCostGapItem, DashboardException, ProductRankingItem } from '~/types/report'
 
 definePageMeta({
   title: '仪表盘'
@@ -39,6 +39,15 @@ function openExceptionTarget(item: DashboardException) {
     path: '/products',
     query: {
       productGlobalId: item.refId
+    }
+  })
+}
+
+function openProductRankingItem(item: ProductRankingItem) {
+  navigateTo({
+    path: '/products',
+    query: {
+      productGlobalId: item.productGlobalId
     }
   })
 }
@@ -88,6 +97,11 @@ function openExceptionTarget(item: DashboardException) {
         <MachineRankingPanel
           :items="report?.profitBreakdown ?? []"
           :loading="loading"
+        />
+        <ProductRankingPanel
+          :items="report?.productRanking ?? []"
+          :loading="loading"
+          @view="openProductRankingItem"
         />
         <CostGapPanel
           :items="report?.costGaps ?? []"

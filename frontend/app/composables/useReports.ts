@@ -86,6 +86,15 @@ function mapProfitSummary(summary: ProfitSummary): DashboardReport {
     profit: item.grossProfit,
     quantity: Number(item.quantity ?? item.orderCount) || 0
   }))
+  const productRanking = summary.productRanking.map(item => ({
+    productGlobalId: item.productGlobalId,
+    productName: item.productName,
+    quantity: item.quantity,
+    salesAmount: item.salesAmount,
+    cogs: item.cogs,
+    profit: item.grossProfit,
+    profitRate: item.profitRate
+  }))
 
   return {
     month: summary.month,
@@ -104,6 +113,7 @@ function mapProfitSummary(summary: ProfitSummary): DashboardReport {
     salesTrendByMachine,
     machineRanking,
     profitBreakdown: machineRanking,
+    productRanking,
     costGaps: summary.costGaps.map(mapCostGap),
     recentExceptions: summary.productMerges.map(mapProductMerge)
   }

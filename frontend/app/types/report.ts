@@ -32,6 +32,16 @@ export type MachineRankingItem = {
 
 export type ProfitBreakdownItem = MachineRankingItem
 
+export type ProductRankingItem = {
+  productGlobalId: string
+  productName: string
+  quantity: number
+  salesAmount: number
+  cogs: number
+  profit: number
+  profitRate: number
+}
+
 export type DashboardExceptionType = 'refund' | 'loss' | 'void' | 'cost_gap' | 'product_merge'
 
 export type DashboardException = {
@@ -58,6 +68,7 @@ export type DashboardReport = {
   salesTrendByMachine: SalesTrendMachineSeries[]
   machineRanking: MachineRankingItem[]
   profitBreakdown: ProfitBreakdownItem[]
+  productRanking: ProductRankingItem[]
   costGaps: DashboardCostGapItem[]
   recentExceptions: DashboardException[]
 }
