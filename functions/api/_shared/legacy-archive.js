@@ -1,6 +1,7 @@
 import { json } from './http.js';
 
 const ARCHIVED_EXACT_PATHS = new Set([
+  '/api/images',
   '/api/products'
 ]);
 

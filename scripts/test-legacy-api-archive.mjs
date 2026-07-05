@@ -34,6 +34,7 @@ async function callMiddleware(pathname) {
 }
 
 for (const pathname of [
+  '/api/images',
   '/api/products',
   '/api/inventory/balances',
   '/api/reports/dashboard',
