@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useReports } from '~/composables/useReports'
+import type { DashboardCostGapItem } from '~/types/report'
 
 definePageMeta({
   title: '仪表盘'
@@ -22,6 +23,15 @@ watch(() => [filters.month, filters.days, filters.machineId] as const, () => {
 onMounted(() => {
   loadDashboard()
 })
+
+function openCostGapPurchase(item: DashboardCostGapItem) {
+  navigateTo({
+    path: '/purchases',
+    query: {
+      productGlobalId: item.productGlobalId
+    }
+  })
+}
 </script>
 
 <template>
@@ -71,6 +81,7 @@ onMounted(() => {
         <CostGapPanel
           :items="report?.costGaps ?? []"
           :loading="loading"
+          @resolve="openCostGapPurchase"
         />
       </div>
     </div>

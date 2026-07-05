@@ -8,6 +8,8 @@ definePageMeta({
 })
 
 const toast = useToastStore()
+const route = useRoute()
+const router = useRouter()
 const {
   records,
   filters,
@@ -28,21 +30,43 @@ const {
 
 const showEditor = shallowRef(false)
 const editingRecord = shallowRef<ProfitPurchaseRecord | null>(null)
+const initialProductGlobalId = shallowRef<string | null>(null)
 
-function openCreate() {
+function queryText(value: unknown) {
+  if (Array.isArray(value)) return String(value[0] || '')
+  return String(value || '')
+}
+
+function clearProductQuery() {
+  if (!route.query.productGlobalId) return
+  const nextQuery = { ...route.query }
+  delete nextQuery.productGlobalId
+  router.replace({ query: nextQuery })
+}
+
+function openCreate(productGlobalId: string | null = null) {
   editingRecord.value = null
+  initialProductGlobalId.value = productGlobalId
   showEditor.value = true
+  if (!productGlobalId) clearProductQuery()
 }
 
 function openEdit(record: ProfitPurchaseRecord) {
   editingRecord.value = record
+  initialProductGlobalId.value = null
   showEditor.value = true
+}
+
+function closeEditor() {
+  showEditor.value = false
+  editingRecord.value = null
+  initialProductGlobalId.value = null
+  clearProductQuery()
 }
 
 async function submitRecord(payload: ProfitPurchasePayload) {
   await saveRecord(payload)
-  showEditor.value = false
-  editingRecord.value = null
+  closeEditor()
   toast.show('进货已保存', 'success')
 }
 
@@ -56,6 +80,11 @@ watch(() => [filters.month, filters.status, filters.search] as const, () => {
   loadRecords()
 })
 
+watch(() => route.query.productGlobalId, value => {
+  const productGlobalId = queryText(value)
+  if (productGlobalId) openCreate(productGlobalId)
+}, { immediate: true })
+
 onMounted(() => {
   loadRecords()
   loadProducts()
@@ -65,7 +94,7 @@ onMounted(() => {
 <template>
   <div class="purchases-page">
     <div class="purchases-page__actions">
-      <AppButton type="button" @click="openCreate">
+      <AppButton type="button" @click="openCreate()">
         新增进货
       </AppButton>
     </div>
@@ -74,9 +103,10 @@ onMounted(() => {
       v-if="showEditor"
       :record="editingRecord"
       :products="products"
+      :initial-product-global-id="initialProductGlobalId"
       :saving="saving"
       @submit="submitRecord"
-      @cancel="showEditor = false"
+      @cancel="closeEditor"
     />
 
     <PurchaseSummaryStrip

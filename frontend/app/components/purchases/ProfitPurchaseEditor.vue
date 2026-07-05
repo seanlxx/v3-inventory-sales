@@ -4,6 +4,7 @@ import type { ProfitProduct, ProfitPurchasePayload, ProfitPurchaseRecord } from 
 const props = defineProps<{
   record?: ProfitPurchaseRecord | null
   products: readonly ProfitProduct[]
+  initialProductGlobalId?: string | null
   saving?: boolean
 }>()
 
@@ -33,9 +34,15 @@ const title = computed(() => props.record ? '编辑进货' : '新增进货')
 const productOptions = computed(() =>
   props.products.filter(product =>
     product.status === 'active'
+    || props.initialProductGlobalId === product.productGlobalId
     || draft.items.some(item => item.productGlobalId === product.productGlobalId)
   )
 )
+
+const initialProductGlobalId = computed(() => {
+  const productId = props.initialProductGlobalId || ''
+  return productOptions.value.some(product => product.productGlobalId === productId) ? productId : ''
+})
 
 const totalCost = computed(() =>
   draft.items.reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.unitCost) || 0), 0)
@@ -49,7 +56,7 @@ const canSubmit = computed(() =>
 function emptyLine(): PurchaseLineDraft {
   return {
     key: lineKey(),
-    productGlobalId: productOptions.value[0]?.productGlobalId || '',
+    productGlobalId: initialProductGlobalId.value || productOptions.value[0]?.productGlobalId || '',
     quantity: 1,
     unitCost: 0
   }
@@ -91,11 +98,11 @@ function submit() {
   })
 }
 
-watch(() => props.record, syncDraft, { immediate: true })
+watch([() => props.record, () => props.initialProductGlobalId], syncDraft, { immediate: true })
 
 watch(productOptions, () => {
   for (const item of draft.items) {
-    if (!item.productGlobalId) item.productGlobalId = productOptions.value[0]?.productGlobalId || ''
+    if (!item.productGlobalId) item.productGlobalId = initialProductGlobalId.value || productOptions.value[0]?.productGlobalId || ''
   }
 })
 </script>

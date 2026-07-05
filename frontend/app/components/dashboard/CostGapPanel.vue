@@ -6,6 +6,10 @@ const props = defineProps<{
   items: readonly DashboardCostGapItem[]
   loading?: boolean
 }>()
+
+const emit = defineEmits<{
+  resolve: [item: DashboardCostGapItem]
+}>()
 </script>
 
 <template>
@@ -33,6 +37,9 @@ const props = defineProps<{
         <div class="cost-gap__meta">
           <strong class="numeric">{{ formatQuantity(item.quantity) }} 件</strong>
           <span>销售额 {{ formatMoney(item.salesAmount) }}</span>
+          <AppButton size="sm" variant="secondary" @click="emit('resolve', item)">
+            补成本
+          </AppButton>
         </div>
       </article>
     </div>
@@ -101,6 +108,7 @@ const props = defineProps<{
 
 .cost-gap__meta {
   text-align: right;
+  justify-items: end;
 }
 
 .cost-gap__meta strong {
@@ -118,6 +126,7 @@ const props = defineProps<{
 
   .cost-gap__meta {
     text-align: left;
+    justify-items: start;
   }
 }
 </style>
