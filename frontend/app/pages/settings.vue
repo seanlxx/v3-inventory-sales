@@ -218,10 +218,6 @@ onMounted(async () => {
       </form>
     </SettingsSection>
 
-    <ClientOnly>
-      <ZnImportCard />
-    </ClientOnly>
-
   </div>
 </template>
 

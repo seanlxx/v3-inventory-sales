@@ -32,7 +32,7 @@ export type MachineRankingItem = {
 
 export type ProfitBreakdownItem = MachineRankingItem
 
-export type DashboardExceptionType = 'refund' | 'loss' | 'void' | 'low_stock' | 'cost_gap' | 'product_merge'
+export type DashboardExceptionType = 'refund' | 'loss' | 'void' | 'cost_gap' | 'product_merge'
 
 export type DashboardException = {
   id: string

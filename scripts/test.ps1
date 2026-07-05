@@ -11,7 +11,7 @@ $tests = @(
   "scripts/test-ai-proxy-routing.mjs",
   "scripts/test-profit-system-phase1.mjs",
   "scripts/test-profit-api.mjs",
-  "scripts/test-shengma-integration.mjs"
+  "scripts/test-legacy-api-archive.mjs"
 )
 
 foreach ($test in $tests) {

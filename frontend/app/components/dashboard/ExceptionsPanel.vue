@@ -11,7 +11,6 @@ const props = defineProps<{
 }>()
 
 function toneFor(type: DashboardException['type']) {
-  if (type === 'low_stock') return 'warning'
   if (type === 'cost_gap') return 'warning'
   if (type === 'product_merge') return 'info'
   if (type === 'void') return 'danger'
@@ -24,7 +23,7 @@ function labelFor(type: DashboardException['type']) {
   if (type === 'void') return '作废'
   if (type === 'cost_gap') return '成本'
   if (type === 'product_merge') return '合并'
-  return '低库存'
+  return '异常'
 }
 </script>
 
@@ -33,7 +32,7 @@ function labelFor(type: DashboardException['type']) {
     <header class="exceptions-panel__header">
       <div>
         <h2 class="exceptions-panel__title">{{ props.title || '最近异常' }}</h2>
-        <p class="exceptions-panel__description">{{ props.description || '退款、损耗、作废和低库存提醒' }}</p>
+        <p class="exceptions-panel__description">{{ props.description || '退款、作废、成本和商品合并提醒' }}</p>
       </div>
     </header>
 

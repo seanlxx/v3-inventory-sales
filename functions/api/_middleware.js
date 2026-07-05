@@ -1,5 +1,6 @@
 import { isPublicApiRequest, validateSession } from './_shared/auth.js';
 import { json } from './_shared/http.js';
+import { isArchivedLegacyApiRequest, legacyApiArchived } from './_shared/legacy-archive.js';
 
 export async function onRequest(context) {
   if (context.request.method === 'OPTIONS') {
@@ -17,6 +18,10 @@ export async function onRequest(context) {
   const session = await validateSession(context.request, context.env);
   if (!session) {
     return json(401, { message: 'Unauthorized' });
+  }
+
+  if (isArchivedLegacyApiRequest(context.request)) {
+    return legacyApiArchived();
   }
 
   context.data = { ...(context.data || {}), session };
