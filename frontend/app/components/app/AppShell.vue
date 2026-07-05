@@ -14,7 +14,6 @@ type NavigationItem = {
 const navigationItems: readonly NavigationItem[] = [
   { label: '仪表盘', shortLabel: '仪表盘', to: '/dashboard', symbol: 'D', mobile: true },
   { label: '商品', shortLabel: '商品', to: '/products', symbol: 'P', mobile: true },
-  { label: '库存', shortLabel: '库存', to: '/inventory', symbol: 'I', mobile: true },
   { label: '进货', shortLabel: '进货', to: '/purchases', symbol: 'B', mobile: true },
   { label: '销售', shortLabel: '销售', to: '/sales', symbol: 'S', mobile: true },
   { label: '设置', shortLabel: '设置', to: '/settings', symbol: 'G', mobile: false }
@@ -62,7 +61,7 @@ const mobileNavigationItems = computed(() => navigationItems.filter(item => item
         <span class="app-shell__brand-mark">V3</span>
         <span class="app-shell__brand-copy">
           <span class="app-shell__brand-title">售货机管理</span>
-          <span class="app-shell__brand-subtitle">Inventory console</span>
+          <span class="app-shell__brand-subtitle">Profit console</span>
         </span>
       </NuxtLink>
 
@@ -437,7 +436,7 @@ const mobileNavigationItems = computed(() => navigationItems.filter(item => item
     left: 0;
     height: calc(var(--layout-mobile-nav-height) + env(safe-area-inset-bottom));
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     padding: 0 6px env(safe-area-inset-bottom);
     border-top: 1px solid var(--mobile-border);
     background: var(--mobile-card-bg);
