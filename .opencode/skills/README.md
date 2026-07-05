@@ -13,9 +13,9 @@
 | 类别 | 特点 | 路径 |
 | --- | --- | --- |
 | **项目专属（v3 specific）** | 包含 v3 仓库的具体文件路径、命令、表名、断点 | `desktop-ui-fix/` · `mobile-ui-fix/` · `pages-deploy-troubleshoot/` · `inventory-restructure/` · `inventory-drift-diagnose/` · `zn-excel-import/` |
-| **通用设计知识（generic design）** | 来自社区开源 skill，提供 UI / 设计的通用原则与组件知识 | `ui-design-brain/` · `color-system/` · `typography-scale/` · `spacing-system/` · `visual-hierarchy/` · `layout-grid/` · `responsive-design/` · `data-visualization/` · `dark-mode-design/` |
+| **通用前端设计知识（generic design）** | 来自社区开源 skill，提供 UI 视觉方向、配色、字体、布局与文案自检 | `frontend-design/` |
 
-> **协作模式：** 通用设计 skill 提供"应该怎么做"的设计原则，项目专属 skill 提供"在 v3 里要改哪个文件"的具体落点。两者结合 = 既懂设计、又懂代码位置。
+> **协作模式：** `frontend-design` 提供"应该怎么做"的设计原则，项目专属 skill 提供"在 v3 里要改哪个文件"的具体落点。两者结合 = 既懂设计、又懂代码位置。
 
 ---
 
@@ -28,7 +28,7 @@
 | 用途 | 修复 v3 桌面端（PC 端）UI 问题 |
 | 触发关键词 | "电脑上显示有问题"、"排版乱"、"侧栏不对"、"表格列宽"、"弹窗位置"、"1280px"、"1440px"、"1920px"、"桌面端样式"、"PC 端布局" |
 | 覆盖范围 | 6 个核心页面（仪表盘 / 商品 / 库存 / 进货 / 销售 / 设置）在桌面宽度下的可用性检查与修复流程 |
-| 配套通用 skill | `responsive-design`、`layout-grid`、`spacing-system`、`visual-hierarchy` |
+| 配套通用 skill | `frontend-design` |
 
 ### 2.2 `mobile-ui-fix`
 
@@ -37,7 +37,7 @@
 | 用途 | 修复 v3 移动端（手机端）UI 问题 |
 | 触发关键词 | "手机上显示有问题"、"横向溢出"、"按钮被遮挡"、"iPhone 安全区"、"375px"、"390px"、"430px"、"移动端样式"、"手机端布局乱" |
 | 覆盖范围 | 6 个核心页面在 3 个标准移动宽度（375 / 390 / 430 px）下的可用性检查与修复流程 |
-| 配套通用 skill | `responsive-design`、`spacing-system`、`ui-design-brain` |
+| 配套通用 skill | `frontend-design` |
 
 ### 2.3 `pages-deploy-troubleshoot`
 
@@ -76,33 +76,19 @@
 
 ---
 
-## 3. 通用设计 skills（generic design）
+## 3. 通用设计 skill（generic design）
 
-### 3.1 `ui-design-brain`（核心，60+ 组件最佳实践）
+### 3.1 `frontend-design`
 
 | 项 | 内容 |
 | --- | --- |
-| 来源 | https://github.com/carmahhawwari/ui-design-brain |
-| 用途 | 写任何 UI 之前先查它，给 AI 注入 60+ UI 组件的最佳实践、布局模式、设计系统约定 |
-| 自动触发条件 | 用户要求构建 / 设计 / 美化任何 web 界面、页面、仪表盘、表单、导航、弹窗、表格 |
-| 关键文件 | `SKILL.md`（设计哲学 + 工作流 + 15 个高频组件速查）<br>`components.md`（60+ 组件完整参考） |
-| 5 种风格预设 | Modern SaaS（默认） / Apple-level Minimal / Enterprise / Creative / Data Dashboard |
-| **本项目首选风格** | **Enterprise / Corporate**（信息密集、键盘可导航）+ 部分页面用 **Data Dashboard**（仪表盘、库存表） |
+| 来源 | https://github.com/anthropics/skills/tree/main/skills/frontend-design |
+| 用途 | 写 / 改 UI 视觉前先查它，用于建立有辨识度的视觉方向、配色、字体、布局、动效与文案自检 |
+| 自动触发条件 | 用户要求构建 / 设计 / 美化 / 重塑任何 web 界面、页面、仪表盘、表单、导航、弹窗、表格 |
+| 关键文件 | `SKILL.md`（前端视觉设计原则 + 工作流） |
+| **本项目首选落地方式** | 保留管理系统的信息密度与可用性，用 `frontend-design` 做视觉方向校准，再用 `desktop-ui-fix` / `mobile-ui-fix` 落到 v3 文件与验证流程 |
 
-> **使用提示：** 用户说"把这个页面做得好看点"时，先用 ui-design-brain 找出涉及的组件，按各自的 best practice 改，再用项目专属 skill 落到具体 v3 文件。
-
-### 3.2 设计基础原则（来自 designer-skills/ui-design）
-
-| Skill | 用途 | 什么时候用 |
-| --- | --- | --- |
-| `color-system` | 系统化构建配色：原色板 → 语义映射 → 可访问性合规 | 改 `tokens.css` 的颜色变量、调整状态色、做暗色模式时 |
-| `typography-scale` | 字体层级体系：尺寸、字重、行高、字距 | 改字号 / 标题层级 / 字体堆栈时 |
-| `spacing-system` | 间距体系（8 px 网格） | 调整 padding / margin / gap 时 |
-| `visual-hierarchy` | 视觉层级：让关键信息先被看到 | 仪表盘、统计卡片、列表的信息优先级排布 |
-| `layout-grid` | 栅格布局：列、间隙、断点 | 桌面端多栏布局、卡片网格、响应式布局 |
-| `responsive-design` | 响应式策略：fluid / adaptive / mobile-first | 写新组件、需要同时考虑移动 + 桌面 |
-| `data-visualization` | 数据可视化：图表选型、图例、轴标 | 仪表盘的销售曲线、利润对比、库存饼图 |
-| `dark-mode-design` | 暗色模式设计 | 未来如果要做夜间主题 |
+> **使用提示：** 用户说"把这个页面做得好看点"时，先用 `frontend-design` 明确视觉方向和自检标准，再用项目专属 skill 落到具体 v3 文件。
 
 ---
 
@@ -141,8 +127,7 @@
 
 | 子目录 | 上游仓库 | 许可证 |
 | --- | --- | --- |
-| `ui-design-brain/` | https://github.com/carmahhawwari/ui-design-brain | MIT |
-| `color-system/` 等 8 个 | https://github.com/Owl-Listener/designer-skills | MIT |
+| `frontend-design/` | https://github.com/anthropics/skills/tree/main/skills/frontend-design | 见 `frontend-design/LICENSE.txt` |
 | `desktop-ui-fix/` · `mobile-ui-fix/` · `pages-deploy-troubleshoot/` · `inventory-restructure/` · `inventory-drift-diagnose/` · `zn-excel-import/` | 本项目原创 | 跟随仓库 |
 
 > 上游仓库后续如果有更新，按需手工 pull，不做自动同步（避免 v3 已经针对项目调整过的 skill 被覆盖）。

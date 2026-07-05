@@ -22,7 +22,7 @@
 1. **重新通读 AGENTS.md 的 §0 / §3 / §5 / §6 / §9**（这 5 节是高频违规重灾区），用一句中文向用户确认"已重读"。
 2. **根据用户当前任务（或最近一条任务描述），从 §0.5 表格里选出本次需要加载的 skills**，列成清单：
    - 项目专属（`mobile-ui-fix` / `desktop-ui-fix` / `pages-deploy-troubleshoot`）按场景**最多选 1 个**。
-   - 通用设计（`ui-design-brain` / `color-system` / `typography-scale` / `spacing-system` / `visual-hierarchy` / `layout-grid` / `responsive-design` / `data-visualization` / `dark-mode-design`）按需要选 0–3 个，**不要全选**。
+   - 通用设计（`frontend-design`）只在任务涉及 UI 设计 / 美化 / 视觉重塑时选，按需要选 0–1 个。
    - 框架/工具类（`vue` / `vue-best-practices` / `nuxt` / `pinia` / `cloudflare` / `wrangler` / `vitest` 等）只在任务确实涉及该领域时选。
 3. **用 `skill` 工具实际加载第 2 步选出的 skills**（不是只列名字），加载完后开始执行任务。
 4. **任务结束前必须按 §3.5 自动提交并部署**（只要本轮触碰过任何文件就必须做，纯问答 / 纯解释除外）：
@@ -96,7 +96,7 @@
 
 ### 0.5 项目级 Skills（按场景自动加载）
 
-本项目在 `.opencode/skills/` 下注册了两类 skill：**项目专属**（v3 文件路径）+ **通用设计知识**（社区开源）。
+本项目在 `.opencode/skills/` 下注册了两类 skill：**项目专属**（v3 文件路径）+ **通用前端设计知识**（社区开源）。
 完整说明见 `.opencode/skills/README.md`。
 
 #### 项目专属 skill（含 v3 具体落点）
@@ -110,22 +110,14 @@
 | 总库存与进货不匹配 / 库存漂移 / 5 项对账 / Phase 0.5·2.5 诊断 / 重建余额验证 | `inventory-drift-diagnose` | 库存漂移定位与对账证明 |
 | zn Excel / 订单明细 / 交易账单 / 设备编号映射 / 手续费·算法服务费 / pickField | `zn-excel-import` | zn 平台 Excel 导入字段对齐与幂等 |
 
-#### 通用设计知识 skill（社区开源，写 / 改任何 UI 前查）
+#### 通用前端设计 skill（社区开源，写 / 改 UI 视觉前查）
 
 | 用户描述场景 | 对应 skill | 上游 |
 | --- | --- | --- |
-| 任何"做一个页面 / 表单 / 弹窗 / 表格 / 仪表盘 / 美化 UI" | `ui-design-brain`（60+ 组件最佳实践） | carmahhawwari/ui-design-brain |
-| 调整配色 / 主色 / 状态色 / 语义色 | `color-system` | Owl-Listener/designer-skills |
-| 字号层级 / 标题大小 / 字体堆栈 | `typography-scale` | 同上 |
-| 调 padding / margin / gap / 8px 网格 | `spacing-system` | 同上 |
-| 信息优先级 / 让关键信息先被看到 | `visual-hierarchy` | 同上 |
-| 多栏布局 / 卡片网格 / 栅格 | `layout-grid` | 同上 |
-| 响应式策略 / 跨设备适配 | `responsive-design` | 同上 |
-| 仪表盘图表 / 销售曲线 / 利润对比 | `data-visualization` | 同上 |
-| 暗色模式 / 夜间主题 | `dark-mode-design` | 同上 |
+| 任何"做一个页面 / 表单 / 弹窗 / 表格 / 仪表盘 / 美化 UI / 重塑视觉" | `frontend-design`（前端视觉方向、配色、字体、布局与文案自检） | anthropics/skills |
 
-> **协作模式：** 通用 skill 提供"该怎么做"的设计原则，项目专属 skill 提供"在 v3 改哪个文件"的落点。
-> 用户说"把仪表盘做得好看一点" → 同时加载 `ui-design-brain` + `visual-hierarchy` + `data-visualization` + `desktop-ui-fix`。
+> **协作模式：** `frontend-design` 提供"该怎么做"的视觉设计原则，项目专属 skill 提供"在 v3 改哪个文件"的落点。
+> 用户说"把仪表盘做得好看一点" → 加载 `frontend-design` + `desktop-ui-fix`。
 >
 > Skill 内容是 §4 / §3 的可执行版本，覆盖具体症状 → 文件 → 修复手法的对应关系。
 
