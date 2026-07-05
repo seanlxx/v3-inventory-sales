@@ -93,8 +93,8 @@ function machineFilterFor(column, machineId) {
   return { sql: `AND ${column} = ?`, params: [normalized] };
 }
 
-function signedCogsSql(column = 'total_cogs_cents') {
-  return `CASE WHEN type = 'refund' THEN -${column} ELSE ${column} END`;
+function signedCogsSql(column = 'total_cogs_cents', typeColumn = 'type') {
+  return `CASE WHEN ${typeColumn} = 'refund' THEN -${column} ELSE ${column} END`;
 }
 
 function normalizeStatus(value) {
@@ -1005,9 +1005,35 @@ export async function listProfitSales(env, options = {}) {
     const keyword = `%${search}%`;
     params.push(keyword, keyword, keyword, keyword, keyword, keyword);
   }
-  params.push(limit);
 
   const rows = await all(env.DB, `
+    WITH filtered_sales AS (
+      SELECT
+        sr.id,
+        sr.legacy_sales_id,
+        sr.type,
+        sr.machine_id,
+        sr.record_date,
+        sr.year_month,
+        sr.source,
+        sr.external_id,
+        sr.status,
+        sr.voided_at,
+        sr.note,
+        sr.gross_amount_cents,
+        sr.refund_amount_cents,
+        sr.platform_fee_cents,
+        sr.service_fee_cents,
+        sr.discount_cents,
+        sr.net_revenue_cents,
+        sr.total_cogs_cents,
+        sr.gross_profit_cents,
+        sr.created_at
+      FROM sales_records sr
+      WHERE ${filters.length ? filters.join(' AND ') : '1 = 1'}
+      ORDER BY sr.record_date DESC, sr.created_at DESC, sr.id DESC
+      LIMIT ${limit}
+    )
     SELECT
       sr.id,
       sr.legacy_sales_id,
@@ -1027,13 +1053,12 @@ export async function listProfitSales(env, options = {}) {
       sr.discount_cents,
       sr.net_revenue_cents,
       sr.total_cogs_cents,
-      ${signedCogsSql('sr.total_cogs_cents')} AS signed_cogs_cents,
+      ${signedCogsSql('sr.total_cogs_cents', 'sr.type')} AS signed_cogs_cents,
       sr.gross_profit_cents,
       COALESCE(SUM(sri.quantity), 0) AS quantity,
       COUNT(sri.id) AS item_count
-    FROM sales_records sr
+    FROM filtered_sales sr
     LEFT JOIN sales_record_items sri ON sri.sales_record_id = sr.id
-    WHERE ${filters.length ? filters.join(' AND ') : '1 = 1'}
     GROUP BY
       sr.id,
       sr.legacy_sales_id,
@@ -1056,7 +1081,6 @@ export async function listProfitSales(env, options = {}) {
       sr.gross_profit_cents,
       sr.created_at
     ORDER BY sr.record_date DESC, sr.created_at DESC, sr.id DESC
-    LIMIT ?
   `, params);
 
   const itemMap = await salesItemMap(env, rows.map(row => row.id));
