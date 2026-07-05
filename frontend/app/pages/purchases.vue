@@ -30,6 +30,7 @@ const {
 
 const showEditor = shallowRef(false)
 const editingRecord = shallowRef<ProfitPurchaseRecord | null>(null)
+const viewingRecord = shallowRef<ProfitPurchaseRecord | null>(null)
 const initialProductGlobalId = shallowRef<string | null>(null)
 
 function queryText(value: unknown) {
@@ -46,6 +47,7 @@ function clearProductQuery() {
 
 function openCreate(productGlobalId: string | null = null) {
   editingRecord.value = null
+  viewingRecord.value = null
   initialProductGlobalId.value = productGlobalId
   showEditor.value = true
   if (!productGlobalId) clearProductQuery()
@@ -53,8 +55,17 @@ function openCreate(productGlobalId: string | null = null) {
 
 function openEdit(record: ProfitPurchaseRecord) {
   editingRecord.value = record
+  viewingRecord.value = null
   initialProductGlobalId.value = null
   showEditor.value = true
+}
+
+function openView(record: ProfitPurchaseRecord) {
+  showEditor.value = false
+  editingRecord.value = null
+  initialProductGlobalId.value = null
+  viewingRecord.value = record
+  clearProductQuery()
 }
 
 function closeEditor() {
@@ -109,6 +120,12 @@ onMounted(() => {
       @cancel="closeEditor"
     />
 
+    <ProfitPurchaseDetail
+      v-if="viewingRecord"
+      :record="viewingRecord"
+      @close="viewingRecord = null"
+    />
+
     <PurchaseSummaryStrip
       :total-cost="summary.totalCost"
       :quantity="summary.quantity"
@@ -128,6 +145,7 @@ onMounted(() => {
       :loading="loading"
       :error="error"
       @retry="loadRecords"
+      @view="openView"
       @edit="openEdit"
       @void="voidPurchase"
     />

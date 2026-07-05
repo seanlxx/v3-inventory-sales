@@ -29,21 +29,34 @@ const {
 
 const showEditor = shallowRef(false)
 const editingRecord = shallowRef<ProfitSalesRecord | null>(null)
+const viewingRecord = shallowRef<ProfitSalesRecord | null>(null)
 
 function openCreate() {
   editingRecord.value = null
+  viewingRecord.value = null
   showEditor.value = true
 }
 
 function openEdit(record: ProfitSalesRecord) {
   editingRecord.value = record
+  viewingRecord.value = null
   showEditor.value = true
+}
+
+function openView(record: ProfitSalesRecord) {
+  showEditor.value = false
+  editingRecord.value = null
+  viewingRecord.value = record
+}
+
+function closeEditor() {
+  showEditor.value = false
+  editingRecord.value = null
 }
 
 async function submitRecord(payload: ProfitSalesPayload) {
   await saveRecord(payload)
-  showEditor.value = false
-  editingRecord.value = null
+  closeEditor()
   toast.show('销售已保存', 'success')
 }
 
@@ -66,7 +79,7 @@ onMounted(() => {
 <template>
   <div class="sales-page">
     <div class="sales-page__actions">
-      <AppButton type="button" @click="openCreate">
+      <AppButton type="button" @click="openCreate()">
         新增销售
       </AppButton>
     </div>
@@ -78,7 +91,13 @@ onMounted(() => {
       :machines="machineOptions"
       :saving="saving"
       @submit="submitRecord"
-      @cancel="showEditor = false"
+      @cancel="closeEditor"
+    />
+
+    <ProfitSalesDetail
+      v-if="viewingRecord"
+      :record="viewingRecord"
+      @close="viewingRecord = null"
     />
 
     <SalesSummaryStrip
@@ -103,6 +122,7 @@ onMounted(() => {
       :loading="loading"
       :error="error"
       @retry="loadRecords"
+      @view="openView"
       @edit="openEdit"
       @void="voidSale"
     />

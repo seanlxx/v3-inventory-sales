@@ -11,6 +11,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   retry: []
+  view: [record: ProfitSalesRecord]
   edit: [record: ProfitSalesRecord]
   void: [record: ProfitSalesRecord]
 }>()
@@ -103,15 +104,19 @@ function canMutate(record: ProfitSalesRecord) {
               />
             </td>
             <td class="profit-sales-table__center">
-              <div v-if="canMutate(record)" class="profit-sales-table__actions">
-                <AppButton size="sm" variant="secondary" @click="emit('edit', record)">
-                  编辑
+              <div class="profit-sales-table__actions">
+                <AppButton size="sm" variant="secondary" @click="emit('view', record)">
+                  查看
                 </AppButton>
-                <AppButton size="sm" variant="ghost" @click="emit('void', record)">
-                  作废
-                </AppButton>
+                <template v-if="canMutate(record)">
+                  <AppButton size="sm" variant="secondary" @click="emit('edit', record)">
+                    编辑
+                  </AppButton>
+                  <AppButton size="sm" variant="ghost" @click="emit('void', record)">
+                    作废
+                  </AppButton>
+                </template>
               </div>
-              <span v-else class="profit-sales-table__muted">—</span>
             </td>
           </tr>
         </tbody>
@@ -152,13 +157,18 @@ function canMutate(record: ProfitSalesRecord) {
             <span>数量 {{ formatQuantity(record.quantity) }}</span>
             <span>{{ record.status === 'voided' ? '已作废' : '有效' }}</span>
           </div>
-          <footer v-if="canMutate(record)" class="profit-sales-table__card-actions">
-            <AppButton size="sm" variant="secondary" @click="emit('edit', record)">
-              编辑
+          <footer class="profit-sales-table__card-actions">
+            <AppButton size="sm" variant="secondary" @click="emit('view', record)">
+              查看
             </AppButton>
-            <AppButton size="sm" variant="ghost" @click="emit('void', record)">
-              作废
-            </AppButton>
+            <template v-if="canMutate(record)">
+              <AppButton size="sm" variant="secondary" @click="emit('edit', record)">
+                编辑
+              </AppButton>
+              <AppButton size="sm" variant="ghost" @click="emit('void', record)">
+                作废
+              </AppButton>
+            </template>
           </footer>
         </MobileCard>
       </template>
@@ -261,10 +271,6 @@ function canMutate(record: ProfitSalesRecord) {
   gap: var(--space-2);
 }
 
-.profit-sales-table__muted {
-  color: var(--color-text-soft);
-}
-
 .profit-sales-table__cards {
   display: none;
 }
@@ -339,7 +345,7 @@ tbody tr:hover {
 
   .profit-sales-table__card-actions {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
     gap: var(--space-2);
   }
 }
