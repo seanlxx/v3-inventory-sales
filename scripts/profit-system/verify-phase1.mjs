@@ -151,23 +151,23 @@ function migrationChecksSql() {
     UNION ALL
     SELECT 'purchase_orders -> purchase_records',
       (SELECT COUNT(*) FROM purchase_orders),
-      (SELECT COUNT(*) FROM purchase_records),
-      (SELECT COUNT(*) FROM purchase_orders) - (SELECT COUNT(*) FROM purchase_records)
+      (SELECT COUNT(*) FROM purchase_records WHERE legacy_purchase_id IS NOT NULL),
+      (SELECT COUNT(*) FROM purchase_orders) - (SELECT COUNT(*) FROM purchase_records WHERE legacy_purchase_id IS NOT NULL)
     UNION ALL
     SELECT 'purchase_items -> purchase_record_items',
       (SELECT COUNT(*) FROM purchase_items),
-      (SELECT COUNT(*) FROM purchase_record_items),
-      (SELECT COUNT(*) FROM purchase_items) - (SELECT COUNT(*) FROM purchase_record_items)
+      (SELECT COUNT(*) FROM purchase_record_items WHERE legacy_purchase_item_id IS NOT NULL),
+      (SELECT COUNT(*) FROM purchase_items) - (SELECT COUNT(*) FROM purchase_record_items WHERE legacy_purchase_item_id IS NOT NULL)
     UNION ALL
     SELECT 'sales_orders -> sales_records',
       (SELECT COUNT(*) FROM sales_orders),
-      (SELECT COUNT(*) FROM sales_records),
-      (SELECT COUNT(*) FROM sales_orders) - (SELECT COUNT(*) FROM sales_records)
+      (SELECT COUNT(*) FROM sales_records WHERE legacy_sales_id IS NOT NULL),
+      (SELECT COUNT(*) FROM sales_orders) - (SELECT COUNT(*) FROM sales_records WHERE legacy_sales_id IS NOT NULL)
     UNION ALL
     SELECT 'sales_items -> sales_record_items',
       (SELECT COUNT(*) FROM sales_items),
-      (SELECT COUNT(*) FROM sales_record_items),
-      (SELECT COUNT(*) FROM sales_items) - (SELECT COUNT(*) FROM sales_record_items)
+      (SELECT COUNT(*) FROM sales_record_items WHERE legacy_sales_item_id IS NOT NULL),
+      (SELECT COUNT(*) FROM sales_items) - (SELECT COUNT(*) FROM sales_record_items WHERE legacy_sales_item_id IS NOT NULL)
   `;
 }
 
@@ -183,7 +183,10 @@ function missingCostsSql(month) {
         SELECT COUNT(*)
         FROM cost_snapshots cs
         WHERE cs.product_global_id = pg.id
-          AND cs.unit_cost_cents > 0
+          AND (
+            cs.unit_cost_cents > 0
+            OR cs.source_type = 'manual_cost'
+          )
       ) AS cost_snapshot_count
     FROM sales_record_items sri
     JOIN sales_records sr ON sr.id = sri.sales_record_id

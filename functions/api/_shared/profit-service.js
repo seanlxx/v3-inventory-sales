@@ -238,6 +238,7 @@ async function getMissingCostProductCount(env, month, machineId) {
         SELECT product_global_id, COUNT(*) AS cost_snapshot_count
         FROM cost_snapshots
         WHERE unit_cost_cents > 0
+          OR source_type = 'manual_cost'
         GROUP BY product_global_id
       ) cs ON cs.product_global_id = sri.product_global_id
       WHERE sr.year_month = ?
@@ -451,6 +452,7 @@ export async function listCostGaps(env, options = {}) {
       SELECT product_global_id, COUNT(*) AS cost_snapshot_count
       FROM cost_snapshots
       WHERE unit_cost_cents > 0
+        OR source_type = 'manual_cost'
       GROUP BY product_global_id
     ) cs ON cs.product_global_id = pg.id
     WHERE sr.year_month = ?

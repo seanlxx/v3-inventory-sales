@@ -122,6 +122,29 @@ const costGaps = await costGapsResponse.json();
 assert.equal(costGaps.rows.length, 1);
 assert.equal(costGaps.rows[0].productGlobalId, 'pg-water');
 
+env.DB.exec(`
+  INSERT INTO cost_snapshots (
+    id, product_global_id, source_type, source_record_id, source_item_id,
+    legacy_product_id, unit_cost_cents, quantity_context, total_cost_cents, effective_at, created_at
+  ) VALUES (
+    'cs-zero-water', 'pg-water', 'manual_cost', 'accepted-zero-cost-test',
+    'zero-cost:pg-water:2026-06', NULL, 0, NULL, 0, '2026-06-01',
+    '2026-06-01T00:00:00.000Z'
+  );
+`);
+const acceptedZeroCostSummaryResponse = await getSummary({
+  request: new Request('https://example.test/api/profit/summary?month=2026-06&machineId=2号机'),
+  env
+});
+const acceptedZeroCostSummary = await acceptedZeroCostSummaryResponse.json();
+assert.equal(acceptedZeroCostSummary.kpis.missingCostProductCount, 0);
+const acceptedZeroCostGapsResponse = await getCostGaps({
+  request: new Request('https://example.test/api/profit/cost-gaps?month=2026-06&machineId=2号机&limit=5'),
+  env
+});
+const acceptedZeroCostGaps = await acceptedZeroCostGapsResponse.json();
+assert.equal(acceptedZeroCostGaps.rows.length, 0);
+
 const productsResponse = await getProducts({
   request: new Request('https://example.test/api/profit/products?search=cola'),
   env
