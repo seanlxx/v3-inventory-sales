@@ -24,6 +24,7 @@ import { onRequestGet as getSummary } from '../functions/api/profit/summary.js';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const projectRoot = dirname(scriptDir);
+const MAX_D1_BINDINGS = 100;
 
 class D1Database {
   constructor() {
@@ -52,16 +53,25 @@ class D1Statement {
   }
 
   async all() {
+    this.assertBindingLimit();
     return { results: this.db.prepare(this.sql).all(...this.params) };
   }
 
   async first() {
+    this.assertBindingLimit();
     return this.db.prepare(this.sql).get(...this.params) || null;
   }
 
   async run() {
+    this.assertBindingLimit();
     const result = this.db.prepare(this.sql).run(...this.params);
     return { success: true, meta: result };
+  }
+
+  assertBindingLimit() {
+    if (this.params.length > MAX_D1_BINDINGS) {
+      throw new Error(`D1 binding limit exceeded: ${this.params.length}`);
+    }
   }
 }
 
@@ -220,6 +230,15 @@ const productSales = await productSalesResponse.json();
 assert.equal(productSales.rows.length, 2);
 assert.equal(productSales.rows[0].id, 'sr-refund');
 assert.equal(productSales.rows[1].id, 'sr-sale');
+
+seedLargeSalesBatch();
+const largeSalesResponse = await getSales({
+  request: new Request('https://example.test/api/profit/sales?month=2026-05&status=active&limit=200'),
+  env
+});
+const largeSales = await largeSalesResponse.json();
+assert.equal(largeSales.rows.length, 120);
+assert.equal(largeSales.rows.every(row => row.items.length === 1), true);
 
 seedCurrentTrendRows();
 const currentTrendResponse = await getSummary({
@@ -396,6 +415,36 @@ function seedCurrentTrendRows() {
     ) VALUES
       ('sri-trend-1', 'sr-trend-1', 'pg-cola', 'si-trend-1', 'p-cola-1', 1, 700, 700, 200, 200, '${date}T00:00:00.000Z'),
       ('sri-trend-2', 'sr-trend-2', 'pg-water', 'si-trend-2', 'p-water', 1, 300, 300, 100, 100, '${date}T00:00:00.000Z');
+  `);
+}
+
+function seedLargeSalesBatch() {
+  const salesRecords = [];
+  const salesItems = [];
+  for (let index = 1; index <= 120; index += 1) {
+    const suffix = String(index).padStart(3, '0');
+    salesRecords.push(
+      `('sr-bulk-${suffix}', 'so-bulk-${suffix}', 'sale', '1号机', '2026-05-15', '2026-05', 'manual', 500, 0, 0, 0, 0, 500, 200, 300, 'active', '2026-05-15T00:00:00.000Z', '2026-05-15T00:00:00.000Z')`
+    );
+    salesItems.push(
+      `('sri-bulk-${suffix}', 'sr-bulk-${suffix}', 'pg-cola', 'si-bulk-${suffix}', 'p-cola-1', 1, 500, 500, 200, 200, '2026-05-15T00:00:00.000Z')`
+    );
+  }
+
+  env.DB.exec(`
+    INSERT INTO sales_records (
+      id, legacy_sales_id, type, machine_id, record_date, year_month, source,
+      gross_amount_cents, refund_amount_cents, platform_fee_cents, service_fee_cents,
+      discount_cents, net_revenue_cents, total_cogs_cents, gross_profit_cents,
+      status, created_at, updated_at
+    ) VALUES
+      ${salesRecords.join(',\n      ')};
+
+    INSERT INTO sales_record_items (
+      id, sales_record_id, product_global_id, legacy_sales_item_id, legacy_product_id,
+      quantity, unit_price_cents, line_amount_cents, unit_cost_cents, line_cogs_cents, created_at
+    ) VALUES
+      ${salesItems.join(',\n      ')};
   `);
 }
 

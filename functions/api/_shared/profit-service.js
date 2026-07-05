@@ -14,6 +14,7 @@ const MAX_TREND_DAYS = 90;
 const DEFAULT_TREND_DAYS = 30;
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
+const D1_IN_CLAUSE_CHUNK_SIZE = 90;
 const MACHINE_ALIASES = new Map([
   ['三号机', '轨道机']
 ]);
@@ -73,6 +74,22 @@ function dateWindowStart(days) {
 
 function money(value) {
   return centsToMoney(Number(value) || 0);
+}
+
+function chunkValues(values, size = D1_IN_CLAUSE_CHUNK_SIZE) {
+  const chunks = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+}
+
+async function allByChunkedIds(db, ids, sqlFactory) {
+  const rows = [];
+  for (const chunk of chunkValues(ids)) {
+    rows.push(...await all(db, sqlFactory(chunk.length), chunk));
+  }
+  return rows;
 }
 
 function profitRatePercent(netRevenueCents, grossProfitCents) {
@@ -1114,7 +1131,7 @@ export async function listProfitSales(env, options = {}) {
 
 async function purchaseItemMap(env, recordIds) {
   if (recordIds.length === 0) return new Map();
-  const rows = await all(env.DB, `
+  const rows = await allByChunkedIds(env.DB, recordIds, count => `
     SELECT
       pri.id,
       pri.purchase_record_id,
@@ -1125,9 +1142,9 @@ async function purchaseItemMap(env, recordIds) {
       pri.total_cost_cents
     FROM purchase_record_items pri
     JOIN products_global pg ON pg.id = pri.product_global_id
-    WHERE pri.purchase_record_id IN (${placeholders(recordIds.length)})
+    WHERE pri.purchase_record_id IN (${placeholders(count)})
     ORDER BY pg.canonical_name, pri.id
-  `, recordIds);
+  `);
   const itemMap = new Map();
   for (const row of rows) {
     const item = {
@@ -1147,7 +1164,7 @@ async function purchaseItemMap(env, recordIds) {
 
 async function salesItemMap(env, recordIds) {
   if (recordIds.length === 0) return new Map();
-  const rows = await all(env.DB, `
+  const rows = await allByChunkedIds(env.DB, recordIds, count => `
     SELECT
       sri.id,
       sri.sales_record_id,
@@ -1165,9 +1182,9 @@ async function salesItemMap(env, recordIds) {
     FROM sales_record_items sri
     JOIN products_global pg ON pg.id = sri.product_global_id
     LEFT JOIN cost_snapshots cs ON cs.source_type = 'sale_item' AND cs.source_item_id = sri.id
-    WHERE sri.sales_record_id IN (${placeholders(recordIds.length)})
+    WHERE sri.sales_record_id IN (${placeholders(count)})
     ORDER BY pg.canonical_name, sri.id
-  `, recordIds);
+  `);
   const itemMap = new Map();
   for (const row of rows) {
     const item = {
@@ -1193,7 +1210,7 @@ async function salesItemMap(env, recordIds) {
 
 async function productAliasMap(env, productIds) {
   if (productIds.length === 0) return new Map();
-  const rows = await all(env.DB, `
+  const rows = await allByChunkedIds(env.DB, productIds, count => `
     SELECT
       id,
       product_global_id,
@@ -1205,9 +1222,9 @@ async function productAliasMap(env, productIds) {
       source_machine_id,
       status
     FROM product_aliases
-    WHERE product_global_id IN (${placeholders(productIds.length)})
+    WHERE product_global_id IN (${placeholders(count)})
     ORDER BY source, alias_name, id
-  `, productIds);
+  `);
   const aliasMap = new Map();
   for (const row of rows) {
     const alias = {
