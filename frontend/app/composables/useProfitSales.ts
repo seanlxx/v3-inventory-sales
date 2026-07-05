@@ -13,7 +13,8 @@ const defaultFilters: ProfitSalesFilters = {
   type: 'all',
   status: 'active',
   machineId: 'all',
-  search: ''
+  search: '',
+  productGlobalId: ''
 }
 
 export function useProfitSales() {
@@ -68,6 +69,7 @@ export function useProfitSales() {
           status: filters.status,
           machineId: filters.machineId,
           search: filters.search,
+          productGlobalId: filters.productGlobalId || undefined,
           limit: '200'
         }
       })

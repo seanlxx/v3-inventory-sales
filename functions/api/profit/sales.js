@@ -15,6 +15,7 @@ export async function onRequestGet(context) {
       status: url.searchParams.get('status'),
       machineId: url.searchParams.get('machineId'),
       search: url.searchParams.get('search'),
+      productGlobalId: url.searchParams.get('productGlobalId'),
       limit: url.searchParams.get('limit')
     })
   });

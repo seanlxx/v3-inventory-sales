@@ -13,6 +13,7 @@ export async function onRequestGet(context) {
       month: url.searchParams.get('month'),
       status: url.searchParams.get('status'),
       search: url.searchParams.get('search'),
+      productGlobalId: url.searchParams.get('productGlobalId'),
       limit: url.searchParams.get('limit')
     })
   });

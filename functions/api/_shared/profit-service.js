@@ -25,6 +25,12 @@ export function normalizeMonth(value) {
   return /^\d{4}-\d{2}$/.test(text) ? text : new Date().toISOString().slice(0, 7);
 }
 
+function normalizeRecordListMonth(value) {
+  const text = String(value || '').trim();
+  if (text === 'all' || text === '全部') return '';
+  return normalizeMonth(text);
+}
+
 export function normalizeDays(value) {
   const days = Math.round(Number(value) || DEFAULT_TREND_DAYS);
   return Math.min(Math.max(days, 1), MAX_TREND_DAYS);
@@ -854,16 +860,30 @@ export async function voidProfitSale(env, id) {
 }
 
 export async function listProfitPurchases(env, options = {}) {
-  const month = normalizeMonth(options.month);
+  const month = normalizeRecordListMonth(options.month);
   const status = normalizeStatus(options.status);
   const limit = normalizeLimit(options.limit);
   const search = String(options.search || '').trim();
-  const filters = ['substr(pr.record_date, 1, 7) = ?'];
-  const params = [month];
+  const productGlobalId = String(options.productGlobalId || '').trim();
+  const filters = [];
+  const params = [];
 
+  if (month) {
+    filters.push('substr(pr.record_date, 1, 7) = ?');
+    params.push(month);
+  }
   if (status !== 'all') {
     filters.push('pr.status = ?');
     params.push(status);
+  }
+  if (productGlobalId) {
+    filters.push(`EXISTS (
+      SELECT 1
+      FROM purchase_record_items product_pri
+      WHERE product_pri.purchase_record_id = pr.id
+        AND product_pri.product_global_id = ?
+    )`);
+    params.push(productGlobalId);
   }
   if (search) {
     filters.push(`(
@@ -898,7 +918,7 @@ export async function listProfitPurchases(env, options = {}) {
       COUNT(pri.id) AS item_count
     FROM purchase_records pr
     LEFT JOIN purchase_record_items pri ON pri.purchase_record_id = pr.id
-    WHERE ${filters.join(' AND ')}
+    WHERE ${filters.length ? filters.join(' AND ') : '1 = 1'}
     GROUP BY
       pr.id,
       pr.legacy_purchase_id,
@@ -929,16 +949,21 @@ export async function listProfitPurchases(env, options = {}) {
 }
 
 export async function listProfitSales(env, options = {}) {
-  const month = normalizeMonth(options.month);
+  const month = normalizeRecordListMonth(options.month);
   const type = normalizeSalesType(options.type);
   const status = normalizeStatus(options.status);
   const machineId = normalizeMachineId(options.machineId);
   const limit = normalizeLimit(options.limit);
   const search = String(options.search || '').trim();
+  const productGlobalId = String(options.productGlobalId || '').trim();
   const machineFilter = machineFilterFor('sr.machine_id', machineId);
-  const filters = ['sr.year_month = ?'];
-  const params = [month];
+  const filters = [];
+  const params = [];
 
+  if (month) {
+    filters.push('sr.year_month = ?');
+    params.push(month);
+  }
   if (type !== 'all') {
     filters.push('sr.type = ?');
     params.push(type);
@@ -950,6 +975,15 @@ export async function listProfitSales(env, options = {}) {
   if (machineFilter.sql) {
     filters.push(machineFilter.sql.replace(/^AND\s+/i, ''));
     params.push(...machineFilter.params);
+  }
+  if (productGlobalId) {
+    filters.push(`EXISTS (
+      SELECT 1
+      FROM sales_record_items product_sri
+      WHERE product_sri.sales_record_id = sr.id
+        AND product_sri.product_global_id = ?
+    )`);
+    params.push(productGlobalId);
   }
   if (search) {
     filters.push(`(
@@ -997,7 +1031,7 @@ export async function listProfitSales(env, options = {}) {
       COUNT(sri.id) AS item_count
     FROM sales_records sr
     LEFT JOIN sales_record_items sri ON sri.sales_record_id = sr.id
-    WHERE ${filters.join(' AND ')}
+    WHERE ${filters.length ? filters.join(' AND ') : '1 = 1'}
     GROUP BY
       sr.id,
       sr.legacy_sales_id,

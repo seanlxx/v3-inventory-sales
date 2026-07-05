@@ -10,7 +10,8 @@ import type {
 const defaultFilters: ProfitPurchaseFilters = {
   month: new Date().toISOString().slice(0, 7),
   status: 'active',
-  search: ''
+  search: '',
+  productGlobalId: ''
 }
 
 export function useProfitPurchases() {
@@ -45,6 +46,7 @@ export function useProfitPurchases() {
           month: filters.month,
           status: filters.status,
           search: filters.search,
+          productGlobalId: filters.productGlobalId || undefined,
           limit: '200'
         }
       })

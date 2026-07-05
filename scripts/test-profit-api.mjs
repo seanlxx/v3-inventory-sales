@@ -158,6 +158,14 @@ assert.equal(purchases.rows[0].totalCost, 6);
 assert.equal(purchases.rows[0].quantity, 3);
 assert.equal(purchases.rows[0].items[0].productName, 'Cola');
 
+const productPurchasesResponse = await getPurchases({
+  request: new Request('https://example.test/api/profit/purchases?month=all&status=all&productGlobalId=pg-cola'),
+  env
+});
+const productPurchases = await productPurchasesResponse.json();
+assert.equal(productPurchases.rows.length, 1);
+assert.equal(productPurchases.rows[0].id, 'pr-1');
+
 const salesResponse = await getSales({
   request: new Request('https://example.test/api/profit/sales?month=2026-06&machineId=1号机'),
   env
@@ -180,6 +188,15 @@ const filteredSales = await filteredSalesResponse.json();
 assert.equal(filteredSales.rows.length, 1);
 assert.equal(filteredSales.rows[0].id, 'sr-water');
 assert.equal(filteredSales.rows[0].netRevenue, 3);
+
+const productSalesResponse = await getSales({
+  request: new Request('https://example.test/api/profit/sales?month=all&status=all&productGlobalId=pg-cola'),
+  env
+});
+const productSales = await productSalesResponse.json();
+assert.equal(productSales.rows.length, 2);
+assert.equal(productSales.rows[0].id, 'sr-refund');
+assert.equal(productSales.rows[1].id, 'sr-sale');
 
 seedCurrentTrendRows();
 const currentTrendResponse = await getSummary({

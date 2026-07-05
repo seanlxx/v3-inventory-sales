@@ -45,6 +45,25 @@ function clearProductQuery() {
   router.replace({ query: nextQuery })
 }
 
+function applyProductFilterQuery() {
+  const productFilterId = queryText(route.query.productFilterId)
+  if (!productFilterId) return
+  updateFilters({
+    productGlobalId: productFilterId,
+    month: queryText(route.query.month) || 'all',
+    status: 'all',
+    search: ''
+  })
+}
+
+function clearProductFilter() {
+  const nextQuery = { ...route.query }
+  delete nextQuery.productFilterId
+  if (nextQuery.month === 'all' || nextQuery.month === '全部') delete nextQuery.month
+  router.replace({ query: nextQuery })
+  updateFilters({ productGlobalId: '' })
+}
+
 function openCreate(productGlobalId: string | null = null) {
   editingRecord.value = null
   viewingRecord.value = null
@@ -87,13 +106,17 @@ async function voidPurchase(record: ProfitPurchaseRecord) {
   toast.show('进货已作废', 'success')
 }
 
-watch(() => [filters.month, filters.status, filters.search] as const, () => {
+watch(() => [filters.month, filters.status, filters.search, filters.productGlobalId] as const, () => {
   loadRecords()
 })
 
 watch(() => route.query.productGlobalId, value => {
   const productGlobalId = queryText(value)
   if (productGlobalId) openCreate(productGlobalId)
+}, { immediate: true })
+
+watch(() => [route.query.productFilterId, route.query.month] as const, () => {
+  applyProductFilterQuery()
 }, { immediate: true })
 
 onMounted(() => {
@@ -138,6 +161,7 @@ onMounted(() => {
       :loading="loading"
       @update-filters="updateFilters"
       @refresh="loadRecords"
+      @clear-product-filter="clearProductFilter"
     />
 
     <ProfitPurchaseTable

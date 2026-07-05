@@ -81,6 +81,26 @@ async function changeProductStatus(product: ProfitProduct, status: ProfitProduct
   toast.show(status === 'archived' ? '商品已归档' : '商品已恢复', 'success')
 }
 
+function openProductPurchases(product: ProfitProduct) {
+  navigateTo({
+    path: '/purchases',
+    query: {
+      productFilterId: product.productGlobalId,
+      month: '全部'
+    }
+  })
+}
+
+function openProductSales(product: ProfitProduct) {
+  navigateTo({
+    path: '/sales',
+    query: {
+      productFilterId: product.productGlobalId,
+      month: '全部'
+    }
+  })
+}
+
 watch([() => route.query.productGlobalId, products], () => openQueryProduct(), { immediate: true })
 
 onMounted(() => {
@@ -121,6 +141,8 @@ onMounted(() => {
       @retry="loadProducts"
       @edit="openEdit"
       @update-status="changeProductStatus"
+      @view-purchases="openProductPurchases"
+      @view-sales="openProductSales"
     />
   </div>
 </template>

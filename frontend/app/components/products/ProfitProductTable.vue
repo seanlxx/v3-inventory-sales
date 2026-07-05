@@ -13,6 +13,8 @@ const emit = defineEmits<{
   retry: []
   edit: [product: ProfitProduct]
   updateStatus: [product: ProfitProduct, status: ProfitProduct['status']]
+  viewPurchases: [product: ProfitProduct]
+  viewSales: [product: ProfitProduct]
 }>()
 
 function profitTone(product: ProfitProduct) {
@@ -38,7 +40,7 @@ function profitTone(product: ProfitProduct) {
             <th scope="col" class="profit-product-table__center">销售额</th>
             <th scope="col" class="profit-product-table__center">毛利</th>
             <th scope="col" class="profit-product-table__center">状态</th>
-            <th scope="col" class="profit-product-table__center">操作</th>
+            <th scope="col" class="profit-product-table__center profit-product-table__th--actions">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -87,6 +89,12 @@ function profitTone(product: ProfitProduct) {
             </td>
             <td class="profit-product-table__center">
               <div class="profit-product-table__actions">
+                <AppButton size="sm" variant="secondary" @click="emit('viewPurchases', product)">
+                  进货
+                </AppButton>
+                <AppButton size="sm" variant="secondary" @click="emit('viewSales', product)">
+                  销售
+                </AppButton>
                 <AppButton size="sm" variant="secondary" @click="emit('edit', product)">
                   编辑
                 </AppButton>
@@ -144,6 +152,12 @@ function profitTone(product: ProfitProduct) {
             <span>毛利 {{ formatMoney(product.grossProfit) }}</span>
           </div>
           <footer class="profit-product-table__card-actions">
+            <AppButton size="sm" variant="secondary" @click="emit('viewPurchases', product)">
+              进货
+            </AppButton>
+            <AppButton size="sm" variant="secondary" @click="emit('viewSales', product)">
+              销售
+            </AppButton>
             <AppButton size="sm" variant="secondary" @click="emit('edit', product)">
               编辑
             </AppButton>
@@ -177,13 +191,17 @@ function profitTone(product: ProfitProduct) {
 
 .profit-product-table__table {
   width: 100%;
-  min-width: 1120px;
+  min-width: 1320px;
   border-collapse: collapse;
   table-layout: fixed;
 }
 
 .profit-product-table__th--product {
   width: 240px;
+}
+
+.profit-product-table__th--actions {
+  width: 260px;
 }
 
 .profit-product-table__table th,
@@ -256,7 +274,8 @@ function profitTone(product: ProfitProduct) {
 }
 
 .profit-product-table__actions {
-  display: inline-flex;
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   justify-content: center;
   gap: var(--space-2);
 }

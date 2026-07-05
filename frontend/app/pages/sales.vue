@@ -8,6 +8,8 @@ definePageMeta({
 })
 
 const toast = useToastStore()
+const route = useRoute()
+const router = useRouter()
 const {
   records,
   filters,
@@ -30,6 +32,31 @@ const {
 const showEditor = shallowRef(false)
 const editingRecord = shallowRef<ProfitSalesRecord | null>(null)
 const viewingRecord = shallowRef<ProfitSalesRecord | null>(null)
+
+function queryText(value: unknown) {
+  if (Array.isArray(value)) return String(value[0] || '')
+  return String(value || '')
+}
+
+function applyProductFilterQuery() {
+  const productFilterId = queryText(route.query.productFilterId)
+  if (!productFilterId) return
+  updateFilters({
+    productGlobalId: productFilterId,
+    month: queryText(route.query.month) || 'all',
+    type: 'all',
+    status: 'all',
+    search: ''
+  })
+}
+
+function clearProductFilter() {
+  const nextQuery = { ...route.query }
+  delete nextQuery.productFilterId
+  if (nextQuery.month === 'all' || nextQuery.month === '全部') delete nextQuery.month
+  router.replace({ query: nextQuery })
+  updateFilters({ productGlobalId: '' })
+}
 
 function openCreate() {
   editingRecord.value = null
@@ -66,9 +93,13 @@ async function voidSale(record: ProfitSalesRecord) {
   toast.show('销售已作废', 'success')
 }
 
-watch(() => [filters.month, filters.type, filters.status, filters.machineId, filters.search] as const, () => {
+watch(() => [filters.month, filters.type, filters.status, filters.machineId, filters.search, filters.productGlobalId] as const, () => {
   loadRecords()
 })
+
+watch(() => [route.query.productFilterId, route.query.month] as const, () => {
+  applyProductFilterQuery()
+}, { immediate: true })
 
 onMounted(() => {
   loadRecords()
@@ -115,6 +146,7 @@ onMounted(() => {
       :loading="loading"
       @update-filters="updateFilters"
       @refresh="loadRecords"
+      @clear-product-filter="clearProductFilter"
     />
 
     <ProfitSalesTable

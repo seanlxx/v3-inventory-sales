@@ -10,6 +10,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   updateFilters: [filters: Partial<ProfitPurchaseFilters>]
   refresh: []
+  clearProductFilter: []
 }>()
 
 function updateFilter(key: keyof ProfitPurchaseFilters, event: Event) {
@@ -33,7 +34,7 @@ function updateFilter(key: keyof ProfitPurchaseFilters, event: Event) {
       :model-value="props.filters.month"
       label="月份"
       type="text"
-      placeholder="YYYY-MM"
+      placeholder="YYYY-MM / 全部"
       @update:model-value="emit('updateFilters', { month: String($event) })"
     />
 
@@ -51,7 +52,15 @@ function updateFilter(key: keyof ProfitPurchaseFilters, event: Event) {
     </label>
 
     <div class="profit-purchase-filters__actions">
+      <StatusBadge v-if="props.filters.productGlobalId" label="已按商品筛选" tone="warning" />
       <StatusBadge :label="`${props.resultCount} 条成本凭证`" tone="info" />
+      <AppButton
+        v-if="props.filters.productGlobalId"
+        variant="ghost"
+        @click="emit('clearProductFilter')"
+      >
+        清除商品
+      </AppButton>
       <AppButton variant="secondary" :loading="props.loading" @click="emit('refresh')">
         刷新
       </AppButton>

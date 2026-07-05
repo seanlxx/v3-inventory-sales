@@ -183,6 +183,7 @@ export type ProfitPurchaseFilters = {
   month: string
   status: ProfitRecordStatus
   search: string
+  productGlobalId: string
 }
 
 export type ProfitSalesRecordType = 'sale' | 'refund' | 'loss' | 'all'
@@ -261,4 +262,5 @@ export type ProfitSalesFilters = {
   status: ProfitRecordStatus
   machineId: string
   search: string
+  productGlobalId: string
 }
