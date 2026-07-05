@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useReports } from '~/composables/useReports'
-import type { DashboardCostGapItem } from '~/types/report'
+import type { DashboardCostGapItem, DashboardException } from '~/types/report'
 
 definePageMeta({
   title: '仪表盘'
@@ -29,6 +29,16 @@ function openCostGapPurchase(item: DashboardCostGapItem) {
     path: '/purchases',
     query: {
       productGlobalId: item.productGlobalId
+    }
+  })
+}
+
+function openExceptionTarget(item: DashboardException) {
+  if (item.refType !== 'products_global' || !item.refId) return
+  navigateTo({
+    path: '/products',
+    query: {
+      productGlobalId: item.refId
     }
   })
 }
@@ -71,6 +81,7 @@ function openCostGapPurchase(item: DashboardCostGapItem) {
           title="商品合并"
           description="旧商品归并到全局商品的结果"
           empty-message="暂无商品合并"
+          @view="openExceptionTarget"
         />
       </div>
       <div class="dashboard-page__column">

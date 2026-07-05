@@ -7,7 +7,10 @@ definePageMeta({
 })
 
 const toast = useToastStore()
+const route = useRoute()
+const router = useRouter()
 const {
+  products,
   filters,
   filteredProducts,
   categoryOptions,
@@ -23,20 +26,53 @@ const {
 const showEditor = shallowRef(false)
 const editingProduct = shallowRef<ProfitProduct | null>(null)
 
+function queryText(value: unknown) {
+  if (Array.isArray(value)) return String(value[0] || '')
+  return String(value || '')
+}
+
+function clearProductQuery() {
+  if (!route.query.productGlobalId) return
+  const nextQuery = { ...route.query }
+  delete nextQuery.productGlobalId
+  router.replace({ query: nextQuery })
+}
+
 function openCreate() {
   editingProduct.value = null
   showEditor.value = true
+  clearProductQuery()
 }
 
-function openEdit(product: ProfitProduct) {
+function openEdit(product: ProfitProduct, keepQuery = false) {
   editingProduct.value = product
   showEditor.value = true
+  if (!keepQuery) clearProductQuery()
+}
+
+function closeEditor() {
+  showEditor.value = false
+  editingProduct.value = null
+  clearProductQuery()
+}
+
+function openQueryProduct() {
+  const productGlobalId = queryText(route.query.productGlobalId)
+  if (!productGlobalId) return
+  if (editingProduct.value?.productGlobalId === productGlobalId && showEditor.value) return
+  const product = products.value.find(item => item.productGlobalId === productGlobalId)
+  if (!product) return
+  openEdit(product, true)
+  updateFilters({
+    search: product.productName,
+    status: 'all',
+    category: 'all'
+  })
 }
 
 async function submitProduct(payload: ProfitProductPayload) {
   await saveProduct(payload)
-  showEditor.value = false
-  editingProduct.value = null
+  closeEditor()
   toast.show('商品已保存', 'success')
 }
 
@@ -44,6 +80,8 @@ async function changeProductStatus(product: ProfitProduct, status: ProfitProduct
   await updateProductStatus(product.productGlobalId, status)
   toast.show(status === 'archived' ? '商品已归档' : '商品已恢复', 'success')
 }
+
+watch([() => route.query.productGlobalId, products], () => openQueryProduct(), { immediate: true })
 
 onMounted(() => {
   loadProducts()
@@ -53,7 +91,7 @@ onMounted(() => {
 <template>
   <div class="products-page">
     <div class="products-page__actions">
-      <AppButton type="button" @click="openCreate">
+      <AppButton type="button" @click="openCreate()">
         新增商品
       </AppButton>
     </div>
@@ -64,7 +102,7 @@ onMounted(() => {
       :categories="categoryOptions"
       :saving="saving"
       @submit="submitProduct"
-      @cancel="showEditor = false"
+      @cancel="closeEditor"
     />
 
     <ProfitProductFilters

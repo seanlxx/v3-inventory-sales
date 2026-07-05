@@ -10,6 +10,10 @@ const props = defineProps<{
   emptyMessage?: string
 }>()
 
+const emit = defineEmits<{
+  view: [item: DashboardException]
+}>()
+
 function toneFor(type: DashboardException['type']) {
   if (type === 'cost_gap') return 'warning'
   if (type === 'product_merge') return 'info'
@@ -49,6 +53,14 @@ function labelFor(type: DashboardException['type']) {
           <strong>{{ item.title }}</strong>
           <span>{{ formatDateTime(item.occurredAt) }}</span>
         </div>
+        <AppButton
+          v-if="item.refType === 'products_global' && item.refId"
+          size="sm"
+          variant="secondary"
+          @click="emit('view', item)"
+        >
+          查看商品
+        </AppButton>
       </article>
     </div>
   </section>
@@ -88,7 +100,7 @@ function labelFor(type: DashboardException['type']) {
 .exceptions-panel__item {
   min-width: 0;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: var(--space-3);
   align-items: start;
   padding: var(--space-3);
@@ -111,6 +123,14 @@ function labelFor(type: DashboardException['type']) {
 @media (max-width: 760px) {
   .exceptions-panel {
     padding: var(--space-3);
+  }
+
+  .exceptions-panel__item {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .exceptions-panel__item :deep(.app-button) {
+    grid-column: 1 / -1;
   }
 }
 </style>
