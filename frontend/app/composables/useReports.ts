@@ -70,6 +70,16 @@ function mapProfitSummary(summary: ProfitSummary): DashboardReport {
     cogs: point.cogs,
     profit: point.grossProfit
   }))
+  const salesTrendByMachine = (summary.dailyTrendByMachine ?? []).map(series => ({
+    machineId: series.machineId,
+    points: series.points.map(point => ({
+      date: point.date,
+      gross: point.grossSales,
+      received: point.netRevenue,
+      cogs: point.cogs,
+      profit: point.grossProfit
+    }))
+  }))
   const machineRanking = summary.machineRanking.map(item => ({
     machineId: item.machineId,
     revenue: item.netRevenue,
@@ -91,7 +101,7 @@ function mapProfitSummary(summary: ProfitSummary): DashboardReport {
       costGapCount: summary.kpis.missingCostProductCount
     },
     salesTrend,
-    salesTrendByMachine: [],
+    salesTrendByMachine,
     machineRanking,
     profitBreakdown: machineRanking,
     costGaps: summary.costGaps.map(mapCostGap),

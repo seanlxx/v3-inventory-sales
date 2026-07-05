@@ -24,6 +24,11 @@ export type ProfitTrendPoint = {
   orderCount: number
 }
 
+export type ProfitMachineTrendSeries = {
+  machineId: string
+  points: ProfitTrendPoint[]
+}
+
 export type ProfitMachineRankingItem = {
   machineId: string
   netRevenue: number
@@ -67,6 +72,7 @@ export type ProfitSummary = {
   machineId: string
   kpis: ProfitKpis
   dailyTrend: ProfitTrendPoint[]
+  dailyTrendByMachine: ProfitMachineTrendSeries[]
   machineRanking: ProfitMachineRankingItem[]
   productRanking: ProfitProductRankingItem[]
   costGaps: ProfitCostGap[]

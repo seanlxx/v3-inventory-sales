@@ -146,6 +146,7 @@ export async function getProfitSummary(env, options = {}) {
     missingCostProductCount,
     mergedProductCount,
     dailyTrend,
+    dailyTrendByMachine,
     machineRanking,
     productRanking,
     costGaps,
@@ -157,6 +158,7 @@ export async function getProfitSummary(env, options = {}) {
     getMissingCostProductCount(env, month, machineId),
     getMergedProductCount(env),
     getDailyTrend(env, days, machineId),
+    getDailyTrendByMachine(env, days, machineId),
     getMachineRanking(env, month),
     getProductRanking(env, month, machineId),
     listCostGaps(env, { month, machineId, limit: 8 }),
@@ -168,6 +170,7 @@ export async function getProfitSummary(env, options = {}) {
     machineId: machineId || 'all',
     kpis: toSummaryKpis(totals, quantity, purchaseCost, missingCostProductCount, mergedProductCount),
     dailyTrend,
+    dailyTrendByMachine,
     machineRanking,
     productRanking,
     costGaps,
@@ -283,6 +286,55 @@ async function getDailyTrend(env, days, machineId) {
       cogs: money(row.cogs_cents),
       grossProfit: money(row.gross_profit_cents),
       orderCount: Number(row.order_count) || 0
+    };
+  });
+}
+
+async function getDailyTrendByMachine(env, days, machineId) {
+  const dates = dateSeries(days);
+  const startDate = dates[0];
+  const filter = machineFilterFor('machine_id', machineId);
+  const displayMachineSql = machineSql('machine_id');
+  const rows = await all(env.DB, `
+    SELECT
+      record_date AS date,
+      ${displayMachineSql} AS machine_id,
+      COALESCE(SUM(gross_amount_cents), 0) AS gross_sales_cents,
+      COALESCE(SUM(refund_amount_cents), 0) AS refunds_cents,
+      COALESCE(SUM(net_revenue_cents), 0) AS net_revenue_cents,
+      COALESCE(SUM(${signedCogsSql()}), 0) AS cogs_cents,
+      COALESCE(SUM(gross_profit_cents), 0) AS gross_profit_cents,
+      COUNT(*) AS order_count
+    FROM sales_records
+    WHERE status = 'active'
+      AND type IN ('sale', 'refund')
+      AND record_date >= ?
+      ${filter.sql}
+    GROUP BY record_date, ${displayMachineSql}
+    ORDER BY ${displayMachineSql}, record_date
+  `, [startDate, ...filter.params]);
+
+  const machines = Array.from(new Set(rows.map(row => row.machine_id))).filter(Boolean);
+  return machines.map(machine => {
+    const rowMap = new Map(
+      rows
+        .filter(row => row.machine_id === machine)
+        .map(row => [row.date, row])
+    );
+    return {
+      machineId: machine,
+      points: dates.map(date => {
+        const row = rowMap.get(date) || {};
+        return {
+          date,
+          grossSales: money(row.gross_sales_cents),
+          refunds: money(row.refunds_cents),
+          netRevenue: money(row.net_revenue_cents),
+          cogs: money(row.cogs_cents),
+          grossProfit: money(row.gross_profit_cents),
+          orderCount: Number(row.order_count) || 0
+        };
+      })
     };
   });
 }

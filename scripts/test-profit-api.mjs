@@ -181,6 +181,18 @@ assert.equal(filteredSales.rows.length, 1);
 assert.equal(filteredSales.rows[0].id, 'sr-water');
 assert.equal(filteredSales.rows[0].netRevenue, 3);
 
+seedCurrentTrendRows();
+const currentTrendResponse = await getSummary({
+  request: new Request(`https://example.test/api/profit/summary?month=${new Date().toISOString().slice(0, 7)}&days=3`),
+  env
+});
+const currentTrend = await currentTrendResponse.json();
+assert.equal(currentTrend.dailyTrendByMachine.length, 2);
+const machineOneTrend = currentTrend.dailyTrendByMachine.find(series => series.machineId === '1号机');
+const machineTwoTrend = currentTrend.dailyTrendByMachine.find(series => series.machineId === '2号机');
+assert.equal(machineOneTrend.points.at(-1).grossSales, 7);
+assert.equal(machineTwoTrend.points.at(-1).grossSales, 3);
+
 const manualProductResponse = await postProduct({
   request: jsonRequest('https://example.test/api/profit/products', {
     productName: 'Manual Tea',
@@ -321,6 +333,28 @@ function jsonRequest(url, body) {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body)
   });
+}
+
+function seedCurrentTrendRows() {
+  const date = new Date().toISOString().slice(0, 10);
+  const month = date.slice(0, 7);
+  env.DB.exec(`
+    INSERT INTO sales_records (
+      id, legacy_sales_id, type, machine_id, record_date, year_month, source,
+      gross_amount_cents, refund_amount_cents, platform_fee_cents, service_fee_cents,
+      discount_cents, net_revenue_cents, total_cogs_cents, gross_profit_cents,
+      status, created_at, updated_at
+    ) VALUES
+      ('sr-trend-1', 'so-trend-1', 'sale', '1号机', '${date}', '${month}', 'manual', 700, 0, 0, 0, 0, 700, 200, 500, 'active', '${date}T00:00:00.000Z', '${date}T00:00:00.000Z'),
+      ('sr-trend-2', 'so-trend-2', 'sale', '2号机', '${date}', '${month}', 'manual', 300, 0, 0, 0, 0, 300, 100, 200, 'active', '${date}T00:00:00.000Z', '${date}T00:00:00.000Z');
+
+    INSERT INTO sales_record_items (
+      id, sales_record_id, product_global_id, legacy_sales_item_id, legacy_product_id,
+      quantity, unit_price_cents, line_amount_cents, unit_cost_cents, line_cogs_cents, created_at
+    ) VALUES
+      ('sri-trend-1', 'sr-trend-1', 'pg-cola', 'si-trend-1', 'p-cola-1', 1, 700, 700, 200, 200, '${date}T00:00:00.000Z'),
+      ('sri-trend-2', 'sr-trend-2', 'pg-water', 'si-trend-2', 'p-water', 1, 300, 300, 100, 100, '${date}T00:00:00.000Z');
+  `);
 }
 
 function seedProfitRows() {
