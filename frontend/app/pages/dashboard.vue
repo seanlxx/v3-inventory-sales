@@ -68,10 +68,9 @@ onMounted(() => {
           :items="report?.profitBreakdown ?? []"
           :loading="loading"
         />
-        <LowStockPanel
-          :items="report?.lowStock ?? []"
+        <CostGapPanel
+          :items="report?.costGaps ?? []"
           :loading="loading"
-          variant="cost"
         />
       </div>
     </div>

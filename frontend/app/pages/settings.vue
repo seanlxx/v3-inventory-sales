@@ -2,7 +2,6 @@
 import { useSettings } from '~/composables/useSettings'
 import { useAiSessionKey } from '~/composables/useAiSessionKey'
 import { useTheme } from '~/composables/useTheme'
-import type { BusinessSettings } from '~/types/settings'
 import type { UpdateAuthPayload } from '~/types/auth'
 
 definePageMeta({
@@ -24,16 +23,11 @@ const {
   accountSaving,
   error,
   loadSettings,
-  saveBusinessSettings,
   saveMachines,
   saveCategories,
   updateAccount
 } = useSettings()
 
-const businessDraft = reactive({
-  lowStockThreshold: '3',
-  restockTargetDays: '7'
-})
 const machinesDraft = shallowRef('')
 const categoriesDraft = shallowRef('')
 const aiApiKeyDraft = shallowRef('')
@@ -41,9 +35,6 @@ const aiApiKeyError = shallowRef('')
 const aiApiKeyConfigured = computed(() => aiSessionKey.isConfigured.value)
 
 function syncDrafts() {
-  const business = settings.value.businessSettings
-  businessDraft.lowStockThreshold = String(business.lowStockThreshold)
-  businessDraft.restockTargetDays = String(business.restockTargetDays)
   machinesDraft.value = settings.value.machines.join('\n')
   categoriesDraft.value = settings.value.categories.join('\n')
 }
@@ -55,14 +46,6 @@ function parseLines(value: string) {
       .map(item => item.trim())
       .filter(Boolean)
   ))
-}
-
-async function submitBusinessSettings() {
-  const payload: BusinessSettings = {
-    lowStockThreshold: Number(businessDraft.lowStockThreshold),
-    restockTargetDays: Number(businessDraft.restockTargetDays)
-  }
-  await saveBusinessSettings(payload)
 }
 
 async function submitLists() {
@@ -180,32 +163,6 @@ onMounted(async () => {
       />
     </SettingsSection>
 
-    <SettingsSection title="业务参数" description="用于库存提醒和补货建议的基础参数。">
-      <form class="settings-page__form" @submit.prevent="submitBusinessSettings">
-        <div class="settings-page__grid">
-          <AppInput
-            v-model="businessDraft.lowStockThreshold"
-            label="低库存阈值"
-            type="number"
-            step="1"
-            placeholder="3"
-          />
-          <AppInput
-            v-model="businessDraft.restockTargetDays"
-            label="补货目标天数"
-            type="number"
-            step="1"
-            placeholder="7"
-          />
-        </div>
-        <div class="settings-page__actions">
-          <AppButton type="submit" :loading="saving">
-            保存业务参数
-          </AppButton>
-        </div>
-      </form>
-    </SettingsSection>
-
     <SettingsSection title="售货机与分类" description="每行填写一个名称，也可以用逗号分隔。">
       <form class="settings-page__form" @submit.prevent="submitLists">
         <div class="settings-page__grid settings-page__grid--two">
@@ -265,7 +222,6 @@ onMounted(async () => {
       <ZnImportCard />
     </ClientOnly>
 
-    <VendorSyncCard />
   </div>
 </template>
 

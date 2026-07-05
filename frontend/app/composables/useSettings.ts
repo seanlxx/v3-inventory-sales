@@ -1,15 +1,9 @@
 import type { ApiError } from '~/types/api'
 import type {
-  BusinessSettings,
   SettingEntry,
   SettingsState
 } from '~/types/settings'
 import type { UpdateAuthPayload } from '~/types/auth'
-
-const defaultBusinessSettings: BusinessSettings = {
-  lowStockThreshold: 3,
-  restockTargetDays: 7
-}
 
 const defaultMachines = ['1号机', '2号机']
 const defaultCategories = ['饮料', '零食', '日用品', '烟酒', '其他']
@@ -35,30 +29,9 @@ function normalizeStringList(value: unknown, fallback: readonly string[]) {
   return unique.length ? unique : [...fallback]
 }
 
-function normalizeBusinessSettings(entries: Map<string, unknown>): BusinessSettings {
-  const bundled = parseMaybeJson(entries.get('businessSettings'))
-  const objectValue = bundled && typeof bundled === 'object' && !Array.isArray(bundled)
-    ? bundled as Partial<BusinessSettings>
-    : {}
-
-  return {
-    lowStockThreshold: normalizeInteger(
-      objectValue.lowStockThreshold ?? entries.get('lowStockThreshold'),
-      defaultBusinessSettings.lowStockThreshold,
-      0
-    ),
-    restockTargetDays: normalizeInteger(
-      objectValue.restockTargetDays ?? entries.get('restockTargetDays'),
-      defaultBusinessSettings.restockTargetDays,
-      1
-    )
-  }
-}
-
 function mapSettings(entries: SettingEntry[]): SettingsState {
   const byKey = new Map(entries.map(entry => [entry.key, entry.value]))
   return {
-    businessSettings: normalizeBusinessSettings(byKey),
     machines: normalizeStringList(byKey.get('machines'), defaultMachines),
     categories: normalizeStringList(byKey.get('categories'), defaultCategories)
   }
@@ -70,7 +43,6 @@ export function useSettings() {
   const authStore = useAuthStore()
 
   const settings = shallowRef<SettingsState>({
-    businessSettings: { ...defaultBusinessSettings },
     machines: [...defaultMachines],
     categories: [...defaultCategories]
   })
@@ -98,29 +70,6 @@ export function useSettings() {
       method: 'POST',
       body: { key, value }
     })
-  }
-
-  async function saveBusinessSettings(payload: BusinessSettings) {
-    saving.value = true
-    error.value = null
-    try {
-      const normalized: BusinessSettings = {
-        lowStockThreshold: normalizeInteger(payload.lowStockThreshold, defaultBusinessSettings.lowStockThreshold, 0),
-        restockTargetDays: normalizeInteger(payload.restockTargetDays, defaultBusinessSettings.restockTargetDays, 1)
-      }
-      await Promise.all([
-        saveSetting('businessSettings', normalized),
-        saveSetting('lowStockThreshold', normalized.lowStockThreshold),
-        saveSetting('restockTargetDays', normalized.restockTargetDays)
-      ])
-      settings.value = { ...settings.value, businessSettings: normalized }
-      toastStore.show('业务参数已保存', 'success')
-    } catch (caught) {
-      error.value = normalizeApiError(caught)
-      throw error.value
-    } finally {
-      saving.value = false
-    }
   }
 
   async function saveMachines(machines: string[]) {
@@ -176,7 +125,6 @@ export function useSettings() {
     accountSaving,
     error,
     loadSettings,
-    saveBusinessSettings,
     saveMachines,
     saveCategories,
     updateAccount

@@ -1,7 +1,6 @@
 import type { ApiError } from '~/types/api'
-import type { InventoryBalance } from '~/types/inventory'
 import type { ProfitCostGap, ProfitProductMerge, ProfitSummary } from '~/types/profit'
-import type { DashboardFilters, DashboardReport } from '~/types/report'
+import type { DashboardCostGapItem, DashboardFilters, DashboardReport } from '~/types/report'
 import { machineOptionsWithDefaults } from '~/utils/machines'
 
 function currentMonth() {
@@ -23,8 +22,7 @@ export function useReports() {
   const machineOptions = computed(() => {
     return machineOptionsWithDefaults([
       ...(report.value?.machineRanking.map(item => item.machineId) ?? []),
-      ...(report.value?.salesTrendByMachine?.map(series => series.machineId) ?? []),
-      ...(report.value?.lowStock.map(item => item.machineId) ?? [])
+      ...(report.value?.salesTrendByMachine?.map(series => series.machineId) ?? [])
     ])
   })
 
@@ -90,28 +88,24 @@ function mapProfitSummary(summary: ProfitSummary): DashboardReport {
       profitRate: summary.kpis.profitRate,
       purchaseCost: summary.kpis.purchaseCost,
       refunds: summary.kpis.refunds,
-      lowStockCount: summary.kpis.missingCostProductCount
+      costGapCount: summary.kpis.missingCostProductCount
     },
     salesTrend,
     salesTrendByMachine: [],
     machineRanking,
     profitBreakdown: machineRanking,
-    lowStock: summary.costGaps.map(mapCostGap),
+    costGaps: summary.costGaps.map(mapCostGap),
     recentExceptions: summary.productMerges.map(mapProductMerge)
   }
 }
 
-function mapCostGap(item: ProfitCostGap): InventoryBalance {
+function mapCostGap(item: ProfitCostGap): DashboardCostGapItem {
   return {
-    productId: item.productGlobalId,
+    productGlobalId: item.productGlobalId,
     productName: item.productName,
-    machineId: '全局商品',
     category: '成本缺口',
-    quantityOnHand: item.quantity,
-    avgCost: 0,
-    inventoryValue: item.salesAmount,
-    lowStockThreshold: 0,
-    isLowStock: true
+    quantity: item.quantity,
+    salesAmount: item.salesAmount
   }
 }
 

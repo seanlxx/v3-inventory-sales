@@ -45,10 +45,10 @@ const kpiItems = computed(() => [
     tone: 'warning'
   },
   {
-    key: 'lowStockCount',
+    key: 'costGapCount',
     label: '成本缺口',
-    value: `${Number(props.kpis?.lowStockCount || 0)} 项`,
-    tone: Number(props.kpis?.lowStockCount || 0) > 0 ? 'danger' : 'success'
+    value: `${Number(props.kpis?.costGapCount || 0)} 项`,
+    tone: Number(props.kpis?.costGapCount || 0) > 0 ? 'danger' : 'success'
   }
 ])
 </script>

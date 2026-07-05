@@ -1,5 +1,3 @@
-import type { InventoryBalance } from '~/types/inventory'
-
 export type DashboardKpis = {
   todayRevenue: number
   monthRevenue: number
@@ -9,7 +7,7 @@ export type DashboardKpis = {
   profitRate: number
   purchaseCost: number
   refunds: number
-  lowStockCount: number
+  costGapCount: number
 }
 
 export type SalesTrendPoint = {
@@ -45,6 +43,14 @@ export type DashboardException = {
   refId?: string
 }
 
+export type DashboardCostGapItem = {
+  productGlobalId: string
+  productName: string
+  category: string
+  quantity: number
+  salesAmount: number
+}
+
 export type DashboardReport = {
   month: string
   kpis: DashboardKpis
@@ -52,7 +58,7 @@ export type DashboardReport = {
   salesTrendByMachine: SalesTrendMachineSeries[]
   machineRanking: MachineRankingItem[]
   profitBreakdown: ProfitBreakdownItem[]
-  lowStock: InventoryBalance[]
+  costGaps: DashboardCostGapItem[]
   recentExceptions: DashboardException[]
 }
 
