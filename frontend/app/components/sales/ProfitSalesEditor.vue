@@ -14,46 +14,106 @@ const emit = defineEmits<{
 }>()
 
 const today = () => new Date().toISOString().slice(0, 10)
+const lineKey = () => `line-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+
+type SalesLineDraft = {
+  key: string
+  productGlobalId: string
+  quantity: number
+  unitPrice: number
+  unitCost: number
+}
 
 const draft = reactive({
   type: 'sale' as ProfitSalesPayload['type'],
   machineId: '1号机',
   recordDate: today(),
-  productGlobalId: '',
-  quantity: 1,
-  unitPrice: 0,
-  unitCost: 0,
   platformFee: 0,
   serviceFee: 0,
   discount: 0,
   externalId: '',
-  note: ''
+  note: '',
+  items: [] as SalesLineDraft[]
 })
 
 const title = computed(() => props.record ? '编辑销售' : '新增销售')
 
 const productOptions = computed(() =>
-  props.products.filter(product => product.status === 'active')
+  props.products.filter(product =>
+    product.status === 'active'
+    || draft.items.some(item => item.productGlobalId === product.productGlobalId)
+  )
 )
 
 const machineOptions = computed(() =>
   props.machines.filter(machine => machine !== 'all')
 )
 
+const lineAmount = computed(() =>
+  draft.items.reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0), 0)
+)
+
+const cogsAmount = computed(() =>
+  draft.items.reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.unitCost) || 0), 0)
+)
+
+const feesAmount = computed(() =>
+  (Number(draft.platformFee) || 0) + (Number(draft.serviceFee) || 0) + (Number(draft.discount) || 0)
+)
+
+const canSubmit = computed(() =>
+  !!draft.machineId
+  && draft.items.length > 0
+  && draft.items.every(item => item.productGlobalId && Number(item.quantity) > 0)
+)
+
+function productDefault(productGlobalId: string, key: 'defaultSellPrice' | 'lastCost') {
+  return props.products.find(product => product.productGlobalId === productGlobalId)?.[key] || 0
+}
+
+function emptyLine(): SalesLineDraft {
+  const productGlobalId = productOptions.value[0]?.productGlobalId || ''
+  return {
+    key: lineKey(),
+    productGlobalId,
+    quantity: 1,
+    unitPrice: productDefault(productGlobalId, 'defaultSellPrice'),
+    unitCost: productDefault(productGlobalId, 'lastCost')
+  }
+}
+
+function applyProductDefaults(item: SalesLineDraft, force = false) {
+  if (force || !item.unitPrice) item.unitPrice = productDefault(item.productGlobalId, 'defaultSellPrice')
+  if (force || !item.unitCost) item.unitCost = productDefault(item.productGlobalId, 'lastCost')
+}
+
 function syncDraft() {
-  const item = props.record?.items[0]
   draft.type = props.record?.type || 'sale'
   draft.machineId = props.record?.machineId || machineOptions.value[0] || '1号机'
   draft.recordDate = props.record?.recordDate || today()
-  draft.productGlobalId = item?.productGlobalId || productOptions.value[0]?.productGlobalId || ''
-  draft.quantity = item?.quantity || 1
-  draft.unitPrice = item?.unitPrice || 0
-  draft.unitCost = item?.unitCost || 0
   draft.platformFee = props.record?.platformFee || 0
   draft.serviceFee = props.record?.serviceFee || 0
   draft.discount = props.record?.discount || 0
   draft.externalId = props.record?.externalId || ''
   draft.note = props.record?.note || ''
+  draft.items = props.record?.items.length
+    ? props.record.items.map(item => ({
+        key: lineKey(),
+        productGlobalId: item.productGlobalId,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        unitCost: item.unitCost
+      }))
+    : [emptyLine()]
+}
+
+function addLine() {
+  draft.items.push(emptyLine())
+}
+
+function removeLine(index: number) {
+  if (draft.items.length <= 1) return
+  draft.items.splice(index, 1)
 }
 
 function submit() {
@@ -68,16 +128,23 @@ function submit() {
     platformFee: Number(draft.platformFee) || 0,
     serviceFee: Number(draft.serviceFee) || 0,
     discount: Number(draft.discount) || 0,
-    items: [{
-      productGlobalId: draft.productGlobalId,
-      quantity: Number(draft.quantity) || 0,
-      unitPrice: Number(draft.unitPrice) || 0,
-      unitCost: Number(draft.unitCost) || 0
-    }]
+    items: draft.items.map(item => ({
+      productGlobalId: item.productGlobalId,
+      quantity: Number(item.quantity) || 0,
+      unitPrice: Number(item.unitPrice) || 0,
+      unitCost: Number(item.unitCost) || 0
+    }))
   })
 }
 
-watch([() => props.record, productOptions, machineOptions], syncDraft, { immediate: true })
+watch(() => props.record, syncDraft, { immediate: true })
+
+watch(productOptions, () => {
+  for (const item of draft.items) {
+    if (!item.productGlobalId) item.productGlobalId = productOptions.value[0]?.productGlobalId || ''
+    if (!props.record && item.productGlobalId) applyProductDefaults(item)
+  }
+})
 </script>
 
 <template>
@@ -111,32 +178,81 @@ watch([() => props.record, productOptions, machineOptions], syncDraft, { immedia
         </select>
       </label>
       <AppInput v-model="draft.recordDate" label="日期" type="date" />
-      <label class="profit-editor__field profit-editor__field--product">
-        <span>商品</span>
-        <select v-model="draft.productGlobalId">
-          <option value="">请选择</option>
-          <option
-            v-for="product in productOptions"
-            :key="product.productGlobalId"
-            :value="product.productGlobalId"
-          >
-            {{ product.productName }}
-          </option>
-        </select>
-      </label>
-      <AppInput v-model="draft.quantity" label="数量" type="number" step="1" />
-      <AppInput v-model="draft.unitPrice" label="单价" type="number" step="0.01" />
-      <AppInput v-model="draft.unitCost" label="单位成本" type="number" step="0.01" />
       <AppInput v-model="draft.platformFee" label="手续费" type="number" step="0.01" />
       <AppInput v-model="draft.serviceFee" label="服务费" type="number" step="0.01" />
       <AppInput v-model="draft.discount" label="优惠" type="number" step="0.01" />
       <AppInput v-model="draft.externalId" label="外部单号" autocomplete="off" />
       <AppInput v-model="draft.note" label="备注" autocomplete="off" />
+
+      <div class="profit-editor__totals">
+        <span>销售额 {{ lineAmount.toFixed(2) }}</span>
+        <span>成本 {{ cogsAmount.toFixed(2) }}</span>
+        <span>费用 {{ feesAmount.toFixed(2) }}</span>
+      </div>
+
+      <div class="profit-editor__lines" aria-label="销售明细">
+        <div
+          v-for="(item, index) in draft.items"
+          :key="item.key"
+          class="profit-editor__line"
+        >
+          <label class="profit-editor__field profit-editor__field--product">
+            <span>商品</span>
+            <select v-model="item.productGlobalId" @change="applyProductDefaults(item, true)">
+              <option value="">请选择</option>
+              <option
+                v-for="product in productOptions"
+                :key="product.productGlobalId"
+                :value="product.productGlobalId"
+              >
+                {{ product.productName }}
+              </option>
+            </select>
+          </label>
+          <AppInput
+            :id="`sales-qty-${item.key}`"
+            v-model="item.quantity"
+            label="数量"
+            type="number"
+            step="1"
+          />
+          <AppInput
+            :id="`sales-price-${item.key}`"
+            v-model="item.unitPrice"
+            label="单价"
+            type="number"
+            step="0.01"
+          />
+          <AppInput
+            :id="`sales-cost-${item.key}`"
+            v-model="item.unitCost"
+            label="单位成本"
+            type="number"
+            step="0.01"
+          />
+          <div class="profit-editor__line-total">
+            <span>小计</span>
+            <strong>{{ ((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0)).toFixed(2) }}</strong>
+          </div>
+          <AppButton
+            type="button"
+            variant="ghost"
+            :disabled="draft.items.length <= 1"
+            @click="removeLine(index)"
+          >
+            删除
+          </AppButton>
+        </div>
+      </div>
+
       <div class="profit-editor__actions">
+        <AppButton type="button" variant="secondary" @click="addLine">
+          添加明细
+        </AppButton>
         <AppButton type="button" variant="secondary" @click="emit('cancel')">
           取消
         </AppButton>
-        <AppButton type="submit" :loading="props.saving" :disabled="!draft.productGlobalId">
+        <AppButton type="submit" :loading="props.saving" :disabled="!canSubmit">
           保存销售
         </AppButton>
       </div>
@@ -173,6 +289,48 @@ watch([() => props.record, productOptions, machineOptions], syncDraft, { immedia
   align-items: end;
 }
 
+.profit-editor__lines,
+.profit-editor__totals {
+  grid-column: 1 / -1;
+}
+
+.profit-editor__lines {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.profit-editor__line {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 90px 110px 110px 110px auto;
+  gap: var(--space-2);
+  align-items: end;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2);
+  background: var(--color-surface-subtle);
+}
+
+.profit-editor__totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.profit-editor__totals span,
+.profit-editor__line-total {
+  min-height: var(--control-height);
+  display: grid;
+  align-content: center;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .profit-editor__field {
   min-width: 0;
   display: grid;
@@ -187,6 +345,16 @@ watch([() => props.record, productOptions, machineOptions], syncDraft, { immedia
   color: var(--color-text-muted);
   font-size: 12px;
   font-weight: 700;
+}
+
+.profit-editor__line-total span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.profit-editor__line-total strong {
+  font-family: var(--font-mono);
 }
 
 .profit-editor__field select {
@@ -211,6 +379,10 @@ watch([() => props.record, productOptions, machineOptions], syncDraft, { immedia
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .profit-editor__line {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .profit-editor__actions {
     grid-column: 1 / -1;
   }
@@ -226,6 +398,10 @@ watch([() => props.record, productOptions, machineOptions], syncDraft, { immedia
   }
 
   .profit-editor__form {
+    grid-template-columns: 1fr;
+  }
+
+  .profit-editor__line {
     grid-template-columns: 1fr;
   }
 

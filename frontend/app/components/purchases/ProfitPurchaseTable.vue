@@ -24,7 +24,7 @@ function firstItems(record: ProfitPurchaseRecord) {
 }
 
 function canMutate(record: ProfitPurchaseRecord) {
-  return record.status === 'active' && !record.legacyPurchaseId && record.itemCount <= 1
+  return record.status === 'active' && !record.legacyPurchaseId
 }
 </script>
 

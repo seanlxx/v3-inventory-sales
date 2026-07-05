@@ -205,18 +205,29 @@ const manualPurchaseResponse = await postPurchase({
     recordDate: '2026-06-10',
     source: 'manual',
     note: 'manual purchase',
-    items: [{
-      productGlobalId: manualProductId,
-      quantity: 2,
-      unitCost: 1.5
-    }]
+    items: [
+      {
+        productGlobalId: manualProductId,
+        quantity: 2,
+        unitCost: 1.5
+      },
+      {
+        productGlobalId: 'pg-cola',
+        quantity: 1,
+        unitCost: 2.25
+      }
+    ]
   }),
   env
 });
 assert.equal(manualPurchaseResponse.status, 200);
 const manualPurchase = (await manualPurchaseResponse.json()).record;
-assert.equal(manualPurchase.totalCost, 3);
-assert.equal(manualPurchase.items[0].unitCost, 1.5);
+assert.equal(manualPurchase.itemCount, 2);
+assert.equal(manualPurchase.quantity, 3);
+assert.equal(manualPurchase.totalCost, 5.25);
+assert.equal(manualPurchase.items.length, 2);
+assert.equal(manualPurchase.items.find(item => item.productGlobalId === manualProductId).unitCost, 1.5);
+assert.equal(manualPurchase.items.find(item => item.productGlobalId === 'pg-cola').unitCost, 2.25);
 
 const manualSaleResponse = await postSale({
   request: jsonRequest('https://example.test/api/profit/sales', {
@@ -227,29 +238,40 @@ const manualSaleResponse = await postSale({
     platformFee: 0.2,
     serviceFee: 0.1,
     discount: 0.3,
-    items: [{
-      productGlobalId: manualProductId,
-      quantity: 2,
-      unitPrice: 4.5
-    }]
+    items: [
+      {
+        productGlobalId: manualProductId,
+        quantity: 2,
+        unitPrice: 4.5
+      },
+      {
+        productGlobalId: 'pg-cola',
+        quantity: 1,
+        unitPrice: 5.5
+      }
+    ]
   }),
   env
 });
 assert.equal(manualSaleResponse.status, 200);
 const manualSale = (await manualSaleResponse.json()).record;
-assert.equal(manualSale.grossAmount, 9);
-assert.equal(manualSale.netRevenue, 8.4);
-assert.equal(manualSale.totalCogs, 3);
-assert.equal(manualSale.grossProfit, 5.4);
-assert.equal(manualSale.items[0].unitCost, 1.5);
+assert.equal(manualSale.itemCount, 2);
+assert.equal(manualSale.quantity, 3);
+assert.equal(manualSale.grossAmount, 14.5);
+assert.equal(manualSale.netRevenue, 13.9);
+assert.equal(manualSale.totalCogs, 5.25);
+assert.equal(manualSale.grossProfit, 8.65);
+assert.equal(manualSale.items.length, 2);
+assert.equal(manualSale.items.find(item => item.productGlobalId === manualProductId).unitCost, 1.5);
+assert.equal(manualSale.items.find(item => item.productGlobalId === 'pg-cola').unitCost, 2.25);
 
 const afterManualSummaryResponse = await getSummary({
   request: new Request('https://example.test/api/profit/summary?month=2026-06&machineId=1号机'),
   env
 });
 const afterManualSummary = await afterManualSummaryResponse.json();
-assert.equal(afterManualSummary.kpis.netRevenue, 15.4);
-assert.equal(afterManualSummary.kpis.cogs, 6.2);
+assert.equal(afterManualSummary.kpis.netRevenue, 20.9);
+assert.equal(afterManualSummary.kpis.cogs, 8.45);
 
 const voidSaleResponse = await patchSale({
   request: jsonRequest('https://example.test/api/profit/sales', { id: manualSale.id }),
