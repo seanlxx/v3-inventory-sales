@@ -1,173 +1,54 @@
 <script setup lang="ts">
-import type { SalesOrder, SalesOrderPayload, SalesOrderType } from '~/types/sale'
+import { useProfitSales } from '~/composables/useProfitSales'
 
 definePageMeta({
   title: '销售'
 })
 
 const {
-  filteredOrders,
-  productOptions,
+  records,
   filters,
   summary,
-  selectedOrder,
-  aiCandidates,
-  salesImages,
-  salesImage,
   machineOptions,
   loading,
-  saving,
-  voiding,
-  recognizing,
-  aiProgress,
   error,
-  aiError,
   updateFilters,
-  loadProducts,
-  loadOrders,
-  saveSalesImage,
-  removeSalesImage,
-  clearSalesAiDraft,
-  createOrder,
-  voidOrder,
-  recognizeSalesScreenshot,
-  setAiCandidates
-} = useSales()
+  loadRecords
+} = useProfitSales()
 
-const activeType = shallowRef<SalesOrderType>('sale')
-const formOpen = shallowRef(false)
-const aiReviewOpen = shallowRef(false)
-const detailOpen = shallowRef(false)
-const voidOpen = shallowRef(false)
-const voidingOrder = shallowRef<SalesOrder | null>(null)
-const formInventoryError = shallowRef<string | null>(null)
-
-function openCreateDialog() {
-  formInventoryError.value = null
-  formOpen.value = true
-}
-
-function openAiDialog() {
-  activeType.value = 'sale'
-  formInventoryError.value = null
-  aiReviewOpen.value = true
-}
-
-function openDetail(order: SalesOrder) {
-  selectedOrder.value = order
-  detailOpen.value = true
-}
-
-function openVoidDialog(order: SalesOrder) {
-  voidingOrder.value = order
-  voidOpen.value = true
-}
-
-async function submitOrder(type: SalesOrderType, payload: SalesOrderPayload) {
-  formInventoryError.value = null
-  try {
-    await createOrder(type, payload)
-    formOpen.value = false
-    aiReviewOpen.value = false
-  } catch (caught) {
-    formInventoryError.value = caught && typeof caught === 'object' && 'message' in caught
-      ? String(caught.message)
-      : '提交失败'
-  }
-}
-
-async function submitAiOrder(payload: SalesOrderPayload) {
-  await submitOrder('sale', payload)
-}
-
-async function confirmVoid(order: SalesOrder) {
-  await voidOrder(order)
-  voidOpen.value = false
-  detailOpen.value = false
-}
-
-watch(() => [filters.month, filters.type, filters.status, filters.machineId] as const, () => {
-  loadOrders()
+watch(() => [filters.month, filters.type, filters.status, filters.machineId, filters.search] as const, () => {
+  loadRecords()
 })
 
-onMounted(async () => {
-  await Promise.all([loadProducts(), loadOrders()])
+onMounted(() => {
+  loadRecords()
 })
 </script>
 
 <template>
   <div class="sales-page">
-    <SalesModeTabs v-model="activeType" />
-
     <SalesSummaryStrip
       :sales-amount="summary.salesAmount"
       :refund-amount="summary.refundAmount"
-      :loss-quantity="summary.lossQuantity"
+      :net-revenue="summary.netRevenue"
+      :gross-profit="summary.grossProfit"
       :count="summary.count"
     />
 
-    <SalesFilters
+    <ProfitSalesFilters
       :filters="filters"
       :machines="machineOptions"
-      :result-count="filteredOrders.length"
+      :result-count="records.length"
       :loading="loading"
       @update-filters="updateFilters"
-      @refresh="loadOrders"
-      @create="openCreateDialog"
-      @ai-review="openAiDialog"
+      @refresh="loadRecords"
     />
 
-    <SalesOrderTable
-      :orders="filteredOrders"
+    <ProfitSalesTable
+      :records="records"
       :loading="loading"
       :error="error"
-      @view="openDetail"
-      @void="openVoidDialog"
-      @retry="loadOrders"
-    />
-
-    <SalesOrderDialog
-      v-model:open="formOpen"
-      :type="activeType"
-      :products="productOptions"
-      :machines="machineOptions"
-      :submitting="saving"
-      :image-file-name="salesImage?.fileName"
-      :inventory-error="formInventoryError"
-      @image-selected="saveSalesImage"
-      @submit="submitOrder"
-    />
-
-    <SalesAiReviewDialog
-      v-model:open="aiReviewOpen"
-      :candidates="aiCandidates"
-      :products="productOptions"
-      :machines="machineOptions"
-      :recognizing="recognizing"
-      :submitting="saving"
-      :images="salesImages"
-      :progress-message="aiProgress"
-      :error-message="aiError?.message"
-      :inventory-error="formInventoryError"
-      @image-selected="saveSalesImage"
-      @image-removed="removeSalesImage"
-      @clear="clearSalesAiDraft"
-      @recognize="recognizeSalesScreenshot"
-      @update-candidates="setAiCandidates"
-      @confirm="submitAiOrder"
-    />
-
-    <SalesOrderDrawer
-      v-model:open="detailOpen"
-      :order="selectedOrder"
-      @void="openVoidDialog"
-    />
-
-    <SalesVoidDialog
-      v-model:open="voidOpen"
-      :order="voidingOrder"
-      :submitting="voiding"
-      @confirm="confirmVoid"
+      @retry="loadRecords"
     />
   </div>
 </template>

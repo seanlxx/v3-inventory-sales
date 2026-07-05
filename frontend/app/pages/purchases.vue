@@ -1,82 +1,26 @@
 <script setup lang="ts">
-import type { PurchaseOrder, PurchaseOrderPayload } from '~/types/purchase'
+import { useProfitPurchases } from '~/composables/useProfitPurchases'
 
 definePageMeta({
   title: '进货'
 })
 
 const {
-  filteredOrders,
-  products,
+  records,
   filters,
   summary,
-  selectedOrder,
-  aiCandidates,
-  aiMetadata,
-  purchaseImages,
-  receiptImage,
-  machineOptions,
   loading,
-  saving,
-  voiding,
-  recognizing,
-  aiProgress,
   error,
-  aiError,
   updateFilters,
-  loadProducts,
-  loadOrders,
-  saveReceiptImage,
-  removeReceiptImage,
-  clearReceiptImages,
-  createOrder,
-  voidOrder,
-  recognizeReceipt,
-  setAiCandidates
-} = usePurchases()
+  loadRecords
+} = useProfitPurchases()
 
-const formOpen = shallowRef(false)
-const aiReviewOpen = shallowRef(false)
-const detailOpen = shallowRef(false)
-const voidOpen = shallowRef(false)
-const voidingOrder = shallowRef<PurchaseOrder | null>(null)
-
-function openCreateDialog() {
-  formOpen.value = true
-}
-
-function openAiDialog() {
-  aiReviewOpen.value = true
-}
-
-function openDetail(order: PurchaseOrder) {
-  selectedOrder.value = order
-  detailOpen.value = true
-}
-
-function openVoidDialog(order: PurchaseOrder) {
-  voidingOrder.value = order
-  voidOpen.value = true
-}
-
-async function submitOrder(payload: PurchaseOrderPayload) {
-  await createOrder(payload)
-  formOpen.value = false
-  aiReviewOpen.value = false
-}
-
-async function confirmVoid(order: PurchaseOrder) {
-  await voidOrder(order)
-  voidOpen.value = false
-  detailOpen.value = false
-}
-
-watch(() => [filters.month, filters.status] as const, () => {
-  loadOrders()
+watch(() => [filters.month, filters.status, filters.search] as const, () => {
+  loadRecords()
 })
 
-onMounted(async () => {
-  await Promise.all([loadProducts(), loadOrders()])
+onMounted(() => {
+  loadRecords()
 })
 </script>
 
@@ -88,65 +32,19 @@ onMounted(async () => {
       :count="summary.count"
     />
 
-    <PurchaseFilters
+    <ProfitPurchaseFilters
       :filters="filters"
-      :result-count="filteredOrders.length"
+      :result-count="records.length"
       :loading="loading"
       @update-filters="updateFilters"
-      @refresh="loadOrders"
-      @create="openCreateDialog"
-      @ai-review="openAiDialog"
+      @refresh="loadRecords"
     />
 
-    <PurchaseOrderTable
-      :orders="filteredOrders"
+    <ProfitPurchaseTable
+      :records="records"
       :loading="loading"
       :error="error"
-      @view="openDetail"
-      @void="openVoidDialog"
-      @retry="loadOrders"
-    />
-
-    <PurchaseFormDialog
-      v-model:open="formOpen"
-      :products="products"
-      :machines="machineOptions"
-      :submitting="saving"
-      :image-file-name="receiptImage?.fileName"
-      @image-selected="saveReceiptImage"
-      @submit="submitOrder"
-    />
-
-    <PurchaseAiReviewDialog
-      v-model:open="aiReviewOpen"
-      :candidates="aiCandidates"
-      :products="products"
-      :recognizing="recognizing"
-      :submitting="saving"
-      :image-file-name="receiptImage?.fileName"
-      :images="purchaseImages"
-      :metadata="aiMetadata"
-      :progress-message="aiProgress"
-      :error-message="aiError?.message"
-      @image-selected="saveReceiptImage"
-      @image-removed="removeReceiptImage"
-      @clear-images="clearReceiptImages"
-      @recognize="recognizeReceipt"
-      @update-candidates="setAiCandidates"
-      @confirm="submitOrder"
-    />
-
-    <PurchaseOrderDrawer
-      v-model:open="detailOpen"
-      :order="selectedOrder"
-      @void="openVoidDialog"
-    />
-
-    <PurchaseVoidDialog
-      v-model:open="voidOpen"
-      :order="voidingOrder"
-      :submitting="voiding"
-      @confirm="confirmVoid"
+      @retry="loadRecords"
     />
   </div>
 </template>

@@ -15,7 +15,7 @@ const props = defineProps<{
       <strong>{{ formatMoney(props.totalCost) }}</strong>
     </div>
     <div class="purchase-summary__item">
-      <span>入库数量</span>
+      <span>进货数量</span>
       <strong>{{ formatQuantity(props.quantity) }} 件</strong>
     </div>
     <div class="purchase-summary__item">

@@ -1,4 +1,4 @@
-import { all, first } from './d1.js';
+import { all, first, placeholders } from './d1.js';
 import { centsToMoney } from './validators.js';
 
 const MAX_TREND_DAYS = 90;
@@ -78,6 +78,16 @@ function machineFilterFor(column, machineId) {
 
 function signedCogsSql(column = 'total_cogs_cents') {
   return `CASE WHEN type = 'refund' THEN -${column} ELSE ${column} END`;
+}
+
+function normalizeStatus(value) {
+  const text = String(value || '').trim();
+  return ['active', 'voided', 'all'].includes(text) ? text : 'active';
+}
+
+function normalizeSalesType(value) {
+  const text = String(value || '').trim();
+  return ['sale', 'refund', 'loss', 'all'].includes(text) ? text : 'all';
 }
 
 function toSummaryKpis(row, quantity, purchaseCost, missingCostProductCount, mergedProductCount) {
@@ -515,6 +525,275 @@ export async function listProfitProducts(env, options = {}) {
       lastCostAt: row.last_cost_at || null
     };
   });
+}
+
+export async function listProfitPurchases(env, options = {}) {
+  const month = normalizeMonth(options.month);
+  const status = normalizeStatus(options.status);
+  const limit = normalizeLimit(options.limit);
+  const search = String(options.search || '').trim();
+  const filters = ['substr(pr.record_date, 1, 7) = ?'];
+  const params = [month];
+
+  if (status !== 'all') {
+    filters.push('pr.status = ?');
+    params.push(status);
+  }
+  if (search) {
+    filters.push(`(
+      pr.id LIKE ?
+      OR pr.legacy_purchase_id LIKE ?
+      OR pr.source LIKE ?
+      OR pr.note LIKE ?
+      OR EXISTS (
+        SELECT 1
+        FROM purchase_record_items search_pri
+        JOIN products_global search_pg ON search_pg.id = search_pri.product_global_id
+        WHERE search_pri.purchase_record_id = pr.id
+          AND search_pg.canonical_name LIKE ?
+      )
+    )`);
+    const keyword = `%${search}%`;
+    params.push(keyword, keyword, keyword, keyword, keyword);
+  }
+  params.push(limit);
+
+  const rows = await all(env.DB, `
+    SELECT
+      pr.id,
+      pr.legacy_purchase_id,
+      pr.record_date,
+      pr.source,
+      pr.status,
+      pr.voided_at,
+      pr.note,
+      COALESCE(SUM(pri.quantity), 0) AS quantity,
+      COALESCE(SUM(pri.total_cost_cents), 0) AS total_cost_cents,
+      COUNT(pri.id) AS item_count
+    FROM purchase_records pr
+    LEFT JOIN purchase_record_items pri ON pri.purchase_record_id = pr.id
+    WHERE ${filters.join(' AND ')}
+    GROUP BY
+      pr.id,
+      pr.legacy_purchase_id,
+      pr.record_date,
+      pr.source,
+      pr.status,
+      pr.voided_at,
+      pr.note,
+      pr.created_at
+    ORDER BY pr.record_date DESC, pr.created_at DESC, pr.id DESC
+    LIMIT ?
+  `, params);
+
+  const itemMap = await purchaseItemMap(env, rows.map(row => row.id));
+  return rows.map(row => ({
+    id: row.id,
+    legacyPurchaseId: row.legacy_purchase_id || null,
+    recordDate: row.record_date,
+    source: row.source || 'manual',
+    status: row.status,
+    voidedAt: row.voided_at || null,
+    note: row.note || '',
+    quantity: Number(row.quantity) || 0,
+    totalCost: money(row.total_cost_cents),
+    itemCount: Number(row.item_count) || 0,
+    items: itemMap.get(row.id) || []
+  }));
+}
+
+export async function listProfitSales(env, options = {}) {
+  const month = normalizeMonth(options.month);
+  const type = normalizeSalesType(options.type);
+  const status = normalizeStatus(options.status);
+  const machineId = normalizeMachineId(options.machineId);
+  const limit = normalizeLimit(options.limit);
+  const search = String(options.search || '').trim();
+  const machineFilter = machineFilterFor('sr.machine_id', machineId);
+  const filters = ['sr.year_month = ?'];
+  const params = [month];
+
+  if (type !== 'all') {
+    filters.push('sr.type = ?');
+    params.push(type);
+  }
+  if (status !== 'all') {
+    filters.push('sr.status = ?');
+    params.push(status);
+  }
+  if (machineFilter.sql) {
+    filters.push(machineFilter.sql.replace(/^AND\s+/i, ''));
+    params.push(...machineFilter.params);
+  }
+  if (search) {
+    filters.push(`(
+      sr.id LIKE ?
+      OR sr.legacy_sales_id LIKE ?
+      OR sr.external_id LIKE ?
+      OR sr.source LIKE ?
+      OR sr.note LIKE ?
+      OR EXISTS (
+        SELECT 1
+        FROM sales_record_items search_sri
+        JOIN products_global search_pg ON search_pg.id = search_sri.product_global_id
+        WHERE search_sri.sales_record_id = sr.id
+          AND search_pg.canonical_name LIKE ?
+      )
+    )`);
+    const keyword = `%${search}%`;
+    params.push(keyword, keyword, keyword, keyword, keyword, keyword);
+  }
+  params.push(limit);
+
+  const rows = await all(env.DB, `
+    SELECT
+      sr.id,
+      sr.legacy_sales_id,
+      sr.type,
+      ${machineSql('sr.machine_id')} AS machine_id,
+      sr.record_date,
+      sr.year_month,
+      sr.source,
+      sr.external_id,
+      sr.status,
+      sr.voided_at,
+      sr.note,
+      sr.gross_amount_cents,
+      sr.refund_amount_cents,
+      sr.platform_fee_cents,
+      sr.service_fee_cents,
+      sr.discount_cents,
+      sr.net_revenue_cents,
+      sr.total_cogs_cents,
+      ${signedCogsSql('sr.total_cogs_cents')} AS signed_cogs_cents,
+      sr.gross_profit_cents,
+      COALESCE(SUM(sri.quantity), 0) AS quantity,
+      COUNT(sri.id) AS item_count
+    FROM sales_records sr
+    LEFT JOIN sales_record_items sri ON sri.sales_record_id = sr.id
+    WHERE ${filters.join(' AND ')}
+    GROUP BY
+      sr.id,
+      sr.legacy_sales_id,
+      sr.type,
+      sr.machine_id,
+      sr.record_date,
+      sr.year_month,
+      sr.source,
+      sr.external_id,
+      sr.status,
+      sr.voided_at,
+      sr.note,
+      sr.gross_amount_cents,
+      sr.refund_amount_cents,
+      sr.platform_fee_cents,
+      sr.service_fee_cents,
+      sr.discount_cents,
+      sr.net_revenue_cents,
+      sr.total_cogs_cents,
+      sr.gross_profit_cents,
+      sr.created_at
+    ORDER BY sr.record_date DESC, sr.created_at DESC, sr.id DESC
+    LIMIT ?
+  `, params);
+
+  const itemMap = await salesItemMap(env, rows.map(row => row.id));
+  return rows.map(row => ({
+    id: row.id,
+    legacySalesId: row.legacy_sales_id || null,
+    type: row.type,
+    machineId: row.machine_id,
+    recordDate: row.record_date,
+    yearMonth: row.year_month,
+    source: row.source || 'manual',
+    externalId: row.external_id || null,
+    status: row.status,
+    voidedAt: row.voided_at || null,
+    note: row.note || '',
+    grossAmount: money(row.gross_amount_cents),
+    refundAmount: money(row.refund_amount_cents),
+    platformFee: money(row.platform_fee_cents),
+    serviceFee: money(row.service_fee_cents),
+    fees: money((Number(row.platform_fee_cents) || 0) + (Number(row.service_fee_cents) || 0)),
+    discount: money(row.discount_cents),
+    netRevenue: money(row.net_revenue_cents),
+    totalCogs: money(row.total_cogs_cents),
+    signedCogs: money(row.signed_cogs_cents),
+    grossProfit: money(row.gross_profit_cents),
+    quantity: Number(row.quantity) || 0,
+    itemCount: Number(row.item_count) || 0,
+    items: itemMap.get(row.id) || []
+  }));
+}
+
+async function purchaseItemMap(env, recordIds) {
+  if (recordIds.length === 0) return new Map();
+  const rows = await all(env.DB, `
+    SELECT
+      pri.id,
+      pri.purchase_record_id,
+      pri.product_global_id,
+      pg.canonical_name,
+      pri.quantity,
+      pri.unit_cost_cents,
+      pri.total_cost_cents
+    FROM purchase_record_items pri
+    JOIN products_global pg ON pg.id = pri.product_global_id
+    WHERE pri.purchase_record_id IN (${placeholders(recordIds.length)})
+    ORDER BY pg.canonical_name, pri.id
+  `, recordIds);
+  const itemMap = new Map();
+  for (const row of rows) {
+    const item = {
+      id: row.id,
+      productGlobalId: row.product_global_id,
+      productName: row.canonical_name,
+      quantity: Number(row.quantity) || 0,
+      unitCost: money(row.unit_cost_cents),
+      totalCost: money(row.total_cost_cents)
+    };
+    const items = itemMap.get(row.purchase_record_id) || [];
+    items.push(item);
+    itemMap.set(row.purchase_record_id, items);
+  }
+  return itemMap;
+}
+
+async function salesItemMap(env, recordIds) {
+  if (recordIds.length === 0) return new Map();
+  const rows = await all(env.DB, `
+    SELECT
+      sri.id,
+      sri.sales_record_id,
+      sri.product_global_id,
+      pg.canonical_name,
+      sri.quantity,
+      sri.unit_price_cents,
+      sri.line_amount_cents,
+      sri.unit_cost_cents,
+      sri.line_cogs_cents
+    FROM sales_record_items sri
+    JOIN products_global pg ON pg.id = sri.product_global_id
+    WHERE sri.sales_record_id IN (${placeholders(recordIds.length)})
+    ORDER BY pg.canonical_name, sri.id
+  `, recordIds);
+  const itemMap = new Map();
+  for (const row of rows) {
+    const item = {
+      id: row.id,
+      productGlobalId: row.product_global_id,
+      productName: row.canonical_name,
+      quantity: Number(row.quantity) || 0,
+      unitPrice: money(row.unit_price_cents),
+      lineAmount: money(row.line_amount_cents),
+      unitCost: money(row.unit_cost_cents),
+      lineCogs: money(row.line_cogs_cents)
+    };
+    const items = itemMap.get(row.sales_record_id) || [];
+    items.push(item);
+    itemMap.set(row.sales_record_id, items);
+  }
+  return itemMap;
 }
 
 function safeJson(value, fallback) {

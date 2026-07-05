@@ -5,7 +5,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { onRequestGet as getCostGaps } from '../functions/api/profit/cost-gaps.js';
+import { onRequestGet as getPurchases } from '../functions/api/profit/purchases.js';
 import { onRequestGet as getProducts } from '../functions/api/profit/products.js';
+import { onRequestGet as getSales } from '../functions/api/profit/sales.js';
 import { onRequestGet as getSummary } from '../functions/api/profit/summary.js';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -117,6 +119,40 @@ assert.equal(products.rows.length, 1);
 assert.equal(products.rows[0].productGlobalId, 'pg-cola');
 assert.equal(products.rows[0].lastCost, 2);
 assert.equal(products.rows[0].saleQuantity, 2);
+
+const purchasesResponse = await getPurchases({
+  request: new Request('https://example.test/api/profit/purchases?month=2026-06&search=cola'),
+  env
+});
+const purchases = await purchasesResponse.json();
+assert.equal(purchases.rows.length, 1);
+assert.equal(purchases.rows[0].id, 'pr-1');
+assert.equal(purchases.rows[0].totalCost, 6);
+assert.equal(purchases.rows[0].quantity, 3);
+assert.equal(purchases.rows[0].items[0].productName, 'Cola');
+
+const salesResponse = await getSales({
+  request: new Request('https://example.test/api/profit/sales?month=2026-06&machineId=1号机'),
+  env
+});
+const sales = await salesResponse.json();
+assert.equal(sales.rows.length, 2);
+assert.equal(sales.rows[0].id, 'sr-refund');
+assert.equal(sales.rows[0].refundAmount, 2);
+assert.equal(sales.rows[0].signedCogs, -0.8);
+assert.equal(sales.rows[1].id, 'sr-sale');
+assert.equal(sales.rows[1].grossAmount, 10);
+assert.equal(sales.rows[1].fees, 0.7);
+assert.equal(sales.rows[1].items[0].productName, 'Cola');
+
+const filteredSalesResponse = await getSales({
+  request: new Request('https://example.test/api/profit/sales?month=2026-06&type=sale&machineId=2号机&search=water'),
+  env
+});
+const filteredSales = await filteredSalesResponse.json();
+assert.equal(filteredSales.rows.length, 1);
+assert.equal(filteredSales.rows[0].id, 'sr-water');
+assert.equal(filteredSales.rows[0].netRevenue, 3);
 
 const serviceSource = readFileSync(
   join(projectRoot, 'functions', 'api', '_shared', 'profit-service.js'),

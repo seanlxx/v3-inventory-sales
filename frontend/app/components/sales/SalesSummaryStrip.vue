@@ -4,14 +4,16 @@ import { formatMoney, formatQuantity } from '~/utils/format'
 const props = defineProps<{
   salesAmount: number
   refundAmount: number
-  lossQuantity: number
+  netRevenue: number
+  grossProfit: number
   count: number
 }>()
 
 const cards = computed(() => [
   { label: '销售金额', value: formatMoney(props.salesAmount), tone: 'sale' },
   { label: '退款金额', value: formatMoney(props.refundAmount), tone: 'refund' },
-  { label: '损耗数量', value: formatQuantity(props.lossQuantity), tone: 'loss' },
+  { label: '净收入', value: formatMoney(props.netRevenue), tone: 'net' },
+  { label: '毛利', value: formatMoney(props.grossProfit), tone: 'profit' },
   { label: '有效单据', value: `${formatQuantity(props.count)} 张`, tone: 'neutral' }
 ])
 </script>
@@ -29,7 +31,7 @@ const cards = computed(() => [
 .sales-summary {
   min-width: 0;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: var(--space-3);
 }
 
@@ -64,7 +66,11 @@ const cards = computed(() => [
   border-color: rgb(15 118 110 / 24%);
 }
 
-.sales-summary__item--loss {
+.sales-summary__item--net {
+  border-color: rgb(37 99 235 / 22%);
+}
+
+.sales-summary__item--profit {
   border-color: rgb(194 65 12 / 24%);
 }
 
