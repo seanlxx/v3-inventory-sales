@@ -290,6 +290,11 @@ function firstDate(cells) {
   return match ? match[0].replace(/\b(\d)\b/g, '0$1') : '';
 }
 
+function unitCostFromLineCost(lineCostCents, quantity) {
+  if (lineCostCents === null || lineCostCents === undefined) return null;
+  return Math.round((Number(lineCostCents) || 0) / Math.max(1, Number(quantity) || 1));
+}
+
 function parseSalesCards(html) {
   const labels = [
     '设备名称',
@@ -323,7 +328,8 @@ function parseSalesCards(html) {
       const quantity = parseInteger(firstClassValue(numBlock, ['value', 'num']))
         ?? parseInteger(firstLabelValue(text, ['数量'], labels))
         ?? 1;
-      const costCents = parseMoney(firstLabelValue(text, ['进价', '成本'], labels));
+      const lineCostCents = parseMoney(firstLabelValue(text, ['进价', '成本'], labels));
+      const costCents = unitCostFromLineCost(lineCostCents, quantity);
       const date = firstDate([firstLabelValue(text, ['交易时间'], labels)]);
       const shipmentText = firstLabelValue(text, ['出货详情'], labels);
       const statusText = `${stripTags(headBlock)} ${shipmentText || text}`;
@@ -335,6 +341,7 @@ function parseSalesCards(html) {
         quantity: Math.max(1, quantity),
         amountCents,
         costCents,
+        lineCostCents,
         date: date ? date.slice(0, 10) : '',
         paidShipped: looksPaidShipped([statusText]),
         raw: [text]
@@ -356,7 +363,8 @@ export function parseSales(html) {
     const productName = cellAt(cells, ['商品名称', '商品', '名称'], cells.length > 2 ? 2 : 1);
     const quantity = parseInteger(cellAt(cells, ['数量', '购买数量'], cells.length > 3 ? 3 : -1)) ?? 1;
     const amountCents = parseMoney(cellAt(cells, ['实收', '金额', '成交', '支付'], cells.length > 4 ? 4 : -1));
-    const costCents = parseMoney(cellAt(cells, ['进价', '成本']));
+    const lineCostCents = parseMoney(cellAt(cells, ['进价', '成本']));
+    const costCents = unitCostFromLineCost(lineCostCents, quantity);
     const date = firstDate(cells);
 
     if (!vendorOrderNo || !productName || amountCents === null) continue;
@@ -366,6 +374,7 @@ export function parseSales(html) {
       quantity: Math.max(1, quantity),
       amountCents,
       costCents,
+      lineCostCents,
       date: date ? date.slice(0, 10) : '',
       paidShipped: looksPaidShipped(cells),
       raw: cells

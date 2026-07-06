@@ -89,6 +89,10 @@ assert.deepEqual(parseCosts(costsHtml()).map(item => item.vendorProductName), ['
 assert.deepEqual(parseSales(tableSalesHtml()).map(item => item.vendorOrderNo), ['SM001']);
 assert.deepEqual(parseSales(salesHtml()).map(item => item.vendorOrderNo), ['SM001']);
 assert.equal(parseSales(salesHtml())[0].paidShipped, true);
+assert.equal(parseSales(salesHtml())[0].lineCostCents, 200);
+assert.equal(parseSales(salesHtml())[0].costCents, 100);
+assert.equal(parseSales(shengmaTotalCostSalesHtml())[0].lineCostCents, 7420);
+assert.equal(parseSales(shengmaTotalCostSalesHtml())[0].costCents, 3710);
 assert.equal(hasNextSalesPage('<div>共计 <span>41</span> 条</div>', 1), true);
 assert.equal(hasNextSalesPage('<div>共计 <span>41</span> 条</div>', 2), false);
 
@@ -171,8 +175,12 @@ try {
   assert.equal(sale.external_id, 'SM001');
   assert.equal(sale.machine_id, '轨道机');
   assert.equal(sale.gross_amount_cents, 1000);
-  assert.equal(sale.total_cogs_cents, 400);
-  assert.equal(sale.gross_profit_cents, 600);
+  assert.equal(sale.total_cogs_cents, 200);
+  assert.equal(sale.gross_profit_cents, 800);
+  const saleItem = env.DB.db.prepare('SELECT * FROM sales_record_items').get();
+  assert.equal(saleItem.quantity, 2);
+  assert.equal(saleItem.unit_cost_cents, 100);
+  assert.equal(saleItem.line_cogs_cents, 200);
   assert.equal(countRows('sales_record_items'), 1);
   assert.equal(countRows('cost_snapshots'), 2);
   assert.equal(countRows('external_inventory_snapshots'), 1);
@@ -343,6 +351,27 @@ function salesHtml() {
         <p>出货详情 已出货 未退款</p>
         <p>交易时间 2026-07-06 10:00:00</p>
         <p>进价 2.00</p>
+      </div>
+      <div class="foot">
+        <span class="num"><span class="value">2</span></span>
+      </div>
+    </div>
+  `;
+}
+
+function shengmaTotalCostSalesHtml() {
+  return `
+    <div class="list-item">
+      <div class="head">
+        <span class="goods-name2">HEHUA（细）,HEHUA（细）</span>
+        <span class="price">84.00</span>
+        <span>已支付</span>
+      </div>
+      <div class="body">
+        <p>订单号码 DDS1260706084412957CA0F4004CBD</p>
+        <p>出货详情 已出货 未退款</p>
+        <p>交易时间 2026-07-06 10:00:00</p>
+        <p>进价 74.20</p>
       </div>
       <div class="foot">
         <span class="num"><span class="value">2</span></span>

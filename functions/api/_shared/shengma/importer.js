@@ -29,6 +29,12 @@ function saleDate(sale, fallbackStartDate) {
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : fallbackStartDate;
 }
 
+function optionalCents(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const cents = Number(value);
+  return Number.isFinite(cents) ? Math.round(cents) : null;
+}
+
 async function findProductByNormalized(db, normalizedName) {
   return await first(db, `
     SELECT pg.*
@@ -273,8 +279,11 @@ async function importSale(env, sale, product, fallbackDate, summary, warnings, t
   const recordDate = saleDate(sale, fallbackDate);
   const amountCents = Number(sale.amountCents) || 0;
   const unitPriceCents = Math.round(amountCents / quantity);
-  const unitCostCents = sale.costCents ?? await latestCostCents(env, product.id, recordDate);
-  const lineCogsCents = (Number(unitCostCents) || 0) * quantity;
+  const explicitLineCogsCents = optionalCents(sale.lineCostCents);
+  const explicitUnitCostCents = optionalCents(sale.costCents);
+  const unitCostCents = explicitUnitCostCents
+    ?? (explicitLineCogsCents === null ? await latestCostCents(env, product.id, recordDate) : Math.round(explicitLineCogsCents / quantity));
+  const lineCogsCents = explicitLineCogsCents ?? ((Number(unitCostCents) || 0) * quantity);
   const key = safeKey(sale.vendorOrderNo);
   const recordId = `sr:shengma:${key}`;
   const itemId = `sri:shengma:${key}:0`;
