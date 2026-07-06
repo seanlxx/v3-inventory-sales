@@ -43,12 +43,6 @@ const kpiItems = computed(() => [
     label: '退款',
     value: formatMoney(props.kpis?.refunds),
     tone: 'warning'
-  },
-  {
-    key: 'costGapCount',
-    label: '成本缺口',
-    value: `${Number(props.kpis?.costGapCount || 0)} 项`,
-    tone: Number(props.kpis?.costGapCount || 0) > 0 ? 'danger' : 'success'
   }
 ])
 </script>
@@ -86,10 +80,6 @@ const kpiItems = computed(() => [
   padding: var(--space-4);
   border-left: 4px solid var(--color-border);
   transition: transform var(--transition-bounce), box-shadow var(--transition-bounce), border-color var(--transition-fast);
-}
-
-.dashboard-kpis__item:nth-child(-n + 4) {
-  grid-column: span 3;
 }
 
 .dashboard-kpis__item:hover {
@@ -146,8 +136,7 @@ const kpiItems = computed(() => [
     grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 
-  .dashboard-kpis__item,
-  .dashboard-kpis__item:nth-child(-n + 4) {
+  .dashboard-kpis__item {
     grid-column: span 3;
   }
 }

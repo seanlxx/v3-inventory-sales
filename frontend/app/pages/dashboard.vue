@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useReports } from '~/composables/useReports'
-import type { DashboardCostGapItem, DashboardException, ProductRankingItem } from '~/types/report'
+import type { DashboardException, ProductRankingItem } from '~/types/report'
 
 definePageMeta({
   title: '仪表盘'
@@ -23,15 +23,6 @@ watch(() => [filters.month, filters.days, filters.machineId] as const, () => {
 onMounted(() => {
   loadDashboard()
 })
-
-function openCostGapPurchase(item: DashboardCostGapItem) {
-  navigateTo({
-    path: '/purchases',
-    query: {
-      productGlobalId: item.productGlobalId
-    }
-  })
-}
 
 function openExceptionTarget(item: DashboardException) {
   if (item.refType !== 'products_global' || !item.refId) return
@@ -100,11 +91,6 @@ function openProducts() {
         @view="openProductRankingItem"
         @view-all="openProducts"
       />
-      <CostGapPanel
-        :items="report?.costGaps ?? []"
-        :loading="loading"
-        @resolve="openCostGapPurchase"
-      />
       <ExceptionsPanel
         :items="report?.recentExceptions ?? []"
         :loading="loading"
@@ -170,15 +156,11 @@ function openProducts() {
   grid-column: span 4;
 }
 
-.dashboard-page__secondary > :nth-child(1) {
-  grid-column: span 5;
+.dashboard-page__secondary > :first-child {
+  grid-column: span 8;
 }
 
-.dashboard-page__secondary > :nth-child(2) {
-  grid-column: span 3;
-}
-
-.dashboard-page__secondary > :nth-child(3) {
+.dashboard-page__secondary > :last-child {
   grid-column: span 4;
 }
 
@@ -201,14 +183,9 @@ function openProducts() {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .dashboard-page__secondary > :nth-child(1),
-  .dashboard-page__secondary > :nth-child(2),
-  .dashboard-page__secondary > :nth-child(3) {
+  .dashboard-page__secondary > :first-child,
+  .dashboard-page__secondary > :last-child {
     grid-column: auto;
-  }
-
-  .dashboard-page__secondary > :first-child {
-    grid-column: 1 / -1;
   }
 }
 
@@ -224,8 +201,7 @@ function openProducts() {
   }
 
   .dashboard-page__secondary > :first-child,
-  .dashboard-page__secondary > :nth-child(2),
-  .dashboard-page__secondary > :nth-child(3) {
+  .dashboard-page__secondary > :last-child {
     grid-column: auto;
   }
 
