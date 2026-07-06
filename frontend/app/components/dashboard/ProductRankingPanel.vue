@@ -9,11 +9,23 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   view: [item: ProductRankingItem]
+  viewAll: []
 }>()
+
+const PRODUCT_RANKING_LIMIT = 5
 
 const maxProfit = computed(() =>
   Math.max(...props.items.map(item => Math.abs(Number(item.profit) || 0)), 0)
 )
+
+const visibleItems = computed(() => props.items.slice(0, PRODUCT_RANKING_LIMIT))
+const hiddenCount = computed(() => Math.max(0, props.items.length - visibleItems.value.length))
+const countLabel = computed(() => {
+  if (props.loading) return '加载中'
+  if (!props.items.length) return '0 项'
+  if (!hiddenCount.value) return `${props.items.length} 项`
+  return `前 ${visibleItems.value.length} / 共 ${props.items.length} 项`
+})
 
 function widthFor(item: ProductRankingItem) {
   if (!maxProfit.value) return '0%'
@@ -26,8 +38,9 @@ function widthFor(item: ProductRankingItem) {
     <header class="product-ranking__header">
       <div>
         <h2 class="product-ranking__title">商品毛利排行</h2>
-        <p class="product-ranking__description">按全局商品汇总销量、销售额和毛利</p>
+        <p class="product-ranking__description">展示毛利最高的商品，完整清单到商品页查看</p>
       </div>
+      <StatusBadge :label="countLabel" tone="info" />
     </header>
 
     <div v-if="props.loading" class="product-ranking__empty">
@@ -37,10 +50,13 @@ function widthFor(item: ProductRankingItem) {
       当前月份暂无商品毛利数据
     </div>
     <div v-else class="product-ranking__list">
-      <article v-for="item in props.items" :key="item.productGlobalId" class="product-ranking__item">
-        <div class="product-ranking__row">
+      <article v-for="item in visibleItems" :key="item.productGlobalId" class="product-ranking__item">
+        <div class="product-ranking__top">
           <strong>{{ item.productName }}</strong>
           <span class="numeric">{{ formatMoney(item.profit) }}</span>
+          <AppButton size="sm" variant="secondary" @click="emit('view', item)">
+            查看商品
+          </AppButton>
         </div>
         <div class="product-ranking__bar-track" aria-hidden="true">
           <span class="product-ranking__bar" :style="{ width: widthFor(item) }" />
@@ -51,10 +67,13 @@ function widthFor(item: ProductRankingItem) {
           <span>{{ formatQuantity(item.quantity) }} 件</span>
           <span>毛利率 {{ formatPercent(item.profitRate) }}</span>
         </div>
-        <AppButton size="sm" variant="secondary" @click="emit('view', item)">
-          查看商品
-        </AppButton>
       </article>
+      <footer v-if="hiddenCount > 0" class="product-ranking__footer">
+        <span>还有 {{ hiddenCount }} 个商品未显示</span>
+        <AppButton size="sm" variant="secondary" @click="emit('viewAll')">
+          查看全部
+        </AppButton>
+      </footer>
     </div>
   </section>
 </template>
@@ -65,6 +84,13 @@ function widthFor(item: ProductRankingItem) {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-4);
+}
+
+.product-ranking__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
 }
 
 .product-ranking__title {
@@ -87,27 +113,35 @@ function widthFor(item: ProductRankingItem) {
 
 .product-ranking__list {
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 .product-ranking__item {
   min-width: 0;
   display: grid;
   gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2);
+  background: var(--color-surface-subtle);
 }
 
-.product-ranking__row {
+.product-ranking__top {
   min-width: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: start;
-  justify-content: space-between;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
-.product-ranking__row strong {
+.product-ranking__top strong {
   min-width: 0;
   overflow-wrap: anywhere;
   line-height: 1.35;
+}
+
+.product-ranking__top :deep(.app-button) {
+  align-self: start;
 }
 
 .product-ranking__bar-track {
@@ -132,13 +166,33 @@ function widthFor(item: ProductRankingItem) {
   font-size: 12px;
 }
 
+.product-ranking__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
 @media (max-width: 760px) {
   .product-ranking {
     padding: var(--space-3);
   }
 
-  .product-ranking__row {
+  .product-ranking__header,
+  .product-ranking__footer {
     display: grid;
+  }
+
+  .product-ranking__top {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .product-ranking__top :deep(.app-button) {
+    grid-column: 1 / -1;
+    justify-self: start;
   }
 }
 </style>

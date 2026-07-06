@@ -51,6 +51,10 @@ function openProductRankingItem(item: ProductRankingItem) {
     }
   })
 }
+
+function openProducts() {
+  navigateTo('/products')
+}
 </script>
 
 <template>
@@ -94,6 +98,7 @@ function openProductRankingItem(item: ProductRankingItem) {
         :items="report?.productRanking ?? []"
         :loading="loading"
         @view="openProductRankingItem"
+        @view-all="openProducts"
       />
       <CostGapPanel
         :items="report?.costGaps ?? []"
