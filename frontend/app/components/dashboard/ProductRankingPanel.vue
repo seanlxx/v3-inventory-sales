@@ -34,11 +34,11 @@ function widthFor(item: ProductRankingItem) {
 </script>
 
 <template>
-  <section class="product-ranking surface-panel" aria-label="商品毛利排行">
+  <section class="product-ranking surface-panel" aria-label="商品净利润总额排行">
     <header class="product-ranking__header">
       <div>
-        <h2 class="product-ranking__title">商品毛利排行</h2>
-        <p class="product-ranking__description">展示毛利最高的商品，完整清单到商品页查看</p>
+        <h2 class="product-ranking__title">商品净利润总额排行</h2>
+        <p class="product-ranking__description">按净利润总额排序，完整清单到商品页查看</p>
       </div>
       <StatusBadge :label="countLabel" tone="info" />
     </header>
@@ -47,7 +47,7 @@ function widthFor(item: ProductRankingItem) {
       加载商品排行
     </div>
     <div v-else-if="props.items.length === 0" class="product-ranking__empty">
-      当前月份暂无商品毛利数据
+      当前月份暂无商品净利润数据
     </div>
     <div v-else class="product-ranking__list">
       <article v-for="item in visibleItems" :key="item.productGlobalId" class="product-ranking__item">
@@ -62,10 +62,10 @@ function widthFor(item: ProductRankingItem) {
           <span class="product-ranking__bar" :style="{ width: widthFor(item) }" />
         </div>
         <div class="product-ranking__meta">
-          <span>销售 {{ formatMoney(item.salesAmount) }}</span>
+          <span>净收入 {{ formatMoney(item.netRevenue) }}</span>
           <span>成本 {{ formatMoney(item.cogs) }}</span>
           <span>{{ formatQuantity(item.quantity) }} 件</span>
-          <span>毛利率 {{ formatPercent(item.profitRate) }}</span>
+          <span>净利润率 {{ formatPercent(item.profitRate) }}</span>
         </div>
       </article>
       <footer v-if="hiddenCount > 0" class="product-ranking__footer">

@@ -44,8 +44,10 @@ export type ProfitProductRankingItem = {
   productName: string
   quantity: number
   salesAmount: number
+  netRevenue: number
   cogs: number
   grossProfit: number
+  netProfit: number
   profitRate: number
 }
 

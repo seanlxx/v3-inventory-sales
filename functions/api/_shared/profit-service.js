@@ -417,34 +417,83 @@ async function getMachineRanking(env, month) {
 async function getProductRanking(env, month, machineId) {
   const filter = machineFilterFor('sr.machine_id', machineId);
   const rows = await all(env.DB, `
+    WITH item_base AS (
+      SELECT
+        pg.id AS productGlobalId,
+        pg.canonical_name AS productName,
+        sr.id AS sales_record_id,
+        sr.type,
+        sr.gross_amount_cents,
+        sr.refund_amount_cents,
+        sr.platform_fee_cents + sr.service_fee_cents + sr.discount_cents AS deduction_cents,
+        sri.quantity,
+        sri.line_amount_cents,
+        sri.line_cogs_cents,
+        SUM(sri.line_amount_cents) OVER (PARTITION BY sr.id) AS record_line_amount_cents
+      FROM sales_records sr
+      JOIN sales_record_items sri ON sri.sales_record_id = sr.id
+      JOIN products_global pg ON pg.id = sri.product_global_id
+      WHERE sr.year_month = ?
+        AND sr.status = 'active'
+        AND sr.type IN ('sale', 'refund')
+        ${filter.sql}
+    ),
+    item_allocated AS (
+      SELECT
+        productGlobalId,
+        productName,
+        type,
+        quantity,
+        line_amount_cents,
+        line_cogs_cents,
+        CASE
+          WHEN record_line_amount_cents > 0 THEN
+            ROUND(line_amount_cents * 1.0 * CASE WHEN type = 'refund' THEN refund_amount_cents ELSE gross_amount_cents END / record_line_amount_cents)
+          ELSE 0
+        END AS allocated_revenue_cents,
+        CASE
+          WHEN record_line_amount_cents > 0 THEN
+            ROUND(line_amount_cents * 1.0 * deduction_cents / record_line_amount_cents)
+          ELSE 0
+        END AS allocated_deduction_cents
+      FROM item_base
+    ),
+    product_totals AS (
+      SELECT
+        productGlobalId,
+        productName,
+        COALESCE(SUM(CASE WHEN type = 'sale' THEN quantity ELSE 0 END), 0) AS quantity,
+        COALESCE(SUM(CASE WHEN type = 'sale' THEN allocated_revenue_cents ELSE -allocated_revenue_cents END), 0) AS sales_amount_cents,
+        COALESCE(SUM(CASE WHEN type = 'sale' THEN allocated_revenue_cents - allocated_deduction_cents ELSE -allocated_revenue_cents - allocated_deduction_cents END), 0) AS net_revenue_cents,
+        COALESCE(SUM(CASE WHEN type = 'sale' THEN line_cogs_cents ELSE -line_cogs_cents END), 0) AS cogs_cents
+      FROM item_allocated
+      GROUP BY productGlobalId, productName
+    )
     SELECT
-      pg.id AS productGlobalId,
-      pg.canonical_name AS productName,
-      COALESCE(SUM(CASE WHEN sr.type = 'sale' THEN sri.quantity ELSE 0 END), 0) AS quantity,
-      COALESCE(SUM(CASE WHEN sr.type = 'sale' THEN sri.line_amount_cents ELSE -sri.line_amount_cents END), 0) AS sales_amount_cents,
-      COALESCE(SUM(CASE WHEN sr.type = 'sale' THEN sri.line_cogs_cents ELSE -sri.line_cogs_cents END), 0) AS cogs_cents
-    FROM sales_records sr
-    JOIN sales_record_items sri ON sri.sales_record_id = sr.id
-    JOIN products_global pg ON pg.id = sri.product_global_id
-    WHERE sr.year_month = ?
-      AND sr.status = 'active'
-      AND sr.type IN ('sale', 'refund')
-      ${filter.sql}
-    GROUP BY pg.id, pg.canonical_name
-    ORDER BY sales_amount_cents DESC
+      productGlobalId,
+      productName,
+      quantity,
+      sales_amount_cents,
+      net_revenue_cents,
+      cogs_cents,
+      net_revenue_cents - cogs_cents AS net_profit_cents
+    FROM product_totals
+    ORDER BY net_profit_cents DESC
     LIMIT 20
   `, [month, ...filter.params]);
 
   return rows.map(row => {
-    const grossProfitCents = (Number(row.sales_amount_cents) || 0) - (Number(row.cogs_cents) || 0);
+    const netProfitCents = Number(row.net_profit_cents) || 0;
     return {
       productGlobalId: row.productGlobalId,
       productName: row.productName,
       quantity: Number(row.quantity) || 0,
       salesAmount: money(row.sales_amount_cents),
+      netRevenue: money(row.net_revenue_cents),
       cogs: money(row.cogs_cents),
-      grossProfit: money(grossProfitCents),
-      profitRate: profitRatePercent(row.sales_amount_cents, grossProfitCents)
+      grossProfit: money(netProfitCents),
+      netProfit: money(netProfitCents),
+      profitRate: profitRatePercent(row.net_revenue_cents, netProfitCents)
     };
   });
 }

@@ -91,8 +91,9 @@ function mapProfitSummary(summary: ProfitSummary): DashboardReport {
     productName: item.productName,
     quantity: item.quantity,
     salesAmount: item.salesAmount,
+    netRevenue: item.netRevenue ?? item.salesAmount,
     cogs: item.cogs,
-    profit: item.grossProfit,
+    profit: item.netProfit ?? item.grossProfit,
     profitRate: item.profitRate
   }))
 

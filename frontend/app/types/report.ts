@@ -37,6 +37,7 @@ export type ProductRankingItem = {
   productName: string
   quantity: number
   salesAmount: number
+  netRevenue: number
   cogs: number
   profit: number
   profitRate: number

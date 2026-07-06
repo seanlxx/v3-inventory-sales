@@ -110,10 +110,27 @@ assert.equal(summary.machineRanking[0].machineId, '1号机');
 assert.equal(summary.machineRanking[0].netRevenue, 7);
 assert.equal(summary.machineRanking[0].quantity, 2);
 assert.equal(summary.productRanking[0].productName, 'Cola');
+assert.equal(summary.productRanking[0].salesAmount, 8);
+assert.equal(summary.productRanking[0].netRevenue, 7);
+assert.equal(summary.productRanking[0].cogs, 3.2);
+assert.equal(summary.productRanking[0].netProfit, 3.8);
+assert.equal(summary.productRanking[0].grossProfit, 3.8);
 assert.equal(summary.costGaps.length, 1);
 assert.equal(summary.costGaps[0].productName, 'Water');
 assert.equal(summary.productMerges.length, 1);
 assert.equal(summary.productMerges[0].legacyProductCount, 2);
+
+seedProductNetProfitRankingRows();
+const netProfitRankingResponse = await getSummary({
+  request: new Request('https://example.test/api/profit/summary?month=2026-04'),
+  env
+});
+const netProfitRanking = await netProfitRankingResponse.json();
+assert.equal(netProfitRanking.productRanking[0].productName, 'High Profit Tea');
+assert.equal(netProfitRanking.productRanking[0].netProfit, 4);
+assert.equal(netProfitRanking.productRanking[1].productName, 'Low Margin Snack');
+assert.equal(netProfitRanking.productRanking[1].salesAmount, 20);
+assert.equal(netProfitRanking.productRanking[1].netProfit, 1);
 
 const filteredResponse = await getSummary({
   request: new Request('https://example.test/api/profit/summary?month=2026-06&machineId=2号机'),
@@ -415,6 +432,33 @@ function seedCurrentTrendRows() {
     ) VALUES
       ('sri-trend-1', 'sr-trend-1', 'pg-cola', 'si-trend-1', 'p-cola-1', 1, 700, 700, 200, 200, '${date}T00:00:00.000Z'),
       ('sri-trend-2', 'sr-trend-2', 'pg-water', 'si-trend-2', 'p-water', 1, 300, 300, 100, 100, '${date}T00:00:00.000Z');
+  `);
+}
+
+function seedProductNetProfitRankingRows() {
+  env.DB.exec(`
+    INSERT INTO products_global (
+      id, canonical_name, normalized_name, category, default_sell_price_cents,
+      status, legacy_product_count, source_product_ids_json, created_at, updated_at
+    ) VALUES
+      ('pg-high-profit-tea', 'High Profit Tea', 'highprofittea', 'drink', 500, 'active', 0, '[]', '2026-04-01T00:00:00.000Z', '2026-04-01T00:00:00.000Z'),
+      ('pg-low-margin', 'Low Margin Snack', 'lowmarginsnack', 'snack', 2000, 'active', 0, '[]', '2026-04-01T00:00:00.000Z', '2026-04-01T00:00:00.000Z');
+
+    INSERT INTO sales_records (
+      id, legacy_sales_id, type, machine_id, record_date, year_month, source,
+      gross_amount_cents, refund_amount_cents, platform_fee_cents, service_fee_cents,
+      discount_cents, net_revenue_cents, total_cogs_cents, gross_profit_cents,
+      status, created_at, updated_at
+    ) VALUES
+      ('sr-ranking-high-profit', 'so-ranking-high-profit', 'sale', '1号机', '2026-04-02', '2026-04', 'manual', 500, 0, 0, 0, 0, 500, 100, 400, 'active', '2026-04-02T00:00:00.000Z', '2026-04-02T00:00:00.000Z'),
+      ('sr-ranking-low-margin', 'so-ranking-low-margin', 'sale', '1号机', '2026-04-02', '2026-04', 'manual', 2000, 0, 0, 0, 0, 2000, 1900, 100, 'active', '2026-04-02T00:00:00.000Z', '2026-04-02T00:00:00.000Z');
+
+    INSERT INTO sales_record_items (
+      id, sales_record_id, product_global_id, legacy_sales_item_id, legacy_product_id,
+      quantity, unit_price_cents, line_amount_cents, unit_cost_cents, line_cogs_cents, created_at
+    ) VALUES
+      ('sri-ranking-high-profit', 'sr-ranking-high-profit', 'pg-high-profit-tea', 'si-ranking-high-profit', 'p-high-profit-tea', 1, 500, 500, 100, 100, '2026-04-02T00:00:00.000Z'),
+      ('sri-ranking-low-margin', 'sr-ranking-low-margin', 'pg-low-margin', 'si-ranking-low-margin', 'p-low-margin', 1, 2000, 2000, 1900, 1900, '2026-04-02T00:00:00.000Z');
   `);
 }
 
