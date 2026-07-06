@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { onRequestGet as getStatus } from '../functions/api/integrations/shengma/status.js';
 import { onRequestPost as postSync } from '../functions/api/integrations/shengma/sync.js';
+import { hasNextSalesPage, parseCosts, parseGoods, parseSales } from '../functions/api/_shared/shengma/parser.js';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const projectRoot = dirname(scriptDir);
@@ -80,6 +81,16 @@ env.DB.exec(`
     '2026-07-06T00:00:00.000Z'
   );
 `);
+
+assert.deepEqual(parseGoods(tableGoodsHtml()).map(item => item.vendorProductName), ['可乐']);
+assert.deepEqual(parseGoods(goodsHtml()).map(item => item.vendorProductName), ['可乐']);
+assert.deepEqual(parseCosts(tableCostsHtml()).map(item => item.vendorProductName), ['可乐']);
+assert.deepEqual(parseCosts(costsHtml()).map(item => item.vendorProductName), ['可乐']);
+assert.deepEqual(parseSales(tableSalesHtml()).map(item => item.vendorOrderNo), ['SM001']);
+assert.deepEqual(parseSales(salesHtml()).map(item => item.vendorOrderNo), ['SM001']);
+assert.equal(parseSales(salesHtml())[0].paidShipped, true);
+assert.equal(hasNextSalesPage('<div>共计 <span>41</span> 条</div>', 1), true);
+assert.equal(hasNextSalesPage('<div>共计 <span>41</span> 条</div>', 2), false);
 
 const originalFetch = globalThis.fetch;
 let loginPageRequests = 0;
@@ -264,7 +275,7 @@ function loginHtml() {
   `;
 }
 
-function goodsHtml() {
+function tableGoodsHtml() {
   return `
     <table>
       <tr><th>货道编号</th><th>商品名称</th><th>库存</th><th>售价</th></tr>
@@ -273,7 +284,22 @@ function goodsHtml() {
   `;
 }
 
-function costsHtml() {
+function goodsHtml() {
+  return `
+    <div class="item" huodao="A1">
+      <div class="top">
+        <span class="goods-name">可乐</span>
+        <span class="price">¥5.00</span>
+      </div>
+      <div class="stock">
+        <span class="label">库存</span>
+        <span class="value">3</span>
+      </div>
+    </div>
+  `;
+}
+
+function tableCostsHtml() {
   return `
     <table>
       <tr><th>货道编号</th><th>商品名称</th><th>进价</th></tr>
@@ -282,11 +308,45 @@ function costsHtml() {
   `;
 }
 
-function salesHtml() {
+function costsHtml() {
+  return `
+    <div class="item">
+      <div class="huodao"><span class="num">A1</span></div>
+      <div class="goods">可乐</div>
+      <div class="curr-jinjia">
+        <span class="label">当前进价</span>
+        <span class="value">2.00</span>
+      </div>
+    </div>
+  `;
+}
+
+function tableSalesHtml() {
   return `
     <table>
       <tr><th>订单号</th><th>商品名称</th><th>数量</th><th>实收金额</th><th>进价</th><th>时间</th><th>支付状态</th><th>出货状态</th></tr>
       <tr><td>订单号</td><td>SM001</td><td>商品名称</td><td>可乐</td><td>数量</td><td>2</td><td>实收金额</td><td>10.00</td><td>进价</td><td>2.00</td><td>2026-07-06 10:00:00</td><td>已支付</td><td>已出货</td></tr>
     </table>
+  `;
+}
+
+function salesHtml() {
+  return `
+    <div class="list-item">
+      <div class="head">
+        <span class="goods-name2">可乐</span>
+        <span class="price">10.00</span>
+        <span>已支付</span>
+      </div>
+      <div class="body">
+        <p>订单号码 SM001</p>
+        <p>出货详情 已出货 未退款</p>
+        <p>交易时间 2026-07-06 10:00:00</p>
+        <p>进价 2.00</p>
+      </div>
+      <div class="foot">
+        <span class="num"><span class="value">2</span></span>
+      </div>
+    </div>
   `;
 }
