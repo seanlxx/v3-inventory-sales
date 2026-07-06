@@ -82,12 +82,24 @@ env.DB.exec(`
 `);
 
 const originalFetch = globalThis.fetch;
-let loginRequests = 0;
-globalThis.fetch = async (url) => {
+let loginPageRequests = 0;
+let loginPostRequests = 0;
+let loginShouldFail = false;
+globalThis.fetch = async (url, init = {}) => {
   const href = String(url);
+  const method = String(init?.method || 'GET').toUpperCase();
   if (href.includes('/mobile/mobilelogin.html')) {
-    loginRequests += 1;
-    return loginRedirectResponse(href);
+    if (method === 'GET') {
+      loginPageRequests += 1;
+      return htmlResponse(loginHtml(), {
+        'set-cookie': 'prelogin=ready; Path=/; HttpOnly'
+      });
+    }
+
+    loginPostRequests += 1;
+    const headers = new Headers(init?.headers || {});
+    assert.match(headers.get('cookie') || '', /prelogin=ready/);
+    return loginRedirectResponse(href, loginShouldFail ? '/mobile/mobilelogin.html' : '/mobile/index.html');
   }
   if (href.includes('/mobile/goods.html')) return htmlResponse(goodsHtml());
   if (href.includes('/mobile/setJinjia.html')) return htmlResponse(costsHtml());
@@ -185,7 +197,27 @@ try {
   });
   const loginPreview = await loginResponse.json();
   assert.equal(loginPreview.status, 'success');
-  assert.equal(loginRequests, 1);
+  assert.equal(loginPageRequests, 1);
+  assert.equal(loginPostRequests, 1);
+
+  loginShouldFail = true;
+  env.DB.exec(`
+    UPDATE vending_records
+    SET data = '{"key":"shengma.session","value":{"cookie":"sid=expired","expiresAt":0}}'
+    WHERE store = 'settings' AND record_id = 'shengma.session'
+  `);
+  const failedLoginResponse = await postSync({
+    request: jsonRequest('https://example.test/api/integrations/shengma/sync', {
+      startDate: '2026-07-06',
+      endDate: '2026-07-06',
+      dryRun: true,
+      scope: ['sales']
+    }),
+    env
+  });
+  const failedLogin = await failedLoginResponse.json();
+  assert.equal(failedLoginResponse.status, 400);
+  assert.match(failedLogin.message, /盛码登录失败/);
 } finally {
   globalThis.fetch = originalFetch;
 }
@@ -207,13 +239,13 @@ function htmlResponse(html, headers = {}) {
   });
 }
 
-function loginRedirectResponse(url) {
+function loginRedirectResponse(url, location) {
   return {
     status: 302,
     url,
     headers: new Headers({
       'set-cookie': 'sid=login; Path=/; HttpOnly',
-      location: '/mobile/index.html'
+      location
     }),
     text: async () => ''
   };
@@ -221,6 +253,15 @@ function loginRedirectResponse(url) {
 
 function countRows(table) {
   return env.DB.db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get().count;
+}
+
+function loginHtml() {
+  return `
+    <form action="/mobile/mobilelogin.html">
+      <input name="username">
+      <input name="encryptAesKey">
+    </form>
+  `;
 }
 
 function goodsHtml() {

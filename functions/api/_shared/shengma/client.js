@@ -23,10 +23,36 @@ function joinCookie(headers) {
   return cookie ? cookie.split(/,(?=[^;,]+=)/).map(value => value.split(';')[0]).join('; ') : '';
 }
 
+function mergeCookies(...cookies) {
+  const jar = new Map();
+  for (const cookie of cookies) {
+    String(cookie || '')
+      .split(';')
+      .map(part => part.trim())
+      .filter(Boolean)
+      .forEach((part) => {
+        const index = part.indexOf('=');
+        if (index > 0) jar.set(part.slice(0, index), part);
+      });
+  }
+  return Array.from(jar.values()).join('; ');
+}
+
 function isLoginPage(text, response) {
   const url = response?.url || '';
   return /mobilelogin|login/i.test(url)
     || /name=["']username["']|mobilelogin\.html|encryptAesKey/.test(text || '');
+}
+
+function isSuccessfulLoginResponse(response, cookie) {
+  const location = response.headers.get('location') || '';
+  return !!cookie
+    && (response.ok || response.status === 302 || response.status === 303)
+    && !/mobilelogin|login/i.test(location);
+}
+
+function isLoginFormContent(text) {
+  return /name=["']username["']|mobilelogin\.html|encryptAesKey/.test(text || '');
 }
 
 export function getShengmaConfig(env) {
@@ -73,6 +99,12 @@ export class ShengmaClient {
   }
 
   async login() {
+    const loginPage = await fetch(`${this.config.baseUrl}/mobile/mobilelogin.html`, {
+      method: 'GET',
+      redirect: 'manual',
+      headers: DEFAULT_HEADERS
+    });
+    const initialCookie = joinCookie(loginPage.headers);
     const encrypted = encryptLoginPassword(this.config.password);
     const body = new URLSearchParams({
       username: this.config.username,
@@ -86,14 +118,17 @@ export class ShengmaClient {
       redirect: 'manual',
       headers: {
         ...DEFAULT_HEADERS,
+        ...(initialCookie ? { Cookie: initialCookie } : {}),
         'Content-Type': 'application/x-www-form-urlencoded'
       },
       body
     });
     const text = await response.text();
-    const cookie = joinCookie(response.headers);
-    const isRedirect = response.status >= 300 && response.status < 400;
-    if (!cookie || response.status >= 400 || (!isRedirect && isLoginPage(text, response))) {
+    const cookie = mergeCookies(initialCookie, joinCookie(response.headers));
+    if (!isSuccessfulLoginResponse(response, cookie)) {
+      throw new Error(`盛码登录失败：HTTP ${response.status}`);
+    }
+    if (response.ok && isLoginFormContent(text)) {
       throw new Error(`盛码登录失败：HTTP ${response.status}`);
     }
 
