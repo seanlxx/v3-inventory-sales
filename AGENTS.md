@@ -22,7 +22,7 @@
 1. **重新通读 AGENTS.md 的 §0 / §3 / §5 / §6 / §9**（这 5 节是高频违规重灾区），用一句中文向用户确认"已重读"。
 2. **根据用户当前任务（或最近一条任务描述），从 §0.5 表格里选出本次需要加载的 skills**，列成清单：
    - 项目专属（`mobile-ui-fix` / `desktop-ui-fix` / `pages-deploy-troubleshoot`）按场景**最多选 1 个**。
-   - 通用设计（`frontend-design`）只在任务涉及 UI 设计 / 美化 / 视觉重塑时选，按需要选 0–1 个。
+   - 通用设计（`frontend-design`）凡是任务涉及 UI 改动都必须选，按需要选 1 个；纯后端 / 纯文档任务不选。
    - 框架/工具类（`vue` / `vue-best-practices` / `nuxt` / `pinia` / `cloudflare` / `wrangler` / `vitest` 等）只在任务确实涉及该领域时选。
 3. **用 `skill` 工具实际加载第 2 步选出的 skills**（不是只列名字），加载完后开始执行任务。
 4. **任务结束前必须按 §3.5 自动提交并部署**（只要本轮触碰过任何文件就必须做，纯问答 / 纯解释除外）：
@@ -110,13 +110,14 @@
 | 总库存与进货不匹配 / 库存漂移 / 5 项对账 / Phase 0.5·2.5 诊断 / 重建余额验证 | `inventory-drift-diagnose` | 库存漂移定位与对账证明 |
 | zn Excel / 订单明细 / 交易账单 / 设备编号映射 / 手续费·算法服务费 / pickField | `zn-excel-import` | zn 平台 Excel 导入字段对齐与幂等 |
 
-#### 通用前端设计 skill（社区开源，写 / 改 UI 视觉前查）
+#### 通用前端设计 skill（社区开源，所有 UI 改动必查）
 
 | 用户描述场景 | 对应 skill | 上游 |
 | --- | --- | --- |
-| 任何"做一个页面 / 表单 / 弹窗 / 表格 / 仪表盘 / 美化 UI / 重塑视觉" | `frontend-design`（前端视觉方向、配色、字体、布局与文案自检） | anthropics/skills |
+| 任何 UI 相关改动：新增 / 修改页面、组件、CSS、布局、响应式、表单、弹窗、表格、仪表盘、图表、界面文案、美化 UI、重塑视觉 | `frontend-design`（前端视觉方向、配色、字体、布局与文案自检） | anthropics/skills |
 
 > **协作模式：** `frontend-design` 提供"该怎么做"的视觉设计原则，项目专属 skill 提供"在 v3 改哪个文件"的落点。
+> 强制规则：只要本轮会触碰 `frontend/` 中的 UI 文件（页面、组件、样式、界面文案），必须加载 `frontend-design`；如果是手机端问题，再加 `mobile-ui-fix`；如果是桌面端问题，再加 `desktop-ui-fix`。
 > 用户说"把仪表盘做得好看一点" → 加载 `frontend-design` + `desktop-ui-fix`。
 >
 > Skill 内容是 §4 / §3 的可执行版本，覆盖具体症状 → 文件 → 修复手法的对应关系。
@@ -625,6 +626,7 @@ frontend/app/composables/      ← API 封装和页面数据流
 ### 6.2 UI 修复流程
 
 ```
+0. 先加载 `frontend-design`；如果是手机端问题，再加载 `mobile-ui-fix`；如果是桌面端问题，再加载 `desktop-ui-fix`
 1. 用户描述的问题在哪个页面？→ 查 §5.1 定位页面入口
 2. 问题是组件级还是布局级？
    ├─ 组件级 → 找对应 components/ 子目录
@@ -638,7 +640,7 @@ frontend/app/composables/      ← API 封装和页面数据流
 ### 6.3 新功能开发流程
 
 ```
-1. 明确功能需求，列出要新增/修改的文件
+1. 明确功能需求，列出要新增/修改的文件；如果包含任何 UI，先加载 `frontend-design`
 2. 按这个顺序写：
    ① types/ → 定义接口类型
    ② functions/api/ → 后端 API（如果需要）

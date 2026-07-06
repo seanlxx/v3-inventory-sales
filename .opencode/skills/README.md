@@ -13,9 +13,10 @@
 | 类别 | 特点 | 路径 |
 | --- | --- | --- |
 | **项目专属（v3 specific）** | 包含 v3 仓库的具体文件路径、命令、表名、断点 | `desktop-ui-fix/` · `mobile-ui-fix/` · `pages-deploy-troubleshoot/` · `inventory-restructure/` · `inventory-drift-diagnose/` · `zn-excel-import/` |
-| **通用前端设计知识（generic design）** | 来自社区开源 skill，提供 UI 视觉方向、配色、字体、布局与文案自检 | `frontend-design/` |
+| **通用前端设计知识（generic design）** | 来自社区开源 skill，所有 UI 改动都必须先用它做视觉方向、配色、字体、布局与文案自检 | `frontend-design/` |
 
 > **协作模式：** `frontend-design` 提供"应该怎么做"的设计原则，项目专属 skill 提供"在 v3 里要改哪个文件"的具体落点。两者结合 = 既懂设计、又懂代码位置。
+> 强制规则：凡是新增 / 修改页面、组件、CSS、布局、响应式、表单、弹窗、表格、仪表盘、图表或界面文案，都必须先加载 `frontend-design`；手机端问题再叠加 `mobile-ui-fix`，桌面端问题再叠加 `desktop-ui-fix`。
 
 ---
 
@@ -83,12 +84,12 @@
 | 项 | 内容 |
 | --- | --- |
 | 来源 | https://github.com/anthropics/skills/tree/main/skills/frontend-design |
-| 用途 | 写 / 改 UI 视觉前先查它，用于建立有辨识度的视觉方向、配色、字体、布局、动效与文案自检 |
-| 自动触发条件 | 用户要求构建 / 设计 / 美化 / 重塑任何 web 界面、页面、仪表盘、表单、导航、弹窗、表格 |
+| 用途 | 所有 UI 改动前先查它，用于建立有辨识度的视觉方向、配色、字体、布局、动效与文案自检 |
+| 自动触发条件 | 用户要求新增 / 修改任何页面、组件、CSS、布局、响应式、表单、弹窗、表格、仪表盘、图表、界面文案，或任何构建 / 设计 / 美化 / 重塑 web 界面的任务 |
 | 关键文件 | `SKILL.md`（前端视觉设计原则 + 工作流） |
 | **本项目首选落地方式** | 保留管理系统的信息密度与可用性，用 `frontend-design` 做视觉方向校准，再用 `desktop-ui-fix` / `mobile-ui-fix` 落到 v3 文件与验证流程 |
 
-> **使用提示：** 用户说"把这个页面做得好看点"时，先用 `frontend-design` 明确视觉方向和自检标准，再用项目专属 skill 落到具体 v3 文件。
+> **使用提示：** 用户说"把这个页面做得好看点"时，先用 `frontend-design` 明确视觉方向和自检标准，再用项目专属 skill 落到具体 v3 文件。即使只是小范围 UI 修补，也要先加载它，再收敛到最小改动。
 
 ---
 
