@@ -8,8 +8,7 @@ const ARCHIVED_EXACT_PATHS = new Set([
 const ARCHIVED_PATH_PREFIXES = [
   '/api/inventory/',
   '/api/reports/',
-  '/api/integrations/zn/',
-  '/api/integrations/shengma/'
+  '/api/integrations/zn/'
 ];
 
 export function isArchivedLegacyApiRequest(request) {

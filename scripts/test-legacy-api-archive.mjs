@@ -38,8 +38,7 @@ for (const pathname of [
   '/api/products',
   '/api/inventory/balances',
   '/api/reports/dashboard',
-  '/api/integrations/zn/import',
-  '/api/integrations/shengma/sync'
+  '/api/integrations/zn/import'
 ]) {
   const { response, nextCalled } = await callMiddleware(pathname);
   assert.equal(response.status, 410, `${pathname} should be archived`);
@@ -51,7 +50,9 @@ for (const pathname of [
 for (const pathname of [
   '/api/profit/summary',
   '/api/settings',
-  '/api/ai-proxy'
+  '/api/ai-proxy',
+  '/api/integrations/shengma/status',
+  '/api/integrations/shengma/sync'
 ]) {
   const { response, nextCalled } = await callMiddleware(pathname);
   assert.equal(response.status, 200, `${pathname} should stay active`);
