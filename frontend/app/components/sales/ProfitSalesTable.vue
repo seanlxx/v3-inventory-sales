@@ -16,6 +16,24 @@ const emit = defineEmits<{
   void: [record: ProfitSalesRecord]
 }>()
 
+type SortKey = 'recordDate' | 'type' | 'machineId' | 'items' | 'netRevenue' | 'signedCogs' | 'fees' | 'grossProfit' | 'status'
+type SortDirection = 'asc' | 'desc'
+
+const sortKey = shallowRef<SortKey | null>(null)
+const sortDirection = shallowRef<SortDirection>('desc')
+
+const defaultSortDirection: Record<SortKey, SortDirection> = {
+  recordDate: 'desc',
+  type: 'asc',
+  machineId: 'asc',
+  items: 'asc',
+  netRevenue: 'desc',
+  signedCogs: 'desc',
+  fees: 'desc',
+  grossProfit: 'desc',
+  status: 'asc'
+}
+
 function typeLabel(type: ProfitSalesRecord['type']) {
   if (type === 'refund') return '退款'
   if (type === 'loss') return '损耗'
@@ -39,6 +57,63 @@ function firstItems(record: ProfitSalesRecord) {
   return record.items.slice(0, 3).map(item => item.productName).join(' / ')
 }
 
+function sortValue(record: ProfitSalesRecord, key: SortKey) {
+  if (key === 'type') return typeLabel(record.type)
+  if (key === 'items') return firstItems(record) || record.source
+  if (key === 'fees') return Number(record.fees) + Number(record.discount)
+  if (key === 'status') return record.status === 'voided' ? '已作废' : '有效'
+  return record[key]
+}
+
+function compareValues(left: unknown, right: unknown) {
+  if (typeof left === 'number' || typeof right === 'number') {
+    return (Number(left) || 0) - (Number(right) || 0)
+  }
+  return String(left ?? '').localeCompare(String(right ?? ''), 'zh-CN', {
+    numeric: true,
+    sensitivity: 'base'
+  })
+}
+
+const sortedRecords = computed(() => {
+  if (!sortKey.value) return props.records
+  return [...props.records]
+    .map((record, index) => ({ record, index }))
+    .sort((left, right) => {
+      const result = compareValues(
+        sortValue(left.record, sortKey.value as SortKey),
+        sortValue(right.record, sortKey.value as SortKey)
+      )
+      const directed = sortDirection.value === 'asc' ? result : -result
+      return directed || left.index - right.index
+    })
+    .map(item => item.record)
+})
+
+function updateSort(key: SortKey) {
+  if (sortKey.value === key) {
+    sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc'
+    return
+  }
+  sortKey.value = key
+  sortDirection.value = defaultSortDirection[key]
+}
+
+function sortLabel(key: SortKey) {
+  if (sortKey.value !== key) return ''
+  return sortDirection.value === 'asc' ? '升序' : '降序'
+}
+
+function sortSymbol(key: SortKey) {
+  if (sortKey.value !== key) return '↕'
+  return sortDirection.value === 'asc' ? '↑' : '↓'
+}
+
+function ariaSort(key: SortKey) {
+  if (sortKey.value !== key) return 'none'
+  return sortDirection.value === 'asc' ? 'ascending' : 'descending'
+}
+
 function canMutate(record: ProfitSalesRecord) {
   return record.status === 'active' && !record.legacySalesId
 }
@@ -50,15 +125,69 @@ function canMutate(record: ProfitSalesRecord) {
       <table class="profit-sales-table__table">
         <thead>
           <tr>
-            <th scope="col">日期</th>
-            <th scope="col" class="profit-sales-table__center">类型</th>
-            <th scope="col" class="profit-sales-table__center">设备</th>
-            <th scope="col" class="profit-sales-table__th--items">商品明细</th>
-            <th scope="col" class="profit-sales-table__center">收入</th>
-            <th scope="col" class="profit-sales-table__center">成本</th>
-            <th scope="col" class="profit-sales-table__center">费用</th>
-            <th scope="col" class="profit-sales-table__center">毛利</th>
-            <th scope="col" class="profit-sales-table__center">状态</th>
+            <th scope="col" :aria-sort="ariaSort('recordDate')">
+              <button class="profit-sales-table__sort" type="button" @click="updateSort('recordDate')">
+                <span>日期</span>
+                <span class="profit-sales-table__sort-icon" aria-hidden="true">{{ sortSymbol('recordDate') }}</span>
+                <span class="sr-only">{{ sortLabel('recordDate') }}</span>
+              </button>
+            </th>
+            <th scope="col" class="profit-sales-table__center" :aria-sort="ariaSort('type')">
+              <button class="profit-sales-table__sort profit-sales-table__sort--center" type="button" @click="updateSort('type')">
+                <span>类型</span>
+                <span class="profit-sales-table__sort-icon" aria-hidden="true">{{ sortSymbol('type') }}</span>
+                <span class="sr-only">{{ sortLabel('type') }}</span>
+              </button>
+            </th>
+            <th scope="col" class="profit-sales-table__center" :aria-sort="ariaSort('machineId')">
+              <button class="profit-sales-table__sort profit-sales-table__sort--center" type="button" @click="updateSort('machineId')">
+                <span>设备</span>
+                <span class="profit-sales-table__sort-icon" aria-hidden="true">{{ sortSymbol('machineId') }}</span>
+                <span class="sr-only">{{ sortLabel('machineId') }}</span>
+              </button>
+            </th>
+            <th scope="col" class="profit-sales-table__th--items" :aria-sort="ariaSort('items')">
+              <button class="profit-sales-table__sort" type="button" @click="updateSort('items')">
+                <span>商品明细</span>
+                <span class="profit-sales-table__sort-icon" aria-hidden="true">{{ sortSymbol('items') }}</span>
+                <span class="sr-only">{{ sortLabel('items') }}</span>
+              </button>
+            </th>
+            <th scope="col" class="profit-sales-table__center" :aria-sort="ariaSort('netRevenue')">
+              <button class="profit-sales-table__sort profit-sales-table__sort--center" type="button" @click="updateSort('netRevenue')">
+                <span>收入</span>
+                <span class="profit-sales-table__sort-icon" aria-hidden="true">{{ sortSymbol('netRevenue') }}</span>
+                <span class="sr-only">{{ sortLabel('netRevenue') }}</span>
+              </button>
+            </th>
+            <th scope="col" class="profit-sales-table__center" :aria-sort="ariaSort('signedCogs')">
+              <button class="profit-sales-table__sort profit-sales-table__sort--center" type="button" @click="updateSort('signedCogs')">
+                <span>成本</span>
+                <span class="profit-sales-table__sort-icon" aria-hidden="true">{{ sortSymbol('signedCogs') }}</span>
+                <span class="sr-only">{{ sortLabel('signedCogs') }}</span>
+              </button>
+            </th>
+            <th scope="col" class="profit-sales-table__center" :aria-sort="ariaSort('fees')">
+              <button class="profit-sales-table__sort profit-sales-table__sort--center" type="button" @click="updateSort('fees')">
+                <span>费用</span>
+                <span class="profit-sales-table__sort-icon" aria-hidden="true">{{ sortSymbol('fees') }}</span>
+                <span class="sr-only">{{ sortLabel('fees') }}</span>
+              </button>
+            </th>
+            <th scope="col" class="profit-sales-table__center" :aria-sort="ariaSort('grossProfit')">
+              <button class="profit-sales-table__sort profit-sales-table__sort--center" type="button" @click="updateSort('grossProfit')">
+                <span>毛利</span>
+                <span class="profit-sales-table__sort-icon" aria-hidden="true">{{ sortSymbol('grossProfit') }}</span>
+                <span class="sr-only">{{ sortLabel('grossProfit') }}</span>
+              </button>
+            </th>
+            <th scope="col" class="profit-sales-table__center" :aria-sort="ariaSort('status')">
+              <button class="profit-sales-table__sort profit-sales-table__sort--center" type="button" @click="updateSort('status')">
+                <span>状态</span>
+                <span class="profit-sales-table__sort-icon" aria-hidden="true">{{ sortSymbol('status') }}</span>
+                <span class="sr-only">{{ sortLabel('status') }}</span>
+              </button>
+            </th>
             <th scope="col" class="profit-sales-table__center">操作</th>
           </tr>
         </thead>
@@ -79,7 +208,7 @@ function canMutate(record: ProfitSalesRecord) {
           <tr v-else-if="props.records.length === 0">
             <td class="profit-sales-table__state" colspan="10">没有符合筛选条件的销售记录</td>
           </tr>
-          <tr v-for="record in props.records" v-else :key="record.id">
+          <tr v-for="record in sortedRecords" v-else :key="record.id">
             <td class="numeric">{{ record.recordDate }}</td>
             <td class="profit-sales-table__center">
               <StatusBadge :label="typeLabel(record.type)" :tone="typeTone(record.type)" />
@@ -137,7 +266,7 @@ function canMutate(record: ProfitSalesRecord) {
       />
       <template v-else>
         <MobileCard
-          v-for="record in props.records"
+          v-for="record in sortedRecords"
           :key="record.id"
           class="profit-sales-table__card"
           :accent="record.status === 'voided' ? 'warning' : 'primary'"
@@ -221,6 +350,42 @@ function canMutate(record: ProfitSalesRecord) {
   font-weight: 800;
 }
 
+.profit-sales-table__sort {
+  width: 100%;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.profit-sales-table__sort--center {
+  justify-content: center;
+}
+
+.profit-sales-table__sort-icon {
+  color: var(--color-text-soft);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.profit-sales-table__sort:hover,
+.profit-sales-table__sort:focus-visible {
+  color: var(--color-primary);
+}
+
+.profit-sales-table__sort:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+  border-radius: var(--radius-1);
+}
+
 .profit-sales-table__center {
   text-align: center !important;
 }
@@ -273,6 +438,15 @@ function canMutate(record: ProfitSalesRecord) {
 
 .profit-sales-table__cards {
   display: none;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
 }
 
 tbody tr:last-child td {
