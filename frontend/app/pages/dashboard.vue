@@ -75,40 +75,39 @@ function openProductRankingItem(item: ProductRankingItem) {
 
     <DashboardKpiStrip :kpis="report?.kpis" :loading="loading" />
 
-    <div class="dashboard-page__grid">
-      <div class="dashboard-page__column">
-        <SalesTrendPanel
-          :points="report?.salesTrend ?? []"
-          :machine-series="report?.salesTrendByMachine ?? []"
-          :days="filters.days"
-          :loading="loading"
-          @update-days="updateFilters({ days: $event })"
-        />
-        <ExceptionsPanel
-          :items="report?.recentExceptions ?? []"
-          :loading="loading"
-          title="商品合并"
-          description="旧商品归并到全局商品的结果"
-          empty-message="暂无商品合并"
-          @view="openExceptionTarget"
-        />
-      </div>
-      <div class="dashboard-page__column">
-        <MachineRankingPanel
-          :items="report?.profitBreakdown ?? []"
-          :loading="loading"
-        />
-        <ProductRankingPanel
-          :items="report?.productRanking ?? []"
-          :loading="loading"
-          @view="openProductRankingItem"
-        />
-        <CostGapPanel
-          :items="report?.costGaps ?? []"
-          :loading="loading"
-          @resolve="openCostGapPurchase"
-        />
-      </div>
+    <div class="dashboard-page__primary">
+      <SalesTrendPanel
+        :points="report?.salesTrend ?? []"
+        :machine-series="report?.salesTrendByMachine ?? []"
+        :days="filters.days"
+        :loading="loading"
+        @update-days="updateFilters({ days: $event })"
+      />
+      <MachineRankingPanel
+        :items="report?.profitBreakdown ?? []"
+        :loading="loading"
+      />
+    </div>
+
+    <div class="dashboard-page__secondary">
+      <ProductRankingPanel
+        :items="report?.productRanking ?? []"
+        :loading="loading"
+        @view="openProductRankingItem"
+      />
+      <CostGapPanel
+        :items="report?.costGaps ?? []"
+        :loading="loading"
+        @resolve="openCostGapPurchase"
+      />
+      <ExceptionsPanel
+        :items="report?.recentExceptions ?? []"
+        :loading="loading"
+        title="商品合并"
+        description="旧商品归并到全局商品的结果"
+        empty-message="暂无商品合并"
+        @view="openExceptionTarget"
+      />
     </div>
   </div>
 </template>
@@ -142,30 +141,55 @@ function openProductRankingItem(item: ProductRankingItem) {
   font-weight: 700;
 }
 
-.dashboard-page__grid {
+.dashboard-page__primary,
+.dashboard-page__secondary {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(300px, 0.9fr);
   gap: var(--space-4);
+}
+
+.dashboard-page__primary {
+  grid-template-columns: minmax(0, 1.65fr) minmax(280px, 0.75fr);
+  align-items: stretch;
+}
+
+.dashboard-page__secondary {
+  grid-template-columns: minmax(0, 1.1fr) minmax(260px, 0.8fr) minmax(260px, 0.8fr);
   align-items: start;
 }
 
-.dashboard-page__column {
+.dashboard-page__primary > *,
+.dashboard-page__secondary > * {
   min-width: 0;
-  display: grid;
-  gap: var(--space-4);
-  align-content: start;
 }
 
-@media (max-width: 1080px) {
-  .dashboard-page__grid {
+@media (max-width: 1160px) {
+  .dashboard-page__primary {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard-page__secondary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-page__secondary > :first-child {
+    grid-column: 1 / -1;
   }
 }
 
 @media (max-width: 760px) {
   .dashboard-page {
     gap: var(--space-3);
+  }
+
+  .dashboard-page__primary,
+  .dashboard-page__secondary {
+    grid-template-columns: 1fr;
+    gap: var(--space-3);
+  }
+
+  .dashboard-page__secondary > :first-child {
+    grid-column: auto;
   }
 
   .dashboard-page__error {

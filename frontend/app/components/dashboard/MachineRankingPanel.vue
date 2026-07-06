@@ -54,8 +54,10 @@ function widthFor(item: MachineRankingItem) {
 <style scoped>
 .machine-ranking {
   min-width: 0;
+  height: 100%;
   display: grid;
   gap: var(--space-3);
+  align-content: start;
   padding: var(--space-4);
 }
 
@@ -80,6 +82,7 @@ function widthFor(item: MachineRankingItem) {
 .machine-ranking__list {
   display: grid;
   gap: var(--space-3);
+  align-content: start;
 }
 
 .machine-ranking__item {

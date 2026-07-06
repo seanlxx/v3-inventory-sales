@@ -73,17 +73,23 @@ const kpiItems = computed(() => [
 .dashboard-kpis {
   min-width: 0;
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: var(--space-3);
 }
 
 .dashboard-kpis__item {
   min-width: 0;
+  grid-column: span 4;
   display: grid;
   gap: var(--space-2);
+  min-height: 104px;
   padding: var(--space-4);
   border-left: 4px solid var(--color-border);
   transition: transform var(--transition-bounce), box-shadow var(--transition-bounce), border-color var(--transition-fast);
+}
+
+.dashboard-kpis__item:nth-child(-n + 4) {
+  grid-column: span 3;
 }
 
 .dashboard-kpis__item:hover {
@@ -137,7 +143,12 @@ const kpiItems = computed(() => [
 
 @media (max-width: 1240px) {
   .dashboard-kpis {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .dashboard-kpis__item,
+  .dashboard-kpis__item:nth-child(-n + 4) {
+    grid-column: span 3;
   }
 }
 
@@ -150,7 +161,9 @@ const kpiItems = computed(() => [
   }
 
   .dashboard-kpis__item {
+    grid-column: auto;
     min-width: 176px;
+    min-height: 96px;
     padding: var(--space-3);
   }
 

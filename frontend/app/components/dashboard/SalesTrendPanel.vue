@@ -147,7 +147,7 @@ const chartData = computed<ChartData<'line'>>(() => {
         yAxisID: 'y'
       },
       {
-      label: '净收入',
+        label: '净收入',
         data: receivedValues,
         borderColor: '#16a34a',
         backgroundColor: 'rgba(22, 163, 74, 0.10)',
@@ -563,7 +563,7 @@ function formatMoneyTick(value: number) {
 .sales-trend__canvas-wrap {
   position: relative;
   width: 100%;
-  height: 238px;
+  height: clamp(260px, 26vw, 320px);
   min-width: 0;
 }
 
