@@ -87,7 +87,7 @@ globalThis.fetch = async (url) => {
   const href = String(url);
   if (href.includes('/mobile/mobilelogin.html')) {
     loginRequests += 1;
-    return htmlResponse('login ok', { 'set-cookie': 'sid=login; Path=/; HttpOnly' });
+    return loginRedirectResponse(href);
   }
   if (href.includes('/mobile/goods.html')) return htmlResponse(goodsHtml());
   if (href.includes('/mobile/setJinjia.html')) return htmlResponse(costsHtml());
@@ -205,6 +205,18 @@ function htmlResponse(html, headers = {}) {
     status: 200,
     headers: { 'content-type': 'text/html; charset=utf-8', ...headers }
   });
+}
+
+function loginRedirectResponse(url) {
+  return {
+    status: 302,
+    url,
+    headers: new Headers({
+      'set-cookie': 'sid=login; Path=/; HttpOnly',
+      location: '/mobile/index.html'
+    }),
+    text: async () => ''
+  };
 }
 
 function countRows(table) {

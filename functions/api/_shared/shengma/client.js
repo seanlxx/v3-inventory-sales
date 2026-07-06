@@ -92,7 +92,8 @@ export class ShengmaClient {
     });
     const text = await response.text();
     const cookie = joinCookie(response.headers);
-    if (!cookie || response.status >= 400 || isLoginPage(text, response)) {
+    const isRedirect = response.status >= 300 && response.status < 400;
+    if (!cookie || response.status >= 400 || (!isRedirect && isLoginPage(text, response))) {
       throw new Error(`盛码登录失败：HTTP ${response.status}`);
     }
 
