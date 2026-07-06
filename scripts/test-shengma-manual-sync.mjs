@@ -82,8 +82,13 @@ env.DB.exec(`
 `);
 
 const originalFetch = globalThis.fetch;
+let loginRequests = 0;
 globalThis.fetch = async (url) => {
   const href = String(url);
+  if (href.includes('/mobile/mobilelogin.html')) {
+    loginRequests += 1;
+    return htmlResponse('login ok', { 'set-cookie': 'sid=login; Path=/; HttpOnly' });
+  }
   if (href.includes('/mobile/goods.html')) return htmlResponse(goodsHtml());
   if (href.includes('/mobile/setJinjia.html')) return htmlResponse(costsHtml());
   if (href.includes('/mobile/salesAll.html')) return htmlResponse(salesHtml());
@@ -163,6 +168,24 @@ try {
   assert.equal(duplicate.summary.salesImported, 0);
   assert.equal(duplicate.summary.salesDuplicate, 1);
   assert.equal(countRows('sales_records'), 1);
+
+  env.DB.exec(`
+    UPDATE vending_records
+    SET data = '{"key":"shengma.session","value":{"cookie":"sid=expired","expiresAt":0}}'
+    WHERE store = 'settings' AND record_id = 'shengma.session'
+  `);
+  const loginResponse = await postSync({
+    request: jsonRequest('https://example.test/api/integrations/shengma/sync', {
+      startDate: '2026-07-06',
+      endDate: '2026-07-06',
+      dryRun: true,
+      scope: ['sales']
+    }),
+    env
+  });
+  const loginPreview = await loginResponse.json();
+  assert.equal(loginPreview.status, 'success');
+  assert.equal(loginRequests, 1);
 } finally {
   globalThis.fetch = originalFetch;
 }
@@ -177,10 +200,10 @@ function jsonRequest(url, body) {
   });
 }
 
-function htmlResponse(html) {
+function htmlResponse(html, headers = {}) {
   return new Response(html, {
     status: 200,
-    headers: { 'content-type': 'text/html; charset=utf-8' }
+    headers: { 'content-type': 'text/html; charset=utf-8', ...headers }
   });
 }
 
