@@ -150,17 +150,36 @@ function openProducts() {
 .dashboard-page__secondary {
   min-width: 0;
   display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: var(--space-4);
 }
 
 .dashboard-page__primary {
-  grid-template-columns: minmax(0, 1.65fr) minmax(280px, 0.75fr);
   align-items: stretch;
 }
 
 .dashboard-page__secondary {
-  grid-template-columns: minmax(0, 1.1fr) minmax(260px, 0.8fr) minmax(260px, 0.8fr);
   align-items: start;
+}
+
+.dashboard-page__primary > :first-child {
+  grid-column: span 8;
+}
+
+.dashboard-page__primary > :last-child {
+  grid-column: span 4;
+}
+
+.dashboard-page__secondary > :nth-child(1) {
+  grid-column: span 5;
+}
+
+.dashboard-page__secondary > :nth-child(2) {
+  grid-column: span 3;
+}
+
+.dashboard-page__secondary > :nth-child(3) {
+  grid-column: span 4;
 }
 
 .dashboard-page__primary > *,
@@ -173,8 +192,19 @@ function openProducts() {
     grid-template-columns: 1fr;
   }
 
+  .dashboard-page__primary > :first-child,
+  .dashboard-page__primary > :last-child {
+    grid-column: auto;
+  }
+
   .dashboard-page__secondary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-page__secondary > :nth-child(1),
+  .dashboard-page__secondary > :nth-child(2),
+  .dashboard-page__secondary > :nth-child(3) {
+    grid-column: auto;
   }
 
   .dashboard-page__secondary > :first-child {
@@ -193,7 +223,9 @@ function openProducts() {
     gap: var(--space-3);
   }
 
-  .dashboard-page__secondary > :first-child {
+  .dashboard-page__secondary > :first-child,
+  .dashboard-page__secondary > :nth-child(2),
+  .dashboard-page__secondary > :nth-child(3) {
     grid-column: auto;
   }
 
