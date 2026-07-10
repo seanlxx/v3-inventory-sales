@@ -20,6 +20,8 @@ import {
   onRequestPatch as patchSale,
   onRequestPost as postSale
 } from '../functions/api/profit/sales.js';
+import { onRequestPost as postSalesImport } from '../functions/api/profit/sales-import.js';
+
 import { onRequestGet as getSummary } from '../functions/api/profit/summary.js';
 import {
   saveProfitPurchase,
@@ -512,6 +514,145 @@ const voidPurchaseResponse = await patchPurchase({
 assert.equal(voidPurchaseResponse.status, 200);
 assert.equal((await voidPurchaseResponse.json()).record.status, 'voided');
 
+env.DB.exec(`
+  INSERT INTO sales_records (
+    id, type, machine_id, record_date, year_month, source, external_id,
+    gross_amount_cents, refund_amount_cents, platform_fee_cents, service_fee_cents,
+    discount_cents, net_revenue_cents, total_cogs_cents, gross_profit_cents,
+    note, status, created_at, updated_at
+  )
+  VALUES (
+    'sr:zn:visionpay-import-existing', 'sale', '1号机', '2026-07-03', '2026-07',
+    'zn', 'visionpay-import-existing', 500, 0, 0, 0, 0, 500, 200, 300,
+    'existing test order', 'active', '2026-07-03T00:00:00.000Z', '2026-07-03T00:00:00.000Z'
+  );
+`);
+
+const importPayload = {
+  orders: [
+    {
+      orderNo: 'visionpay-import-existing',
+      status: '已完成',
+      deviceCode: 'TBN5CFA0261G547T5D3',
+      deviceName: '工厂测试47T5D3',
+      recordDate: '2026-07-03',
+      salesAmount: 5,
+      platformFee: 0,
+      serviceFee: 0,
+      discount: 0,
+      refundAmount: 0,
+      items: [{ barcode: '6900000000000', productName: 'Cola', unitPrice: 5, quantity: 1 }]
+    },
+    {
+      orderNo: 'visionpay-import-new',
+      status: '已完成',
+      deviceCode: 'TBN5CFA0261G547T5D3',
+      deviceName: '工厂测试47T5D3',
+      recordDate: '2026-07-05',
+      salesAmount: 14.2,
+      platformFee: 0.2,
+      serviceFee: 0.1,
+      discount: 0.3,
+      refundAmount: 0,
+      items: [
+        { barcode: '6900000000001', productName: 'Cola', unitPrice: 5, quantity: 2 },
+        { barcode: '6900000000002', productName: 'Import Snack', unitPrice: 4.5, quantity: 1 }
+      ]
+    },
+    {
+      orderNo: 'visionpay-import-cancelled',
+      status: '取消',
+      deviceCode: 'TBN5CFA0261GJ6BG6EA',
+      deviceName: '工厂测试6BG6EA',
+      recordDate: '2026-07-05',
+      salesAmount: 0,
+      platformFee: 0,
+      serviceFee: 0,
+      discount: 0,
+      refundAmount: 0,
+      items: []
+    }
+  ]
+};
+
+const importPreviewResponse = await postSalesImport({
+  request: jsonRequest('https://example.test/api/profit/sales-import', {
+    ...importPayload,
+    dryRun: true
+  }),
+  env
+});
+assert.equal(importPreviewResponse.status, 200);
+const importPreview = await importPreviewResponse.json();
+assert.equal(importPreview.summary.ordersReceived, 3);
+assert.equal(importPreview.summary.ordersReady, 1);
+assert.equal(importPreview.summary.ordersDuplicate, 1);
+assert.equal(importPreview.summary.ordersSkipped, 1);
+assert.equal(importPreview.summary.itemsReady, 2);
+assert.equal(importPreview.summary.productsCreated, 1);
+assert.equal(importPreview.summary.productsMatched, 1);
+assert.equal(importPreview.summary.ordersImported, 0);
+assert.equal((await env.DB.prepare(`
+  SELECT COUNT(*) AS count FROM sales_records WHERE source = 'zn' AND external_id = 'visionpay-import-new'
+`).first()).count, 0);
+assert.equal((await env.DB.prepare(`
+  SELECT COUNT(*) AS count FROM products_global WHERE normalized_name = 'import snack'
+`).first()).count, 0);
+
+const importResponse = await postSalesImport({
+  request: jsonRequest('https://example.test/api/profit/sales-import', {
+    ...importPayload,
+    dryRun: false
+  }),
+  env
+});
+assert.equal(importResponse.status, 200);
+const imported = await importResponse.json();
+assert.equal(imported.summary.ordersImported, 1);
+assert.equal(imported.summary.itemsImported, 2);
+assert.equal(imported.summary.ordersDuplicate, 1);
+assert.equal(imported.summary.ordersSkipped, 1);
+assert.equal(imported.summary.productsCreated, 1);
+
+const importedRecord = await env.DB.prepare(`
+  SELECT machine_id, gross_amount_cents, platform_fee_cents, service_fee_cents,
+         discount_cents, net_revenue_cents, total_cogs_cents, gross_profit_cents
+  FROM sales_records
+  WHERE source = 'zn' AND external_id = 'visionpay-import-new'
+`).first();
+assert.equal(importedRecord.machine_id, '1号机');
+assert.equal(importedRecord.gross_amount_cents, 1450);
+assert.equal(importedRecord.platform_fee_cents, 20);
+assert.equal(importedRecord.service_fee_cents, 10);
+assert.equal(importedRecord.discount_cents, 30);
+assert.equal(importedRecord.net_revenue_cents, 1390);
+assert.equal(importedRecord.total_cogs_cents, 400);
+assert.equal(importedRecord.gross_profit_cents, 990);
+assert.equal((await env.DB.prepare(`
+  SELECT COUNT(*) AS count FROM sales_record_items WHERE sales_record_id = 'sr:zn:visionpay-import-new'
+`).first()).count, 2);
+assert.equal((await env.DB.prepare(`
+  SELECT COUNT(*) AS count FROM cost_snapshots
+  WHERE source_type = 'sale_item' AND source_record_id = 'sr:zn:visionpay-import-new'
+`).first()).count, 2);
+assert.equal((await env.DB.prepare(`
+  SELECT COUNT(*) AS count
+  FROM product_aliases
+  WHERE source = 'zn' AND source_product_id IN ('6900000000001', '6900000000002')
+`).first()).count, 2);
+
+const duplicateImportResponse = await postSalesImport({
+  request: jsonRequest('https://example.test/api/profit/sales-import', {
+    ...importPayload,
+    dryRun: false
+  }),
+  env
+});
+const duplicateImport = await duplicateImportResponse.json();
+assert.equal(duplicateImport.summary.ordersReady, 0);
+assert.equal(duplicateImport.summary.ordersImported, 0);
+assert.equal(duplicateImport.summary.ordersDuplicate, 2);
+assert.equal(duplicateImport.summary.ordersSkipped, 1);
 const serviceSource = readFileSync(
   join(projectRoot, 'functions', 'api', '_shared', 'profit-service.js'),
   'utf8'

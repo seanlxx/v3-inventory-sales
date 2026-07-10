@@ -183,6 +183,8 @@ onMounted(async () => {
       </form>
     </SettingsSection>
 
+    <OrderImportCard />
+
     <VendorSyncCard />
 
     <SettingsSection title="AI 识别密钥" description="本次登录填写一次，退出或登录失效后自动清除。">
