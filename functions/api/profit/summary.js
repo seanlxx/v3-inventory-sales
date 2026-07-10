@@ -1,5 +1,5 @@
 import { json, methodNotAllowed } from '../_shared/http.js';
-import { getProfitSummary } from '../_shared/profit-service.js';
+import { getProfitSummary } from '../_shared/profit-report-service.js';
 
 export async function onRequestGet(context) {
   const url = new URL(context.request.url);

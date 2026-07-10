@@ -30,6 +30,7 @@ const fallbackNavigationItem: NavigationItem = {
 const route = useRoute()
 const { loading } = useApi()
 const toastStore = useToastStore()
+const authStore = useAuthStore()
 
 const currentNavigationItem = computed(() =>
   navigationItems.find(item => item.to === route.path.replace(/\/$/, '')) ?? fallbackNavigationItem
@@ -87,23 +88,35 @@ const mobileNavigationItems = computed(() => navigationItems.filter(item => item
         </div>
 
         <div class="app-shell__topbar-actions">
-          <AppInput
-            class="app-shell__search"
-            model-value=""
-            label="全局搜索"
-            placeholder="搜索占位"
-            readonly
-          />
           <StatusBadge v-if="loading" label="请求中" tone="warning" />
-          <StatusBadge v-else label="游客访问" tone="neutral" />
+          <StatusBadge
+            v-else-if="authStore.isAuthenticated"
+            :label="authStore.username || '已登录'"
+            tone="success"
+          />
+          <StatusBadge v-else label="未登录" tone="neutral" />
           <NuxtLink class="app-shell__settings-link" to="/settings" aria-label="打开设置">
             设置
           </NuxtLink>
         </div>
       </header>
 
-      <div v-if="toastStore.latest" class="app-shell__toast" role="status">
-        {{ toastStore.latest.message }}
+      <div
+        v-if="toastStore.latest"
+        class="app-shell__toast"
+        :class="`app-shell__toast--${toastStore.latest.tone}`"
+        :role="toastStore.latest.tone === 'danger' ? 'alert' : 'status'"
+        :aria-live="toastStore.latest.tone === 'danger' ? 'assertive' : 'polite'"
+      >
+        <span>{{ toastStore.latest.message }}</span>
+        <button
+          class="app-shell__toast-close"
+          type="button"
+          aria-label="关闭提示"
+          @click="toastStore.clear(toastStore.latest.id)"
+        >
+          ×
+        </button>
       </div>
 
       <main class="app-shell__content">
@@ -300,13 +313,6 @@ const mobileNavigationItems = computed(() => navigationItems.filter(item => item
   gap: var(--space-3);
 }
 
-.app-shell__search {
-  width: auto;
-  min-width: 180px;
-  max-width: 280px;
-  flex: 1 1 220px;
-}
-
 .app-shell__settings-link {
   min-height: 40px;
   display: inline-flex;
@@ -332,23 +338,62 @@ const mobileNavigationItems = computed(() => navigationItems.filter(item => item
 }
 
 .app-shell__toast {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
   margin: var(--space-4) var(--space-6) 0;
-  border: 1px solid var(--color-border);
+  border: 1px solid currentColor;
   border-radius: var(--radius-2);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  font-weight: 700;
+}
+
+.app-shell__toast--info {
+  background: var(--color-info-soft);
+  color: var(--color-info);
+}
+
+.app-shell__toast--success {
+  background: var(--color-inbound-soft);
+  color: var(--color-inbound);
+}
+
+.app-shell__toast--warning {
   background: var(--color-warning-soft);
   color: var(--color-warning);
-  font-weight: 700;
+}
+
+.app-shell__toast--danger {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.app-shell__toast-close {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-2);
+  background: transparent;
+  color: currentColor;
+  cursor: pointer;
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+}
+
+@media (hover: hover) {
+  .app-shell__toast-close:hover {
+    background: rgb(0 0 0 / 7%);
+  }
 }
 
 .app-shell__bottom-nav {
   display: none;
-}
-
-@media (max-width: 880px) {
-  .app-shell__search {
-    display: none;
-  }
 }
 
 @media (max-width: 760px) {
@@ -426,6 +471,12 @@ const mobileNavigationItems = computed(() => navigationItems.filter(item => item
 
   .app-shell__toast {
     margin: var(--space-3) var(--space-4) 0;
+  }
+
+  .app-shell__toast-close {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
   }
 
   .app-shell__bottom-nav {

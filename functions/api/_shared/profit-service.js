@@ -1,4 +1,4 @@
-import { all, first, placeholders, run } from './d1.js';
+import { all, batch, first, placeholders, run } from './d1.js';
 import {
   centsToMoney,
   moneyToCents,
@@ -9,67 +9,19 @@ import {
   stringOrNull,
   yearMonthFromDate
 } from './validators.js';
+import { PROFIT_MAX_LIMIT, normalizeLimit, normalizeMachineId, normalizeMonth } from './profit-normalize.js';
+import { replacePurchaseItemCommands, replaceSalesItemCommands } from './profit-record-statements.js';
 
-const MAX_TREND_DAYS = 90;
-const DEFAULT_TREND_DAYS = 30;
-const DEFAULT_LIMIT = 50;
-const MAX_LIMIT = 200;
+export { normalizeDays, normalizeLimit, normalizeMachineId, normalizeMonth } from './profit-normalize.js';
+
 const D1_IN_CLAUSE_CHUNK_SIZE = 90;
-const MACHINE_ALIASES = new Map([
-  ['三号机', '轨道机']
-]);
 
 export class ProfitValidationError extends Error {}
-
-export function normalizeMonth(value) {
-  const text = String(value || '').trim();
-  return /^\d{4}-\d{2}$/.test(text) ? text : new Date().toISOString().slice(0, 7);
-}
 
 function normalizeRecordListMonth(value) {
   const text = String(value || '').trim();
   if (text === 'all' || text === '全部') return '';
   return normalizeMonth(text);
-}
-
-export function normalizeDays(value) {
-  const days = Math.round(Number(value) || DEFAULT_TREND_DAYS);
-  return Math.min(Math.max(days, 1), MAX_TREND_DAYS);
-}
-
-export function normalizeLimit(value) {
-  const limit = Math.round(Number(value) || DEFAULT_LIMIT);
-  return Math.min(Math.max(limit, 1), MAX_LIMIT);
-}
-
-export function normalizeMachineId(value) {
-  const text = String(value || '').trim();
-  if (!text || text === 'all') return '';
-  return MACHINE_ALIASES.get(text) || text;
-}
-
-function addDays(date, days) {
-  const next = new Date(date);
-  next.setUTCDate(next.getUTCDate() + days);
-  return next;
-}
-
-function formatDate(date) {
-  return date.toISOString().slice(0, 10);
-}
-
-function todayDate() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function dateSeries(days) {
-  const end = new Date(`${todayDate()}T00:00:00.000Z`);
-  const start = addDays(end, -(days - 1));
-  return Array.from({ length: days }, (_, index) => formatDate(addDays(start, index)));
-}
-
-function dateWindowStart(days) {
-  return dateSeries(days)[0];
 }
 
 function money(value) {
@@ -90,11 +42,6 @@ async function allByChunkedIds(db, ids, sqlFactory) {
     rows.push(...await all(db, sqlFactory(chunk.length), chunk));
   }
   return rows;
-}
-
-function profitRatePercent(netRevenueCents, grossProfitCents) {
-  const netRevenue = Number(netRevenueCents) || 0;
-  return netRevenue > 0 ? (Number(grossProfitCents) || 0) / netRevenue * 100 : 0;
 }
 
 function machineSql(column) {
@@ -136,440 +83,6 @@ function requireText(value, message) {
   const text = String(value || '').trim();
   if (!text) throw new ProfitValidationError(message);
   return text;
-}
-
-function toSummaryKpis(row, quantity, purchaseCost, missingCostProductCount, mergedProductCount) {
-  const netRevenueCents = Number(row?.net_revenue_cents) || 0;
-  const grossProfitCents = Number(row?.gross_profit_cents) || 0;
-  return {
-    grossSales: money(row?.gross_sales_cents),
-    refunds: money(row?.refunds_cents),
-    fees: money(row?.fees_cents),
-    discounts: money(row?.discounts_cents),
-    netRevenue: money(netRevenueCents),
-    cogs: money(row?.cogs_cents),
-    grossProfit: money(grossProfitCents),
-    profitRate: profitRatePercent(netRevenueCents, grossProfitCents),
-    purchaseCost: money(purchaseCost?.purchase_cost_cents),
-    orderCount: Number(row?.order_count) || 0,
-    quantity: Number(quantity?.quantity) || 0,
-    missingCostProductCount: Number(missingCostProductCount?.count) || 0,
-    mergedProductCount: Number(mergedProductCount?.count) || 0
-  };
-}
-
-export async function getProfitSummary(env, options = {}) {
-  const month = normalizeMonth(options.month);
-  const days = normalizeDays(options.days);
-  const machineId = normalizeMachineId(options.machineId);
-  const [
-    totals,
-    quantity,
-    purchaseCost,
-    missingCostProductCount,
-    mergedProductCount,
-    dailyTrend,
-    dailyTrendByMachine,
-    machineRanking,
-    productRanking,
-    costGaps,
-    productMerges
-  ] = await Promise.all([
-    getMonthlyTotals(env, month, machineId),
-    getMonthlyQuantity(env, month, machineId),
-    getPurchaseCost(env, month),
-    getMissingCostProductCount(env, month, machineId),
-    getMergedProductCount(env),
-    getDailyTrend(env, days, machineId),
-    getDailyTrendByMachine(env, days, machineId),
-    getMachineRanking(env, month),
-    getProductRanking(env, month, machineId),
-    listCostGaps(env, { month, machineId, limit: 8 }),
-    listProductMerges(env, { limit: 8 })
-  ]);
-
-  return {
-    month,
-    machineId: machineId || 'all',
-    kpis: toSummaryKpis(totals, quantity, purchaseCost, missingCostProductCount, mergedProductCount),
-    dailyTrend,
-    dailyTrendByMachine,
-    machineRanking,
-    productRanking,
-    costGaps,
-    productMerges
-  };
-}
-
-async function getMonthlyTotals(env, month, machineId) {
-  const filter = machineFilterFor('machine_id', machineId);
-  return await first(env.DB, `
-    SELECT
-      COUNT(*) AS order_count,
-      COALESCE(SUM(gross_amount_cents), 0) AS gross_sales_cents,
-      COALESCE(SUM(refund_amount_cents), 0) AS refunds_cents,
-      COALESCE(SUM(platform_fee_cents + service_fee_cents), 0) AS fees_cents,
-      COALESCE(SUM(discount_cents), 0) AS discounts_cents,
-      COALESCE(SUM(net_revenue_cents), 0) AS net_revenue_cents,
-      COALESCE(SUM(${signedCogsSql()}), 0) AS cogs_cents,
-      COALESCE(SUM(gross_profit_cents), 0) AS gross_profit_cents
-    FROM sales_records
-    WHERE year_month = ?
-      AND status = 'active'
-      AND type IN ('sale', 'refund')
-      ${filter.sql}
-  `, [month, ...filter.params]);
-}
-
-async function getMonthlyQuantity(env, month, machineId) {
-  const filter = machineFilterFor('sr.machine_id', machineId);
-  return await first(env.DB, `
-    SELECT COALESCE(SUM(sri.quantity), 0) AS quantity
-    FROM sales_records sr
-    JOIN sales_record_items sri ON sri.sales_record_id = sr.id
-    WHERE sr.year_month = ?
-      AND sr.status = 'active'
-      AND sr.type = 'sale'
-      ${filter.sql}
-  `, [month, ...filter.params]);
-}
-
-async function getPurchaseCost(env, month) {
-  return await first(env.DB, `
-    SELECT COALESCE(SUM(pri.total_cost_cents), 0) AS purchase_cost_cents
-    FROM purchase_records pr
-    JOIN purchase_record_items pri ON pri.purchase_record_id = pr.id
-    WHERE pr.status = 'active'
-      AND substr(pr.record_date, 1, 7) = ?
-  `, [month]);
-}
-
-async function getMissingCostProductCount(env, month, machineId) {
-  const filter = machineFilterFor('sr.machine_id', machineId);
-  return await first(env.DB, `
-    WITH gap_products AS (
-      SELECT sri.product_global_id
-      FROM sales_records sr
-      JOIN sales_record_items sri ON sri.sales_record_id = sr.id
-      LEFT JOIN (
-        SELECT product_global_id, COUNT(*) AS cost_snapshot_count
-        FROM cost_snapshots
-        WHERE unit_cost_cents > 0
-          OR source_type = 'manual_cost'
-        GROUP BY product_global_id
-      ) cs ON cs.product_global_id = sri.product_global_id
-      WHERE sr.year_month = ?
-        AND sr.status = 'active'
-        AND sr.type = 'sale'
-        AND sri.unit_cost_cents = 0
-        ${filter.sql}
-      GROUP BY sri.product_global_id
-      HAVING COALESCE(MAX(cs.cost_snapshot_count), 0) = 0
-    )
-    SELECT COUNT(*) AS count FROM gap_products
-  `, [month, ...filter.params]);
-}
-
-async function getMergedProductCount(env) {
-  return await first(env.DB, `
-    SELECT COUNT(*) AS count
-    FROM products_global
-    WHERE legacy_product_count > 1
-  `);
-}
-
-async function getDailyTrend(env, days, machineId) {
-  const startDate = dateWindowStart(days);
-  const filter = machineFilterFor('machine_id', machineId);
-  const rows = await all(env.DB, `
-    SELECT
-      record_date AS date,
-      COALESCE(SUM(gross_amount_cents), 0) AS gross_sales_cents,
-      COALESCE(SUM(refund_amount_cents), 0) AS refunds_cents,
-      COALESCE(SUM(net_revenue_cents), 0) AS net_revenue_cents,
-      COALESCE(SUM(${signedCogsSql()}), 0) AS cogs_cents,
-      COALESCE(SUM(gross_profit_cents), 0) AS gross_profit_cents,
-      COUNT(*) AS order_count
-    FROM sales_records
-    WHERE status = 'active'
-      AND type IN ('sale', 'refund')
-      AND record_date >= ?
-      ${filter.sql}
-    GROUP BY record_date
-    ORDER BY record_date
-  `, [startDate, ...filter.params]);
-  const rowMap = new Map(rows.map(row => [row.date, row]));
-
-  return dateSeries(days).map(date => {
-    const row = rowMap.get(date) || {};
-    return {
-      date,
-      grossSales: money(row.gross_sales_cents),
-      refunds: money(row.refunds_cents),
-      netRevenue: money(row.net_revenue_cents),
-      cogs: money(row.cogs_cents),
-      grossProfit: money(row.gross_profit_cents),
-      orderCount: Number(row.order_count) || 0
-    };
-  });
-}
-
-async function getDailyTrendByMachine(env, days, machineId) {
-  const dates = dateSeries(days);
-  const startDate = dates[0];
-  const filter = machineFilterFor('machine_id', machineId);
-  const displayMachineSql = machineSql('machine_id');
-  const rows = await all(env.DB, `
-    SELECT
-      record_date AS date,
-      ${displayMachineSql} AS machine_id,
-      COALESCE(SUM(gross_amount_cents), 0) AS gross_sales_cents,
-      COALESCE(SUM(refund_amount_cents), 0) AS refunds_cents,
-      COALESCE(SUM(net_revenue_cents), 0) AS net_revenue_cents,
-      COALESCE(SUM(${signedCogsSql()}), 0) AS cogs_cents,
-      COALESCE(SUM(gross_profit_cents), 0) AS gross_profit_cents,
-      COUNT(*) AS order_count
-    FROM sales_records
-    WHERE status = 'active'
-      AND type IN ('sale', 'refund')
-      AND record_date >= ?
-      ${filter.sql}
-    GROUP BY record_date, ${displayMachineSql}
-    ORDER BY ${displayMachineSql}, record_date
-  `, [startDate, ...filter.params]);
-
-  const machines = Array.from(new Set(rows.map(row => row.machine_id))).filter(Boolean);
-  return machines.map(machine => {
-    const rowMap = new Map(
-      rows
-        .filter(row => row.machine_id === machine)
-        .map(row => [row.date, row])
-    );
-    return {
-      machineId: machine,
-      points: dates.map(date => {
-        const row = rowMap.get(date) || {};
-        return {
-          date,
-          grossSales: money(row.gross_sales_cents),
-          refunds: money(row.refunds_cents),
-          netRevenue: money(row.net_revenue_cents),
-          cogs: money(row.cogs_cents),
-          grossProfit: money(row.gross_profit_cents),
-          orderCount: Number(row.order_count) || 0
-        };
-      })
-    };
-  });
-}
-
-async function getMachineRanking(env, month) {
-  const displayMachineSql = machineSql('machine_id');
-  const rows = await all(env.DB, `
-    WITH totals_by_machine AS (
-      SELECT
-        ${displayMachineSql} AS machine_id,
-        COALESCE(SUM(net_revenue_cents), 0) AS net_revenue_cents,
-        COALESCE(SUM(${signedCogsSql()}), 0) AS cogs_cents,
-        COALESCE(SUM(gross_profit_cents), 0) AS gross_profit_cents,
-        COUNT(*) AS order_count
-      FROM sales_records
-      WHERE status = 'active'
-        AND type IN ('sale', 'refund')
-        AND year_month = ?
-      GROUP BY ${displayMachineSql}
-    ),
-    quantity_by_machine AS (
-      SELECT
-        ${machineSql('sr.machine_id')} AS machine_id,
-        COALESCE(SUM(sri.quantity), 0) AS quantity
-      FROM sales_records sr
-      JOIN sales_record_items sri ON sri.sales_record_id = sr.id
-      WHERE sr.status = 'active'
-        AND sr.type = 'sale'
-        AND sr.year_month = ?
-      GROUP BY ${machineSql('sr.machine_id')}
-    )
-    SELECT
-      t.machine_id,
-      t.net_revenue_cents,
-      t.cogs_cents,
-      t.gross_profit_cents,
-      t.order_count,
-      COALESCE(q.quantity, 0) AS quantity
-    FROM totals_by_machine t
-    LEFT JOIN quantity_by_machine q ON q.machine_id = t.machine_id
-    ORDER BY t.net_revenue_cents DESC
-    LIMIT 20
-  `, [month, month]);
-
-  return rows.map(row => ({
-    machineId: row.machine_id,
-    netRevenue: money(row.net_revenue_cents),
-    cogs: money(row.cogs_cents),
-    grossProfit: money(row.gross_profit_cents),
-    profitRate: profitRatePercent(row.net_revenue_cents, row.gross_profit_cents),
-    orderCount: Number(row.order_count) || 0,
-    quantity: Number(row.quantity) || 0
-  }));
-}
-
-async function getProductRanking(env, month, machineId) {
-  const filter = machineFilterFor('sr.machine_id', machineId);
-  const rows = await all(env.DB, `
-    WITH item_base AS (
-      SELECT
-        pg.id AS productGlobalId,
-        pg.canonical_name AS productName,
-        sr.id AS sales_record_id,
-        sr.type,
-        sr.gross_amount_cents,
-        sr.refund_amount_cents,
-        sr.platform_fee_cents + sr.service_fee_cents + sr.discount_cents AS deduction_cents,
-        sri.quantity,
-        sri.line_amount_cents,
-        sri.line_cogs_cents,
-        SUM(sri.line_amount_cents) OVER (PARTITION BY sr.id) AS record_line_amount_cents
-      FROM sales_records sr
-      JOIN sales_record_items sri ON sri.sales_record_id = sr.id
-      JOIN products_global pg ON pg.id = sri.product_global_id
-      WHERE sr.year_month = ?
-        AND sr.status = 'active'
-        AND sr.type IN ('sale', 'refund')
-        ${filter.sql}
-    ),
-    item_allocated AS (
-      SELECT
-        productGlobalId,
-        productName,
-        type,
-        quantity,
-        line_amount_cents,
-        line_cogs_cents,
-        CASE
-          WHEN record_line_amount_cents > 0 THEN
-            ROUND(line_amount_cents * 1.0 * CASE WHEN type = 'refund' THEN refund_amount_cents ELSE gross_amount_cents END / record_line_amount_cents)
-          ELSE 0
-        END AS allocated_revenue_cents,
-        CASE
-          WHEN record_line_amount_cents > 0 THEN
-            ROUND(line_amount_cents * 1.0 * deduction_cents / record_line_amount_cents)
-          ELSE 0
-        END AS allocated_deduction_cents
-      FROM item_base
-    ),
-    product_totals AS (
-      SELECT
-        productGlobalId,
-        productName,
-        COALESCE(SUM(CASE WHEN type = 'sale' THEN quantity ELSE 0 END), 0) AS quantity,
-        COALESCE(SUM(CASE WHEN type = 'sale' THEN allocated_revenue_cents ELSE -allocated_revenue_cents END), 0) AS sales_amount_cents,
-        COALESCE(SUM(CASE WHEN type = 'sale' THEN allocated_revenue_cents - allocated_deduction_cents ELSE -allocated_revenue_cents - allocated_deduction_cents END), 0) AS net_revenue_cents,
-        COALESCE(SUM(CASE WHEN type = 'sale' THEN line_cogs_cents ELSE -line_cogs_cents END), 0) AS cogs_cents
-      FROM item_allocated
-      GROUP BY productGlobalId, productName
-    )
-    SELECT
-      productGlobalId,
-      productName,
-      quantity,
-      sales_amount_cents,
-      net_revenue_cents,
-      cogs_cents,
-      net_revenue_cents - cogs_cents AS net_profit_cents
-    FROM product_totals
-    ORDER BY net_profit_cents DESC
-    LIMIT 20
-  `, [month, ...filter.params]);
-
-  return rows.map(row => {
-    const netProfitCents = Number(row.net_profit_cents) || 0;
-    return {
-      productGlobalId: row.productGlobalId,
-      productName: row.productName,
-      quantity: Number(row.quantity) || 0,
-      salesAmount: money(row.sales_amount_cents),
-      netRevenue: money(row.net_revenue_cents),
-      cogs: money(row.cogs_cents),
-      grossProfit: money(netProfitCents),
-      netProfit: money(netProfitCents),
-      profitRate: profitRatePercent(row.net_revenue_cents, netProfitCents)
-    };
-  });
-}
-
-export async function listCostGaps(env, options = {}) {
-  const month = normalizeMonth(options.month);
-  const machineId = normalizeMachineId(options.machineId);
-  const limit = normalizeLimit(options.limit);
-  const filter = machineFilterFor('sr.machine_id', machineId);
-  const rows = await all(env.DB, `
-    SELECT
-      pg.id AS product_global_id,
-      pg.canonical_name,
-      SUM(sri.quantity) AS quantity,
-      SUM(sri.line_amount_cents) AS sales_amount_cents,
-      SUM(sri.line_cogs_cents) AS cogs_cents,
-      COALESCE(MAX(cs.cost_snapshot_count), 0) AS cost_snapshot_count
-    FROM sales_records sr
-    JOIN sales_record_items sri ON sri.sales_record_id = sr.id
-    JOIN products_global pg ON pg.id = sri.product_global_id
-    LEFT JOIN (
-      SELECT product_global_id, COUNT(*) AS cost_snapshot_count
-      FROM cost_snapshots
-      WHERE unit_cost_cents > 0
-        OR source_type = 'manual_cost'
-      GROUP BY product_global_id
-    ) cs ON cs.product_global_id = pg.id
-    WHERE sr.year_month = ?
-      AND sr.status = 'active'
-      AND sr.type = 'sale'
-      AND sri.unit_cost_cents = 0
-      ${filter.sql}
-    GROUP BY pg.id, pg.canonical_name
-    HAVING COALESCE(MAX(cs.cost_snapshot_count), 0) = 0
-    ORDER BY sales_amount_cents DESC
-    LIMIT ?
-  `, [month, ...filter.params, limit]);
-
-  return rows.map(row => ({
-    productGlobalId: row.product_global_id,
-    productName: row.canonical_name,
-    quantity: Number(row.quantity) || 0,
-    salesAmount: money(row.sales_amount_cents),
-    cogs: money(row.cogs_cents),
-    costSnapshotCount: Number(row.cost_snapshot_count) || 0
-  }));
-}
-
-export async function listProductMerges(env, options = {}) {
-  const limit = normalizeLimit(options.limit);
-  const rows = await all(env.DB, `
-    SELECT
-      pg.id,
-      pg.canonical_name,
-      pg.normalized_name,
-      pg.legacy_product_count,
-      pg.source_product_ids_json,
-      (
-        SELECT group_concat(pa.alias_name, ' / ')
-        FROM product_aliases pa
-        WHERE pa.product_global_id = pg.id
-      ) AS aliases
-    FROM products_global pg
-    WHERE pg.legacy_product_count > 1
-    ORDER BY pg.legacy_product_count DESC, pg.canonical_name
-    LIMIT ?
-  `, [limit]);
-
-  return rows.map(row => ({
-    productGlobalId: row.id,
-    productName: row.canonical_name,
-    normalizedName: row.normalized_name,
-    legacyProductCount: Number(row.legacy_product_count) || 0,
-    sourceProductIds: safeJson(row.source_product_ids_json, []),
-    aliases: String(row.aliases || '').split(' / ').filter(Boolean)
-  }));
 }
 
 export async function listProfitProducts(env, options = {}) {
@@ -787,22 +300,31 @@ export async function saveProfitPurchase(env, payload = {}) {
 
   for (const item of items) await ensureProductExists(env, item.productGlobalId);
 
-  if (existing) {
-    await run(env.DB, `
-      UPDATE purchase_records
-      SET record_date = ?, source = ?, note = ?, updated_at = ?
-      WHERE id = ?
-    `, [date, stringOrNull(payload.source) || 'manual', stringOrNull(payload.note), timestamp, id]);
-    await replacePurchaseItems(env, id, items, date, timestamp);
-  } else {
-    await run(env.DB, `
-      INSERT INTO purchase_records (
-        id, record_date, source, note, status, created_at, updated_at
-      )
-      VALUES (?, ?, ?, ?, 'active', ?, ?)
-    `, [id, date, stringOrNull(payload.source) || 'manual', stringOrNull(payload.note), timestamp, timestamp]);
-    await replacePurchaseItems(env, id, items, date, timestamp);
-  }
+  const source = stringOrNull(payload.source) || 'manual';
+  const note = stringOrNull(payload.note);
+  const recordCommand = existing
+    ? {
+        sql: `
+          UPDATE purchase_records
+          SET record_date = ?, source = ?, note = ?, updated_at = ?
+          WHERE id = ?
+        `,
+        params: [date, source, note, timestamp, id]
+      }
+    : {
+        sql: `
+          INSERT INTO purchase_records (
+            id, record_date, source, note, status, created_at, updated_at
+          )
+          VALUES (?, ?, ?, ?, 'active', ?, ?)
+        `,
+        params: [id, date, source, note, timestamp, timestamp]
+      };
+
+  await batch(env.DB, [
+    recordCommand,
+    ...replacePurchaseItemCommands(id, items, date, timestamp)
+  ]);
 
   return await getProfitPurchase(env, id);
 }
@@ -813,12 +335,20 @@ export async function voidProfitPurchase(env, id) {
   if (!existing) throw new ProfitValidationError('进货单不存在');
   if (existing.legacy_purchase_id) throw new ProfitValidationError('历史进货单已归档，不支持作废');
   const timestamp = nowIso();
-  await run(env.DB, `
-    UPDATE purchase_records
-    SET status = 'voided', voided_at = ?, updated_at = ?
-    WHERE id = ?
-  `, [timestamp, timestamp, recordId]);
-  await run(env.DB, "DELETE FROM cost_snapshots WHERE source_type = 'purchase_item' AND source_record_id = ?", [recordId]);
+  await batch(env.DB, [
+    {
+      sql: `
+        UPDATE purchase_records
+        SET status = 'voided', voided_at = ?, updated_at = ?
+        WHERE id = ?
+      `,
+      params: [timestamp, timestamp, recordId]
+    },
+    {
+      sql: "DELETE FROM cost_snapshots WHERE source_type = 'purchase_item' AND source_record_id = ?",
+      params: [recordId]
+    }
+  ]);
   return await getProfitPurchase(env, recordId);
 }
 
@@ -837,77 +367,87 @@ export async function saveProfitSale(env, payload = {}) {
   for (const item of items) await ensureProductExists(env, item.productGlobalId);
 
   const totals = salesTotals(type, items, payload);
-  if (existing) {
-    await run(env.DB, `
-      UPDATE sales_records
-      SET type = ?,
-          machine_id = ?,
-          record_date = ?,
-          year_month = ?,
-          source = ?,
-          external_id = ?,
-          gross_amount_cents = ?,
-          refund_amount_cents = ?,
-          platform_fee_cents = ?,
-          service_fee_cents = ?,
-          discount_cents = ?,
-          net_revenue_cents = ?,
-          total_cogs_cents = ?,
-          gross_profit_cents = ?,
-          note = ?,
-          updated_at = ?
-      WHERE id = ?
-    `, [
-      type,
-      machineId,
-      date,
-      yearMonthFromDate(date),
-      stringOrNull(payload.source) || 'manual',
-      stringOrNull(payload.externalId),
-      totals.grossAmountCents,
-      totals.refundAmountCents,
-      totals.platformFeeCents,
-      totals.serviceFeeCents,
-      totals.discountCents,
-      totals.netRevenueCents,
-      totals.totalCogsCents,
-      totals.grossProfitCents,
-      stringOrNull(payload.note),
-      timestamp,
-      id
-    ]);
-    await replaceSalesItems(env, id, items, date, timestamp);
-  } else {
-    await run(env.DB, `
-      INSERT INTO sales_records (
-        id, type, machine_id, record_date, year_month, source, external_id,
-        gross_amount_cents, refund_amount_cents, platform_fee_cents, service_fee_cents,
-        discount_cents, net_revenue_cents, total_cogs_cents, gross_profit_cents,
-        note, status, created_at, updated_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
-    `, [
-      id,
-      type,
-      machineId,
-      date,
-      yearMonthFromDate(date),
-      stringOrNull(payload.source) || 'manual',
-      stringOrNull(payload.externalId),
-      totals.grossAmountCents,
-      totals.refundAmountCents,
-      totals.platformFeeCents,
-      totals.serviceFeeCents,
-      totals.discountCents,
-      totals.netRevenueCents,
-      totals.totalCogsCents,
-      totals.grossProfitCents,
-      stringOrNull(payload.note),
-      timestamp,
-      timestamp
-    ]);
-    await replaceSalesItems(env, id, items, date, timestamp);
-  }
+  const source = stringOrNull(payload.source) || 'manual';
+  const externalId = stringOrNull(payload.externalId);
+  const note = stringOrNull(payload.note);
+  const recordCommand = existing
+    ? {
+        sql: `
+          UPDATE sales_records
+          SET type = ?,
+              machine_id = ?,
+              record_date = ?,
+              year_month = ?,
+              source = ?,
+              external_id = ?,
+              gross_amount_cents = ?,
+              refund_amount_cents = ?,
+              platform_fee_cents = ?,
+              service_fee_cents = ?,
+              discount_cents = ?,
+              net_revenue_cents = ?,
+              total_cogs_cents = ?,
+              gross_profit_cents = ?,
+              note = ?,
+              updated_at = ?
+          WHERE id = ?
+        `,
+        params: [
+          type,
+          machineId,
+          date,
+          yearMonthFromDate(date),
+          source,
+          externalId,
+          totals.grossAmountCents,
+          totals.refundAmountCents,
+          totals.platformFeeCents,
+          totals.serviceFeeCents,
+          totals.discountCents,
+          totals.netRevenueCents,
+          totals.totalCogsCents,
+          totals.grossProfitCents,
+          note,
+          timestamp,
+          id
+        ]
+      }
+    : {
+        sql: `
+          INSERT INTO sales_records (
+            id, type, machine_id, record_date, year_month, source, external_id,
+            gross_amount_cents, refund_amount_cents, platform_fee_cents, service_fee_cents,
+            discount_cents, net_revenue_cents, total_cogs_cents, gross_profit_cents,
+            note, status, created_at, updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+        `,
+        params: [
+          id,
+          type,
+          machineId,
+          date,
+          yearMonthFromDate(date),
+          source,
+          externalId,
+          totals.grossAmountCents,
+          totals.refundAmountCents,
+          totals.platformFeeCents,
+          totals.serviceFeeCents,
+          totals.discountCents,
+          totals.netRevenueCents,
+          totals.totalCogsCents,
+          totals.grossProfitCents,
+          note,
+          timestamp,
+          timestamp
+        ]
+      };
+
+  await batch(env.DB, [
+    recordCommand,
+    ...replaceSalesItemCommands(id, items, date, timestamp)
+  ]);
 
   return await getProfitSale(env, id);
 }
@@ -918,12 +458,20 @@ export async function voidProfitSale(env, id) {
   if (!existing) throw new ProfitValidationError('销售单不存在');
   if (existing.legacy_sales_id) throw new ProfitValidationError('历史销售单已归档，不支持作废');
   const timestamp = nowIso();
-  await run(env.DB, `
-    UPDATE sales_records
-    SET status = 'voided', voided_at = ?, updated_at = ?
-    WHERE id = ?
-  `, [timestamp, timestamp, recordId]);
-  await run(env.DB, "DELETE FROM cost_snapshots WHERE source_type = 'sale_item' AND source_record_id = ?", [recordId]);
+  await batch(env.DB, [
+    {
+      sql: `
+        UPDATE sales_records
+        SET status = 'voided', voided_at = ?, updated_at = ?
+        WHERE id = ?
+      `,
+      params: [timestamp, timestamp, recordId]
+    },
+    {
+      sql: "DELETE FROM cost_snapshots WHERE source_type = 'sale_item' AND source_record_id = ?",
+      params: [recordId]
+    }
+  ]);
   return await getProfitSale(env, recordId);
 }
 
@@ -1313,7 +861,7 @@ async function getProfitPurchase(env, id) {
     month: String(row.record_date || '').slice(0, 7),
     status: 'all',
     search: id,
-    limit: MAX_LIMIT
+    limit: PROFIT_MAX_LIMIT
   });
   return rows.find(record => record.id === id) || null;
 }
@@ -1326,7 +874,7 @@ async function getProfitSale(env, id) {
     status: 'all',
     type: 'all',
     search: id,
-    limit: MAX_LIMIT
+    limit: PROFIT_MAX_LIMIT
   });
   return rows.find(record => record.id === id) || null;
 }
@@ -1425,79 +973,6 @@ function salesTotals(type, items, payload) {
     totalCogsCents,
     grossProfitCents: lineAmountCents - fees - discountCents - totalCogsCents
   };
-}
-
-async function replacePurchaseItems(env, recordId, items, date, timestamp) {
-  await run(env.DB, "DELETE FROM cost_snapshots WHERE source_type = 'purchase_item' AND source_record_id = ?", [recordId]);
-  await run(env.DB, 'DELETE FROM purchase_record_items WHERE purchase_record_id = ?', [recordId]);
-  for (const item of items) {
-    const itemId = `pri:manual:${newId()}`;
-    await run(env.DB, `
-      INSERT INTO purchase_record_items (
-        id, purchase_record_id, product_global_id, quantity, unit_cost_cents, total_cost_cents, created_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, [itemId, recordId, item.productGlobalId, item.quantity, item.unitCostCents, item.totalCostCents, timestamp]);
-    await run(env.DB, `
-      INSERT INTO cost_snapshots (
-        id, product_global_id, source_type, source_record_id, source_item_id,
-        unit_cost_cents, quantity_context, total_cost_cents, effective_at, created_at
-      )
-      VALUES (?, ?, 'purchase_item', ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      `cs:purchase:${itemId}`,
-      item.productGlobalId,
-      recordId,
-      itemId,
-      item.unitCostCents,
-      item.quantity,
-      item.totalCostCents,
-      date,
-      timestamp
-    ]);
-  }
-}
-
-async function replaceSalesItems(env, recordId, items, date, timestamp) {
-  await run(env.DB, "DELETE FROM cost_snapshots WHERE source_type = 'sale_item' AND source_record_id = ?", [recordId]);
-  await run(env.DB, 'DELETE FROM sales_record_items WHERE sales_record_id = ?', [recordId]);
-  for (const item of items) {
-    const itemId = `sri:manual:${newId()}`;
-    await run(env.DB, `
-      INSERT INTO sales_record_items (
-        id, sales_record_id, product_global_id, quantity, unit_price_cents,
-        line_amount_cents, unit_cost_cents, line_cogs_cents, created_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      itemId,
-      recordId,
-      item.productGlobalId,
-      item.quantity,
-      item.unitPriceCents,
-      item.lineAmountCents,
-      item.unitCostCents,
-      item.lineCogsCents,
-      timestamp
-    ]);
-    await run(env.DB, `
-      INSERT INTO cost_snapshots (
-        id, product_global_id, source_type, source_record_id, source_item_id,
-        unit_cost_cents, quantity_context, total_cost_cents, effective_at, created_at
-      )
-      VALUES (?, ?, 'sale_item', ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      `cs:sale:${itemId}`,
-      item.productGlobalId,
-      recordId,
-      itemId,
-      item.unitCostCents,
-      item.quantity,
-      item.lineCogsCents,
-      date,
-      timestamp
-    ]);
-  }
 }
 
 async function latestCostCents(env, productGlobalId, date) {

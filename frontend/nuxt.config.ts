@@ -1,6 +1,6 @@
 export default defineNuxtConfig({
   compatibilityDate: '2026-05-05',
-  devtools: { enabled: true },
+  devtools: { enabled: false },
   modules: ['@pinia/nuxt'],
   components: [
     {
@@ -22,7 +22,7 @@ export default defineNuxtConfig({
       },
       meta: [
         { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-        { name: 'description', content: '无人售货机库存、进货、销售与利润管理系统' }
+        { name: 'description', content: '无人售货机商品、进货成本、销售收入与利润管理系统' }
       ],
       link: [
         { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }
@@ -34,6 +34,9 @@ export default defineNuxtConfig({
     typeCheck: true
   },
   vite: {
+    build: {
+      modulePreload: { polyfill: false }
+    },
     server: {
       proxy: {
         '/api': {

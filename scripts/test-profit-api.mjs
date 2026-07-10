@@ -21,6 +21,12 @@ import {
   onRequestPost as postSale
 } from '../functions/api/profit/sales.js';
 import { onRequestGet as getSummary } from '../functions/api/profit/summary.js';
+import {
+  saveProfitPurchase,
+  saveProfitSale,
+  voidProfitPurchase,
+  voidProfitSale
+} from '../functions/api/_shared/profit-service.js';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const projectRoot = dirname(scriptDir);
@@ -30,10 +36,33 @@ class D1Database {
   constructor() {
     this.db = new DatabaseSync(':memory:');
     this.db.exec('PRAGMA foreign_keys = ON;');
+    this.nextBatchFailureIndex = null;
   }
 
   prepare(sql) {
     return new D1Statement(this.db, sql);
+  }
+
+  async batch(statements) {
+    const failureIndex = this.nextBatchFailureIndex;
+    this.nextBatchFailureIndex = null;
+    this.db.exec('BEGIN');
+    try {
+      const results = [];
+      for (let index = 0; index < statements.length; index += 1) {
+        if (index === failureIndex) throw new Error('Injected D1 batch failure');
+        results.push(await statements[index].run());
+      }
+      this.db.exec('COMMIT');
+      return results;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  failNextBatchAt(index) {
+    this.nextBatchFailureIndex = index;
   }
 
   exec(sql) {
@@ -335,6 +364,48 @@ assert.equal(manualPurchase.items.length, 2);
 assert.equal(manualPurchase.items.find(item => item.productGlobalId === manualProductId).unitCost, 1.5);
 assert.equal(manualPurchase.items.find(item => item.productGlobalId === 'pg-cola').unitCost, 2.25);
 
+env.DB.failNextBatchAt(3);
+await assert.rejects(
+  saveProfitPurchase(env, {
+    id: manualPurchase.id,
+    recordDate: '2026-06-12',
+    source: 'manual',
+    note: 'must roll back',
+    items: [{ productGlobalId: manualProductId, quantity: 9, unitCost: 9.99 }]
+  }),
+  /Injected D1 batch failure/
+);
+const purchaseAfterRollback = await env.DB.prepare(`
+  SELECT record_date, note
+  FROM purchase_records
+  WHERE id = ?
+`).bind(manualPurchase.id).first();
+const purchaseItemsAfterRollback = await env.DB.prepare(`
+  SELECT COUNT(*) AS count, SUM(quantity) AS quantity, SUM(total_cost_cents) AS total_cost_cents
+  FROM purchase_record_items
+  WHERE purchase_record_id = ?
+`).bind(manualPurchase.id).first();
+const purchaseSnapshotsAfterRollback = await env.DB.prepare(`
+  SELECT COUNT(*) AS count
+  FROM cost_snapshots
+  WHERE source_type = 'purchase_item' AND source_record_id = ?
+`).bind(manualPurchase.id).first();
+assert.equal(purchaseAfterRollback.record_date, '2026-06-10');
+assert.equal(purchaseAfterRollback.note, 'manual purchase');
+assert.equal(purchaseItemsAfterRollback.count, 2);
+assert.equal(purchaseItemsAfterRollback.quantity, 3);
+assert.equal(purchaseItemsAfterRollback.total_cost_cents, 525);
+assert.equal(purchaseSnapshotsAfterRollback.count, 2);
+
+env.DB.failNextBatchAt(1);
+await assert.rejects(voidProfitPurchase(env, manualPurchase.id), /Injected D1 batch failure/);
+assert.equal((await env.DB.prepare('SELECT status FROM purchase_records WHERE id = ?').bind(manualPurchase.id).first()).status, 'active');
+assert.equal((await env.DB.prepare(`
+  SELECT COUNT(*) AS count
+  FROM cost_snapshots
+  WHERE source_type = 'purchase_item' AND source_record_id = ?
+`).bind(manualPurchase.id).first()).count, 2);
+
 const manualSaleResponse = await postSale({
   request: jsonRequest('https://example.test/api/profit/sales', {
     type: 'sale',
@@ -372,6 +443,52 @@ assert.equal(manualSale.items.find(item => item.productGlobalId === manualProduc
 assert.equal(manualSale.items.find(item => item.productGlobalId === 'pg-cola').unitCost, 2.25);
 assert.equal(manualSale.items.find(item => item.productGlobalId === manualProductId).costSnapshotSourceType, 'sale_item');
 assert.equal(manualSale.items.find(item => item.productGlobalId === manualProductId).costSnapshotEffectiveAt, '2026-06-11');
+
+env.DB.failNextBatchAt(3);
+await assert.rejects(
+  saveProfitSale(env, {
+    id: manualSale.id,
+    type: 'sale',
+    machineId: '2号机',
+    recordDate: '2026-06-12',
+    source: 'manual',
+    note: 'must roll back',
+    items: [{ productGlobalId: manualProductId, quantity: 7, unitPrice: 8.88 }]
+  }),
+  /Injected D1 batch failure/
+);
+const saleAfterRollback = await env.DB.prepare(`
+  SELECT machine_id, record_date, gross_amount_cents, total_cogs_cents
+  FROM sales_records
+  WHERE id = ?
+`).bind(manualSale.id).first();
+const saleItemsAfterRollback = await env.DB.prepare(`
+  SELECT COUNT(*) AS count, SUM(quantity) AS quantity, SUM(line_amount_cents) AS line_amount_cents
+  FROM sales_record_items
+  WHERE sales_record_id = ?
+`).bind(manualSale.id).first();
+const saleSnapshotsAfterRollback = await env.DB.prepare(`
+  SELECT COUNT(*) AS count
+  FROM cost_snapshots
+  WHERE source_type = 'sale_item' AND source_record_id = ?
+`).bind(manualSale.id).first();
+assert.equal(saleAfterRollback.machine_id, '1号机');
+assert.equal(saleAfterRollback.record_date, '2026-06-11');
+assert.equal(saleAfterRollback.gross_amount_cents, 1450);
+assert.equal(saleAfterRollback.total_cogs_cents, 525);
+assert.equal(saleItemsAfterRollback.count, 2);
+assert.equal(saleItemsAfterRollback.quantity, 3);
+assert.equal(saleItemsAfterRollback.line_amount_cents, 1450);
+assert.equal(saleSnapshotsAfterRollback.count, 2);
+
+env.DB.failNextBatchAt(1);
+await assert.rejects(voidProfitSale(env, manualSale.id), /Injected D1 batch failure/);
+assert.equal((await env.DB.prepare('SELECT status FROM sales_records WHERE id = ?').bind(manualSale.id).first()).status, 'active');
+assert.equal((await env.DB.prepare(`
+  SELECT COUNT(*) AS count
+  FROM cost_snapshots
+  WHERE source_type = 'sale_item' AND source_record_id = ?
+`).bind(manualSale.id).first()).count, 2);
 
 const afterManualSummaryResponse = await getSummary({
   request: new Request('https://example.test/api/profit/summary?month=2026-06&machineId=1号机'),

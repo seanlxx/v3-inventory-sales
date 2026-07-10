@@ -13,40 +13,8 @@ function json(status, payload) {
   });
 }
 
-function nowIso() {
-  return new Date().toISOString();
-}
-
-function bytesToBase64Url(bytes) {
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
-}
-
-function utf8Bytes(value) {
-  return new TextEncoder().encode(String(value));
-}
-
-async function sha256(value) {
-  const digest = await crypto.subtle.digest('SHA-256', utf8Bytes(value));
-  return bytesToBase64Url(new Uint8Array(digest));
-}
-
-async function requireSession(context) {
-  if (!context.env.DB) return { error: json(500, { error: 'D1 binding DB is not configured' }) };
-  if (context.data?.session) return { session: context.data.session };
-
-  const token = context.request.headers.get('X-VM-Session') || '';
-  if (!token) return { error: json(401, { error: 'Unauthorized' }) };
-
-  const tokenHash = await sha256(token);
-  const session = await context.env.DB.prepare(`
-    SELECT username, expires_at
-    FROM app_sessions
-    WHERE token_hash = ? AND expires_at > ?
-    LIMIT 1
-  `).bind(tokenHash, nowIso()).first();
-
+function requireSession(context) {
+  const session = context.data?.session;
   return session ? { session } : { error: json(401, { error: 'Unauthorized' }) };
 }
 
@@ -280,7 +248,7 @@ async function streamOpenAICompatible({ platform, config, body, timeoutMs }) {
 }
 
 export async function onRequestGet(context) {
-  const auth = await requireSession(context);
+  const auth = requireSession(context);
   if (auth.error) return auth.error;
 
   return json(200, {
@@ -291,7 +259,7 @@ export async function onRequestGet(context) {
 }
 
 export async function onRequestPost(context) {
-  const auth = await requireSession(context);
+  const auth = requireSession(context);
   if (auth.error) return auth.error;
 
   let body;

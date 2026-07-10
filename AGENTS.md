@@ -84,7 +84,7 @@
 
 1. 用户描述里有歧义词："优化一下"、"改好看点"、"处理掉" → 问具体期望
 2. 改动会影响数据库 schema、删除字段、重命名表 → 先确认
-3. 改动涉及钱（价格、利润计算、库存余额公式） → 先确认
+3. 改动涉及钱（价格、收入、成本、费用、利润公式） → 先确认
 4. 用户说"那个 bug" 但没说哪个 → 先确认是哪个
 5. 同一个问题已经返工过 2 次 → 停下来对齐理解
 
@@ -96,19 +96,18 @@
 
 ### 0.5 项目级 Skills（按场景自动加载）
 
-本项目在 `.opencode/skills/` 下注册了两类 skill：**项目专属**（v3 文件路径）+ **通用前端设计知识**（社区开源）。
+本项目在 `.opencode/skills/` 下注册了项目专属 skill，并配合通用前端设计 skill 使用。
 完整说明见 `.opencode/skills/README.md`。
 
-#### 项目专属 skill（含 v3 具体落点）
+#### 当前项目专属 skill
 
 | 用户描述场景 | 对应 skill | 何时触发 |
 | --- | --- | --- |
 | 手机端 / 375 / 390 / 430px / 横向溢出 / iPhone 安全区 | `mobile-ui-fix` | 移动端 UI 修复 |
 | 电脑端 / 1280 / 1440 / 1920px / 侧栏比例 / 桌面排版 | `desktop-ui-fix` | 桌面端 UI 修复 |
 | push 后没上线 / Pages 构建失败 / D1 表不存在 / 绑定缺失 | `pages-deploy-troubleshoot` | Cloudflare Pages 部署排查 |
-| 重构计划 / Phase 0~5 / 按机库存 / 1·2 号机折叠 / 删 stock-scope / 机间调拨 | `inventory-restructure` | 1/2 号机销售-商品-库存重构（`docs/重构计划-1-2号机.md` 索引） |
-| 总库存与进货不匹配 / 库存漂移 / 5 项对账 / Phase 0.5·2.5 诊断 / 重建余额验证 | `inventory-drift-diagnose` | 库存漂移定位与对账证明 |
-| zn Excel / 订单明细 / 交易账单 / 设备编号映射 / 手续费·算法服务费 / pickField | `zn-excel-import` | zn 平台 Excel 导入字段对齐与幂等 |
+
+> `inventory-restructure`、`inventory-drift-diagnose`、`zn-excel-import` 是旧库存 / 旧 zn 导入阶段留下的历史 skill，**不得用于指导当前利润系统开发**。只有用户明确要求追溯旧迁移或归档数据时才可读取，并且必须以当前 `functions/api/profit/`、`functions/api/_shared/profit-*.js` 和 `functions/api/_shared/shengma/` 的实现为准。
 
 #### 通用前端设计 skill（社区开源，所有 UI 改动必查）
 
@@ -116,9 +115,9 @@
 | --- | --- | --- |
 | 任何 UI 相关改动：新增 / 修改页面、组件、CSS、布局、响应式、表单、弹窗、表格、仪表盘、图表、界面文案、美化 UI、重塑视觉 | `frontend-design`（前端视觉方向、配色、字体、布局与文案自检） | anthropics/skills |
 
-> **协作模式：** `frontend-design` 提供"该怎么做"的视觉设计原则，项目专属 skill 提供"在 v3 改哪个文件"的落点。
+> **协作模式：** `frontend-design` 提供“该怎么做”的视觉设计原则，项目专属 skill 提供“在 v3 改哪个文件”的落点。
 > 强制规则：只要本轮会触碰 `frontend/` 中的 UI 文件（页面、组件、样式、界面文案），必须加载 `frontend-design`；如果是手机端问题，再加 `mobile-ui-fix`；如果是桌面端问题，再加 `desktop-ui-fix`。
-> 用户说"把仪表盘做得好看一点" → 加载 `frontend-design` + `desktop-ui-fix`。
+> 用户说“把仪表盘做得好看一点” → 加载 `frontend-design` + `desktop-ui-fix`。
 >
 > Skill 内容是 §4 / §3 的可执行版本，覆盖具体症状 → 文件 → 修复手法的对应关系。
 
@@ -126,29 +125,31 @@
 
 ## 1. 项目概况
 
-无人售货机库存、进货、销售、利润与 AI 辅助管理系统。
+无人售货机商品、进货成本、销售收入、毛利报表与 AI 辅助管理系统。
 
-**技术栈：** Nuxt 4 + Vue 3 + TypeScript 前端 + Cloudflare Pages Functions（边缘 API） + D1（SQLite） + R2（图片存储）。
+**当前主业务是利润系统，不是旧库存台账系统。** 商品采用全局商品档案；进货记录提供成本；销售记录提供收入、费用与成本快照；仪表盘按月和机台汇总经营结果。旧库存页面仅保留归档说明，旧库存 API 统一返回 `410 LEGACY_SYSTEM_ARCHIVED`。
+
+**技术栈：** Nuxt 4 + Vue 3 + TypeScript 前端 + Cloudflare Pages Functions（边缘 API） + D1（SQLite） + R2（保留历史图片绑定）。
 
 ### 1.1 架构总览
 
 ```
 ┌──────────────────────────────────────────────────────────┐
 │  浏览器（Nuxt 生成的 dist/ 静态资源）                      │
-│  页面：仪表盘 / 商品管理 / 库存管理 / 进货管理 / 销售管理 / 设置 │
+│  页面：仪表盘 / 全局商品 / 进货账簿 / 销售账簿 / 设置        │
+│  归档页：/inventory（只说明旧库存系统已停用）                │
 └────────────────────────┬─────────────────────────────────┘
                          │ fetch /api/*
 ┌────────────────────────▼─────────────────────────────────┐
 │  Cloudflare Pages Functions（functions/api/）             │
-│  ├─ auth/        → 登录、获取用户、改密码                   │
-│  ├─ products.js  → 商品 CRUD                             │
-│  ├─ inventory/   → 库存操作（余额、流水、进货、销售等）       │
-│  ├─ reports/     → 报表聚合                               │
-│  ├─ settings.js  → 系统设置                               │
-│  ├─ images.js    → R2 图片读取                            │
-│  └─ ai-proxy.js  → AI 模型代理（固定中转 + 手动 API Key） │
+│  ├─ auth/                → 登录、会话、改密码               │
+│  ├─ profit/              → 商品、进货、销售、利润报表        │
+│  ├─ integrations/shengma/→ 盛码状态与手动同步               │
+│  ├─ settings.js          → 系统设置                         │
+│  ├─ ai-proxy.js          → 固定中转 + 固定模型代理          │
+│  └─ _middleware.js       → 统一认证 + 旧 API 归档拦截        │
 │                                                          │
-│  绑定：DB (D1)  ·  IMAGES (R2)                          │
+│  绑定：DB (D1)  ·  IMAGES (R2，历史保留)                  │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -156,33 +157,41 @@
 
 ```
 .
-├── frontend/               # Nuxt 4 前端源码
-│   ├── app/                # 页面、组件、composables、stores、样式
+├── frontend/                       # Nuxt 4 前端源码
+│   ├── app/                        # 页面、组件、composables、stores、样式
 │   ├── nuxt.config.ts
 │   └── package.json
 ├── functions/api/
-│   ├── _middleware.js      # 全局中间件
-│   ├── _shared/            # 认证、D1、HTTP、图片、库存台账、校验
-│   ├── auth/               # 登录 / 获取用户 / 改密码
-│   ├── inventory/          # 库存操作（余额、流水、进货、销售、调整等）
-│   ├── reports/            # 仪表盘 / 库存 / 月度 报表聚合
-│   ├── products.js         # 商品 CRUD
-│   ├── settings.js         # 系统设置 CRUD
-│   ├── images.js           # R2 图片读取
-│   └── ai-proxy.js         # AI 固定中转代理（每次手动填写 API Key）
-├── migrations/             # D1 数据库迁移脚本
+│   ├── _middleware.js              # 统一认证、旧系统接口归档拦截
+│   ├── _shared/
+│   │   ├── auth.js                 # session 校验与密码处理
+│   │   ├── d1.js                   # D1 first/all/run/batch 辅助函数
+│   │   ├── legacy-archive.js       # 旧库存 / zn API 的 410 保护
+│   │   ├── profit-normalize.js     # 利润查询参数标准化
+│   │   ├── profit-record-statements.js # 进货/销售原子写入命令
+│   │   ├── profit-report-service.js    # 仪表盘、排行、成本缺口查询
+│   │   ├── profit-service.js       # 商品、进货、销售业务服务
+│   │   └── shengma/                # 盛码客户端、解析、映射、导入与设置
+│   ├── auth/                       # 登录 / 获取用户 / 改密码
+│   ├── profit/                     # products / purchases / sales / summary / cost-gaps
+│   ├── integrations/shengma/       # status / sync
+│   ├── settings.js                 # 系统设置 CRUD
+│   └── ai-proxy.js                 # AI 固定中转代理
+├── migrations/                     # D1 数据库迁移脚本
 ├── scripts/
-│   ├── build.ps1           # 构建 dist/（Nuxt generate + 复制 _headers）
-│   ├── dev.ps1             # 本地开发（构建 → 迁移 → wrangler pages dev）
+│   ├── build.ps1                   # 构建 dist/（Nuxt generate + Pages 输出准备）
+│   ├── dev.ps1                     # 本地开发（构建 → 迁移 → 同步 → Pages dev）
 │   ├── sync-d1-remote-to-local.ps1
-│   ├── test.ps1            # 统一回归测试入口
+│   ├── test.ps1                    # 统一回归测试入口
 │   ├── test-ai-proxy-routing.mjs
-│   ├── test-ai-purchase-recognition.mjs
-│   └── test-inventory-service.mjs
-├── public_headers          # Pages 安全响应头 → 构建时复制为 dist/_headers
-├── wrangler.jsonc           # Cloudflare 部署配置
-├── dev.bat                  # Windows 双击入口：调用 scripts/dev.ps1 -SyncRemote
-├── AGENTS.md               # ← 你正在读的文件
+│   ├── test-profit-system-phase1.mjs
+│   ├── test-profit-api.mjs
+│   ├── test-shengma-manual-sync.mjs
+│   └── test-legacy-api-archive.mjs
+├── public_headers                  # Pages 安全响应头 → 构建时复制为 dist/_headers
+├── wrangler.jsonc                  # Cloudflare 部署配置
+├── dev.bat                         # Windows 双击入口：调用 scripts/dev.ps1 -SyncRemote
+├── AGENTS.md                       # ← 你正在读的文件
 └── .gitignore
 ```
 
@@ -219,25 +228,25 @@ C:\Users\Admin\WeChatProjects\minicode-1\MINIPROGRAM_IMPLEMENTATION.md
 - Pages 输出目录：`./dist`
 - 数据库迁移目录：`migrations/`
 - 兼容性日期：`2026-05-05`
+- `IMAGES` 当前仅作为历史绑定保留；`/api/images` 已归档，不要把它当作现行上传接口。
 
-### 1.4 数据模型
-
-当前数据模型使用结构化关系表，核心表如下：
+### 1.4 当前利润数据模型
 
 | 表 | 用途 | 关键列 |
 | --- | --- | --- |
-| `products` | 商品主数据 | `id`, `machine_id`, `status` |
-| `purchase_orders` | 进货单头 | `id`, `machine_id`, `date`, `status` |
-| `purchase_items` | 进货单明细 | `order_id`, `product_id`, `quantity`, `unit_price_cents` |
-| `sales_orders` | 销售/退款/损耗单头 | `id`, `type`, `machine_id`, `date`, `status` |
-| `sales_items` | 销售单明细 | `order_id`, `product_id`, `quantity` |
-| `stock_movements` | **库存流水账本**（唯一可信来源） | `product_id`, `movement_type`, `qty_delta` |
-| `inventory_balances` | 库存余额缓存（可由流水重建） | `product_id` |
-| `image_assets` | R2 图片元数据 | `id`, `r2_key`, `source_store` |
-| `settings` | 系统设置 | `key` |
+| `products_global` | 全局商品主数据 | `id`, `canonical_name`, `normalized_name`, `status` |
+| `product_aliases` | 旧名称 / 外部商品到全局商品的映射 | `product_global_id`, `normalized_alias`, `source_*` |
+| `purchase_records` | 进货记录单头 | `id`, `record_date`, `source`, `status` |
+| `purchase_record_items` | 进货记录明细 | `purchase_record_id`, `product_global_id`, `quantity`, `unit_cost_cents` |
+| `sales_records` | 销售 / 退款 / 损耗记录单头 | `id`, `type`, `machine_id`, `record_date`, `net_revenue_cents`, `total_cogs_cents` |
+| `sales_record_items` | 销售记录明细 | `sales_record_id`, `product_global_id`, `quantity`, `line_amount_cents`, `line_cogs_cents` |
+| `cost_snapshots` | 进货与销售时点成本快照 | `product_global_id`, `source_type`, `source_record_id`, `unit_cost_cents` |
+| `vending_records` | 设置等兼容性键值记录 | `store`, `record_id`, `data` |
 
-- 图片二进制存储在 R2（`IMAGES` 绑定），由 `image_assets` 表 + R2 key 关联。
-- 认证相关：`app_auth`（单行密码）、`app_sessions`（会话 token）、`app_login_attempts`（限流）。
+- 认证表：`app_auth`、`app_sessions`、`app_login_attempts`。
+- 旧 `products`、`purchase_orders`、`sales_orders`、`stock_movements`、`inventory_balances` 等表可能仍因历史迁移存在，但**不是当前业务事实来源**。
+- 进货 / 销售的单头、明细与成本快照必须通过 `functions/api/_shared/d1.js` 的 `batch()` 一次提交；禁止拆成多个独立 `run()`，避免部分写入。
+- 报表查询放在 `profit-report-service.js`；商品、进货、销售写入与列表逻辑放在 `profit-service.js`；不要再把报表 SQL 堆回业务写入服务。
 
 ### 1.5 AI 代理配置
 
@@ -249,6 +258,8 @@ AI 识别只保留一个固定中转与一个固定模型：
 | 模型 | `gpt5.5` |
 
 API Key 必须在每次登录后由用户在设置页手动填写，只保留在当前登录会话中；退出登录、登录失效或切换登录 session 后自动清除，不保存到 D1、R2、Cloudflare 环境变量或源码。
+
+`ai-proxy.js` 必须使用 `_middleware.js` 写入的 `context.data.session`，不要在路由内再次查询 `app_sessions` 或重复实现 token 校验。
 
 > **⚠️ 不要把 API Key 写入源码、`wrangler.jsonc`、Markdown、Cloudflare Secret 或 D1。**
 
@@ -266,7 +277,7 @@ API Key 必须在每次登录后由用户在设置页手动填写，只保留在
                                         │
                           Cloudflare Pages 自动拉取 → 构建 → 部署上线
                                         │
-                          检查最新生产部署是否指向当前 commit
+                          deploy-pages.ps1 再发布并验证当前 commit
 ```
 
 - **代码仓库：** `https://github.com/seanlxx/v3-inventory-sales.git`
@@ -276,7 +287,6 @@ API Key 必须在每次登录后由用户在设置页手动填写，只保留在
 - **AI agent 的职责：** 每次修改文件后，必须完成 `git add → commit → push`，并确认 Cloudflare Pages 最新生产部署成功。
 
 ---
-
 ## 2. 常用命令
 
 ### 本地开发与测试（同步线上数据）
@@ -302,9 +312,9 @@ npx wrangler d1 migrations apply v3-vending-inventory-sales-db --local
 # ── 仅应用 D1 迁移（远程生产）──
 npx wrangler d1 migrations apply v3-vending-inventory-sales-db --remote
 
-# ── 跑回归测试（改了 inventory-service.js / ai-proxy.js 后必须跑）──
+# ── 跑回归测试（改了 profit-*.js / shengma / ai-proxy.js / 归档中间件后必须跑）──
 powershell -ExecutionPolicy Bypass -File ./scripts/test.ps1
-# 内部依次执行：test-inventory-service.mjs / test-ai-purchase-recognition.mjs / test-ai-proxy-routing.mjs
+# 内部依次执行：AI 代理 / 利润迁移 / 利润 API / 盛码同步 / 旧 API 归档测试
 ```
 
 **本地启动流程摘要**（`dev.ps1 -SyncRemote` 与 `dev.bat` 等价）：
@@ -328,7 +338,7 @@ git push origin master
 powershell -ExecutionPolicy Bypass -File ./scripts/deploy-pages.ps1
 ```
 
-> `scripts/deploy-pages.ps1` 会拒绝未提交的工作区，避免发布内容和 commit 不一致。脚本完成后，最新生产部署的 `Source` 必须等于当前 commit 短 hash，且生产 `/inventory` 返回 200。
+> `scripts/deploy-pages.ps1` 会拒绝未提交的工作区，避免发布内容和 commit 不一致。脚本完成后，最新生产部署的 `Source` 必须等于当前 commit 短 hash，且生产 `/dashboard` 返回 200。
 
 ---
 
@@ -390,7 +400,7 @@ powershell -ExecutionPolicy Bypass -File ./scripts/deploy-pages.ps1
 1. `git add -A` — 暂存所有修改（`.gitignore` 已排除敏感文件）
 2. `git commit -m "<简明中文描述>"` — 提交，commit message 用中文简述本次改动
 3. `git push origin master` — 推送到 GitHub，触发 Cloudflare Pages 自动部署
-4. `powershell -ExecutionPolicy Bypass -File ./scripts/deploy-pages.ps1` — 重新构建并用 Wrangler 发布当前 commit，脚本会验证最新生产部署和线上 `/inventory`
+4. `powershell -ExecutionPolicy Bypass -File ./scripts/deploy-pages.ps1` — 重新构建并用 Wrangler 发布当前 commit，脚本会验证最新生产部署和线上 `/dashboard`
 
 > 如果用户有未提交的改动与本次任务无关，先用 `git stash` 暂存，完成本次提交推送后再 `git stash pop` 恢复。
 
@@ -429,9 +439,9 @@ powershell -ExecutionPolicy Bypass -File ./scripts/deploy-pages.ps1
 | 17 | 为一次性 UI 布局验证写 100 行 Playwright 脚本（注入 session、route 拦截、6 视口截图），结果在调脚本本身的路由 404 / 模块解析 / 选择器 → 验证投入应与改动复杂度匹配，CSS / 布局类改动用 DevTools 目视即可 |
 | 18 | push 后只看 GitHub 成功就认为已上线 → 必须运行 `scripts/deploy-pages.ps1` 发布并验证当前 commit，避免 Cloudflare Git 集成停在 `Idle` / `Skipped` |
 | 19 | 远程 D1 数据修复时把 `BEGIN TRANSACTION` / `COMMIT` 写进 `wrangler d1 execute --remote --file`，被 D1 拒绝后再改 → 远程 D1 已按文件批次失败回滚，直接写无事务、幂等 SQL |
-| 20 | 商品合并 / 库存修复时先假设 `machine_id`（例如看到商品写着 `1/2号机` 就只重建该机台余额）→ 必须先从 `stock_movements` 按真实 `product_id` 分组查实际机台，再按流水结果重建 `inventory_balances` |
+| 20 | 利润数据修复时从商品名或别名猜 `machine_id` → `products_global` 不归属机台，必须从实际 `sales_records.machine_id` 查询并按真实销售记录处理 |
 | 21 | 远程 D1 预检查用多段 `UNION ALL` 计数，Wrangler JSON 输出不稳定还继续追结果 → 用一条 `SELECT` + 多个标量子查询返回单行计数，或逐表单查关键计数 |
-| 22 | 商品合并时物理删除源商品，导致后续 Excel / 外部平台旧名称又导入出重复商品 → 源商品应优先 `archived`，并把 `normalized_name` 写成 `merged:<目标标准名>`，让导入器继续归并 |
+| 22 | 商品归并时物理删除 `products_global` 或丢弃旧别名，导致外部平台再次导入出重复商品 → 源商品优先归档，并把 `product_aliases` 迁移到目标全局商品 |
 
 ### 3.7 结束前记录
 
@@ -465,7 +475,7 @@ powershell -ExecutionPolicy Bypass -File ./scripts/deploy-pages.ps1
 ```
 frontend/app/assets/css/       ← 设计 token、基础样式和组件样式
 frontend/app/components/       ← AppShell、表格、弹窗、业务组件
-frontend/app/pages/            ← 6 个核心页面入口
+frontend/app/pages/            ← 5 个现行业务页面 + 1 个库存归档页
 frontend/app/composables/      ← API 封装和页面数据流
 ```
 
@@ -474,7 +484,7 @@ frontend/app/composables/      ← API 封装和页面数据流
 > **铁律（CSS / 布局类改动）：只用 DevTools 三宽度目视，禁止写任何浏览器自动化脚本。**
 >
 > 自动化（Playwright / Puppeteer / Chromium 脚本）只允许在以下场景使用：
-> 1. 后端数据流回归（API、库存台账、报表聚合）
+> 1. 后端数据流回归（API、利润写入、报表聚合）
 > 2. 用户**明确要求**生成截图作为交付物
 > 3. 复现一个 DevTools 看不出来的 bug（例如只在某种交互链路下出现的布局抖动）
 >
@@ -483,16 +493,17 @@ frontend/app/composables/      ← API 封装和页面数据流
 
 1. 用 `dev.ps1 -SyncRemote` 或 `dev.bat` 启动本地服务（必须同步线上数据，否则看到的不是线上真实业务数据）。
 2. 用浏览器 DevTools 模拟以下宽度逐一截图检查：**375px · 390px · 430px**。
-3. **必须检查全部 6 个页面：**
+3. **必须检查全部 5 个现行业务页面；改到归档页时再额外检查 `/inventory`：**
 
 | 页面 | 对应入口 |
 | --- | --- |
 | 仪表盘 | `frontend/app/pages/dashboard.vue` |
 | 商品管理 | `frontend/app/pages/products.vue` |
-| 库存管理 | `frontend/app/pages/inventory.vue` |
 | 进货管理 | `frontend/app/pages/purchases.vue` |
 | 销售管理 | `frontend/app/pages/sales.vue` |
 | 设置 | `frontend/app/pages/settings.vue` |
+
+> `frontend/app/pages/inventory.vue` 仅为旧库存归档说明，不是现行业务页面。
 
 4. 确认每个页面在 3 个宽度下均无横向溢出、无遮挡、表格可横滑、按钮可点击。
 
@@ -500,7 +511,7 @@ frontend/app/composables/      ← API 封装和页面数据流
 
 ## 5. 代码定位速查表
 
-> **目标：拿到任务后 30 秒内定位到要改的文件，不要做全仓库搜索。**
+> **目标：拿到任务后 30 秒内定位到要改的文件，不要做全仓库搜索。当前业务入口统一使用利润系统路径。**
 
 ### 5.1 前端文件定位
 
@@ -508,14 +519,14 @@ frontend/app/composables/      ← API 封装和页面数据流
 
 | 页面 | 入口文件 | 业务组件目录 | Composable | 类型定义 |
 | --- | --- | --- | --- | --- |
-| 仪表盘 | `pages/dashboard.vue` | `components/dashboard/` | `useReports.ts` | `types/report.ts` |
-| 商品管理 | `pages/products.vue` | `components/products/` | `useProducts.ts` | `types/product.ts` |
-| 库存管理 | `pages/inventory.vue` | `components/inventory/` | `useInventory.ts` | `types/inventory.ts` |
-| 进货管理 | `pages/purchases.vue` | `components/purchases/` | `usePurchases.ts` | `types/purchase.ts` |
-| 销售管理 | `pages/sales.vue` | `components/sales/` | `useSales.ts` | `types/sale.ts` |
-| 设置 | `pages/settings.vue` | `components/settings/` | `useSettings.ts` | `types/settings.ts` |
+| 仪表盘 | `pages/dashboard.vue` | `components/dashboard/` | `useReports.ts` | `types/report.ts` + `types/profit.ts` |
+| 全局商品 | `pages/products.vue` | `components/products/` | `useProfitProducts.ts` | `types/profit.ts` |
+| 进货账簿 | `pages/purchases.vue` | `components/purchases/` | `useProfitPurchases.ts` | `types/profit.ts` |
+| 销售账簿 | `pages/sales.vue` | `components/sales/` | `useProfitSales.ts` | `types/profit.ts` |
+| 设置 | `pages/settings.vue` | `components/settings/` | `useSettings.ts` + `useVendorSync.ts` | `types/settings.ts` + `types/vendorSync.ts` |
+| 库存归档说明 | `pages/inventory.vue` | 无业务组件 | 无 | 无 |
 
-> 以上路径都在 `frontend/app/` 下。例：完整路径是 `frontend/app/pages/dashboard.vue`。
+> 以上路径都在 `frontend/app/` 下。`inventory.vue` 不是现行库存管理入口，不要为它恢复旧库存 CRUD。
 
 #### 通用组件（不要重复造轮子）
 
@@ -528,25 +539,28 @@ frontend/app/composables/      ← API 封装和页面数据流
 | `AppDrawer` | `components/common/AppDrawer.vue` | 侧滑抽屉 |
 | `AppInput` | `components/common/AppInput.vue` | 输入框 |
 | `DataTable` | `components/common/DataTable.vue` | 数据表格（已支持横向滚动） |
+| `Sparkline` | `components/common/Sparkline.vue` | 轻量趋势图 |
 | `StatusBadge` | `components/common/StatusBadge.vue` | 状态标签 |
 
 > 新增 UI 元素时，**先查看上表有没有现成组件**。不要自己写 `<dialog>` 或手搓表格。
 
-#### 认证与请求基础设施
+#### 认证、请求与集成基础设施
 
 | 文件 | 职责 |
 | --- | --- |
 | `composables/useApi.ts` | `$fetch` 封装：自动加 `X-VM-Session` token、统一错误处理、loading 状态 |
 | `composables/useAuth.ts` | 登录、登出、改密码等认证操作 |
-| `composables/useClipboardImagePaste.ts` | 剪贴板图片粘贴（进货/销售单图片录入） |
-| `stores/auth.ts` | 登录态、token、过期处理 |
-| `stores/toast.ts` | 全局提示消息 |
+| `composables/useAiSessionKey.ts` | 当前登录 session 内的 AI API Key 管理 |
+| `composables/useVendorSync.ts` | 盛码连接状态与手动同步 |
+| `stores/auth.ts` | 登录态、token、用户名、过期处理 |
+| `stores/toast.ts` | 全局提示消息、类型样式与自动消失 |
 | `plugins/auth.client.ts` | 启动时恢复登录态、路由守卫 |
 | `types/api.ts` | `ApiError` / `ApiRequestOptions` 等通用 API 类型 |
-| `types/auth.ts` | 登录响应、用户信息类型 |
-| `utils/format.ts` | 金额（分→元）、日期、数量等格式化函数（业务代码反复用到，**不要重写**） |
+| `types/profit.ts` | 全局商品、进货、销售、利润汇总类型 |
+| `utils/format.ts` | 金额（分→元）、日期、数量等格式化函数 |
+| `utils/machines.ts` | 机台名称与选项标准化 |
 
-> 改登录态、token 刷新、401 处理 → 看 `useApi.ts` + `stores/auth.ts`，不要去翻别的地方。
+> 改登录态、token、401 处理 → 看 `useApi.ts` + `stores/auth.ts` + `_middleware.js`；不要在业务路由重复认证。
 
 #### 样式文件分层
 
@@ -561,40 +575,53 @@ frontend/app/composables/      ← API 封装和页面数据流
 
 ### 5.2 后端文件定位
 
-#### API 路由 → 文件 对应关系
+#### 当前 API 路由 → 文件 对应关系
 
 | API 路径模式 | 处理文件 | 说明 |
 | --- | --- | --- |
-| `/api/auth/*` | `functions/api/auth/login.js` / `profile.js` / `update.js` | 登录、获取用户、改密码 |
-| `/api/products` | `functions/api/products.js` | 商品 CRUD |
+| `/api/auth/login` | `functions/api/auth/login.js` | 登录 |
+| `/api/auth/profile` | `functions/api/auth/profile.js` | 当前用户 |
+| `/api/auth/update` | `functions/api/auth/update.js` | 修改账号 / 密码 |
+| `/api/profit/products` | `functions/api/profit/products.js` | 全局商品查询、保存、归档 |
+| `/api/profit/purchases` | `functions/api/profit/purchases.js` | 进货记录查询、保存、作废 |
+| `/api/profit/sales` | `functions/api/profit/sales.js` | 销售 / 退款 / 损耗查询、保存、作废 |
+| `/api/profit/summary` | `functions/api/profit/summary.js` | 仪表盘 KPI、趋势与排行聚合 |
+| `/api/profit/cost-gaps` | `functions/api/profit/cost-gaps.js` | 成本缺口列表 |
+| `/api/integrations/shengma/status` | `functions/api/integrations/shengma/status.js` | 盛码连接与同步状态 |
+| `/api/integrations/shengma/sync` | `functions/api/integrations/shengma/sync.js` | 盛码手动同步 |
 | `/api/settings` | `functions/api/settings.js` | 系统设置 CRUD |
-| `/api/images/*` | `functions/api/images.js` | R2 图片读取 |
-| `/api/inventory/*` | `functions/api/inventory/*.js` | 库存操作（余额、流水、进货、销售、调整、报损、退货、作废） |
-| `/api/reports/*` | `functions/api/reports/dashboard.js` / `inventory.js` / `monthly.js` | 报表聚合 |
-| `/api/ai-proxy` | `functions/api/ai-proxy.js` | AI 多模型代理 |
+| `/api/ai-proxy` | `functions/api/ai-proxy.js` | AI 固定中转代理 |
+
+#### 已归档 API（不要恢复实现）
+
+`/api/products`、`/api/images`、`/api/inventory/*`、`/api/reports/*`、`/api/integrations/zn/*` 由 `_middleware.js` + `_shared/legacy-archive.js` 统一返回 `410 LEGACY_SYSTEM_ARCHIVED`。
 
 #### 后端共享模块
 
 | 文件 | 职责 |
 | --- | --- |
-| `functions/api/_shared/auth.js` | 认证中间件（session 校验、密码哈希） |
-| `functions/api/_shared/d1.js` | D1 查询辅助函数 |
-| `functions/api/_shared/http.js` | HTTP 响应构建（JSON / 错误） |
-| `functions/api/_shared/image-service.js` | R2 图片上传、关联、删除 |
-| `functions/api/_shared/inventory-service.js` | **核心：库存台账逻辑**（余额计算、流水记录、对账） |
-| `functions/api/_shared/validators.js` | 请求参数校验 |
-| `functions/api/_middleware.js` | Pages Functions 全局中间件 |
+| `functions/api/_shared/auth.js` | session 校验、密码哈希、公开路由判断 |
+| `functions/api/_shared/d1.js` | D1 `first` / `all` / `run` / 原子 `batch` 辅助函数 |
+| `functions/api/_shared/http.js` | HTTP 响应、JSON body、405 构建 |
+| `functions/api/_shared/validators.js` | 通用日期、金额、数量与文本校验 |
+| `functions/api/_shared/profit-normalize.js` | 月份、机台、天数、分页参数标准化 |
+| `functions/api/_shared/profit-record-statements.js` | 进货 / 销售明细与成本快照的 batch 命令生成 |
+| `functions/api/_shared/profit-service.js` | 全局商品、进货、销售的业务写入与列表查询 |
+| `functions/api/_shared/profit-report-service.js` | 仪表盘、趋势、排行、成本缺口与商品归并查询 |
+| `functions/api/_shared/shengma/` | 盛码 API、解密、解析、映射、导入、同步设置 |
+| `functions/api/_shared/legacy-archive.js` | 旧库存与旧 zn API 的归档边界 |
+| `functions/api/_middleware.js` | Pages Functions 统一认证并注入 `context.data.session` |
 
-> 改库存相关逻辑，**必须先读 `inventory-service.js`**，它是所有库存操作的唯一入口。
+> 改进货 / 销售写入时，必须同时检查 `profit-service.js` 与 `profit-record-statements.js`，并确保单头、明细、成本快照仍在同一个 `DB.batch()` 中。改仪表盘或成本缺口只看 `profit-report-service.js`，不要把查询重新塞回 `profit-service.js`。
 
 ### 5.3 状态管理
 
 | Store 文件 | 职责 |
 | --- | --- |
-| `stores/auth.ts` | 登录态、token、用户信息 |
-| `stores/toast.ts` | 全局提示消息 |
+| `stores/auth.ts` | 登录态、token、用户名 |
+| `stores/toast.ts` | 全局提示消息、tone、定时清理 |
 
-> 状态管理只有 2 个 store，逻辑简单。大部分业务状态在 composable 里管理，不在 store。
+> 状态管理只有 2 个 store。业务数据主要由 composable 管理，不要为页面局部状态新增全局 store。
 
 ---
 
@@ -685,7 +712,7 @@ Composable (composables/use*.ts)  ←──→  API 端点 (functions/api/*.js)
 | --- | --- |
 | API 返回字段名或结构 | 前端 `types/` 类型定义 + `composables/` 中的解析逻辑 |
 | 前端请求参数 | 后端 `validators.js` 校验规则 + API 处理函数 |
-| 数据库表结构（新迁移） | `inventory-service.js` 中的 SQL + 前端类型 |
+| 数据库表结构（新迁移） | 直接相关的 `profit-*.js` / `_shared/shengma/*.js` SQL + 前端 `types/` |
 | 新增 API 路由 | 对应 `composables/use*.ts` 中要新增请求方法（前端通过 `useApi().request('/path')` 调用，路径前缀由 `useApi.ts` 内部统一拼接，**不需要改 base URL**） |
 | 删除 / 重命名 API | 全局搜索前端中对该路径的 `fetch` / `$fetch` 调用 |
 
@@ -860,4 +887,4 @@ powershell -ExecutionPolicy Bypass -File ./scripts/inject-local-session.ps1 -Use
 
 本次把"娃哈哈营养快线水果牛奶饮品原味500g"合并到"娃哈哈营养快线原味500g"时出现了多余操作：先用了 `UNION ALL` 计数导致 Wrangler JSON 结果不便核对；第一次 SQL 文件包含 `BEGIN TRANSACTION` / `COMMIT` 被远程 D1 拒绝；后续又假设商品机台是 `1/2号机`，导致第一次余额重建没有覆盖真实流水机台，必须补一次余额缓存修正。
 
-已沉淀到 §3.6 反模式 #19–#22。以后做远程 D1 商品合并必须先用单行标量查询确认源/目标 id、真实流水机台和关联计数；写无事务、幂等 SQL；优先归档源商品并写 `merged:<目标标准名>`；重建余额时以 `stock_movements` 的实际 `machine_id` 分组为准，不能凭商品名或页面显示猜。
+这是旧库存系统时期的历史复盘，当前利润系统不存在库存余额重建流程。仍适用的原则已改写到 §3.6 #19–#22：远程修复使用无事务、幂等 SQL；预检查返回稳定的单行结果；机台以 `sales_records.machine_id` 为准；商品归并保留并迁移 `product_aliases`。

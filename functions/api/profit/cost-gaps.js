@@ -1,5 +1,6 @@
 import { json, methodNotAllowed } from '../_shared/http.js';
-import { listCostGaps, normalizeMonth } from '../_shared/profit-service.js';
+import { listCostGaps } from '../_shared/profit-report-service.js';
+import { normalizeMonth } from '../_shared/profit-normalize.js';
 
 export async function onRequestGet(context) {
   const url = new URL(context.request.url);

@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { webcrypto } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import vm from 'node:vm';
@@ -22,7 +21,6 @@ async function loadCloudflareProxy() {
     AbortController,
     btoa: (value) => Buffer.from(value, 'binary').toString('base64'),
     Response,
-    crypto: webcrypto,
     TextEncoder,
     URL,
     clearTimeout,
@@ -41,17 +39,19 @@ async function loadCloudflareProxy() {
   return { api: module.exports, calls };
 }
 
-function sessionDb() {
+function authenticatedContext(request) {
   return {
-    prepare: (sql) => ({
-      bind: (...params) => ({
-        first: async () => {
-          assert.match(sql, /FROM app_sessions/);
-          assert.equal(params[1] > new Date(0).toISOString(), true);
-          return { username: 'admin', expires_at: '2999-01-01T00:00:00.000Z' };
+    request,
+    env: {
+      DB: {
+        prepare() {
+          throw new Error('AI proxy must reuse middleware session instead of querying D1');
         }
-      })
-    })
+      }
+    },
+    data: {
+      session: { username: 'admin', expires_at: '2999-01-01T00:00:00.000Z' }
+    }
   };
 }
 
@@ -87,10 +87,7 @@ async function testManualKeyImageRouting() {
     body: JSON.stringify(proxyBody()),
     headers: { 'X-VM-Session': 'valid-session' }
   });
-  const response = await api.onRequestPost({
-    request,
-    env: { DB: sessionDb() }
-  });
+  const response = await api.onRequestPost(authenticatedContext(request));
   assert.equal(response.status, 200);
   assert.equal(calls.length, 1);
   assertChatCompletionImageCall(calls[0]);
@@ -107,10 +104,7 @@ async function testTextJsonRouting() {
       jsonSchema: { type: 'object' }
     }))
   });
-  const response = await api.onRequestPost({
-    request,
-    env: { DB: sessionDb() }
-  });
+  const response = await api.onRequestPost(authenticatedContext(request));
   assert.equal(response.status, 200);
   const payload = JSON.parse(calls[0].options.body);
   assert.equal(calls[0].url, 'https://api.243706.xyz/v1/chat/completions');
@@ -127,10 +121,7 @@ async function testModelListRoutingIsFixed() {
       action: 'models'
     })
   });
-  const response = await api.onRequestPost({
-    request,
-    env: { DB: sessionDb() }
-  });
+  const response = await api.onRequestPost(authenticatedContext(request));
   assert.equal(response.status, 200);
   assert.equal(calls.length, 0);
   assert.deepEqual(await response.json(), { models: ['gpt5.5'] });
@@ -143,7 +134,7 @@ async function testRequiresManualApiKey() {
     headers: { 'X-VM-Session': 'valid-session' },
     body: JSON.stringify(proxyBody({ apiKey: '' }))
   });
-  const response = await api.onRequestPost({ request, env: { DB: sessionDb() } });
+  const response = await api.onRequestPost(authenticatedContext(request));
   assert.equal(response.status, 400);
   assert.equal(calls.length, 0);
 }
@@ -154,7 +145,7 @@ async function testRequiresSession() {
     method: 'POST',
     body: JSON.stringify(proxyBody())
   });
-  const response = await api.onRequestPost({ request, env: { DB: sessionDb() } });
+  const response = await api.onRequestPost({ request, env: {}, data: {} });
   assert.equal(response.status, 401);
   assert.equal(calls.length, 0);
 }
