@@ -194,7 +194,11 @@ export function useOrderImport() {
       fileSummary.value = summarizeFile(file, sheetName, nextOrders)
       await requestPreview(nextOrders)
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : 'Excel 解析失败'
+      const message = caught instanceof Error
+        ? caught.message
+        : caught && typeof caught === 'object' && 'message' in caught
+          ? String(caught.message)
+          : 'Excel 解析失败'
       error.value = message
       toast.show(message, 'danger')
     } finally {

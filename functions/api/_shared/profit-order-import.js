@@ -3,7 +3,7 @@ import { moneyToCents, newId, nowIso, yearMonthFromDate } from './validators.js'
 
 const IMPORT_SOURCE = 'zn';
 const IMPORT_NOTE = 'zn Excel 订单明细补充导入';
-const MAX_ORDERS = 500;
+const MAX_ORDERS = 2000;
 const MAX_ITEMS_PER_ORDER = 25;
 const MAX_BATCH_COMMANDS = 80;
 const COST_LOOKUP_CHUNK_SIZE = 30;
