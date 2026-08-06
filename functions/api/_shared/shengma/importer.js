@@ -39,13 +39,15 @@ async function findProductByNormalized(db, normalizedName) {
   return await first(db, `
     SELECT pg.*
     FROM products_global pg
-    WHERE pg.normalized_name = ?
+    WHERE pg.status = 'active'
+      AND pg.normalized_name = ?
     LIMIT 1
   `, [normalizedName]) || await first(db, `
     SELECT pg.*
     FROM product_aliases pa
     JOIN products_global pg ON pg.id = pa.product_global_id
-    WHERE pa.status = 'active'
+    WHERE pg.status = 'active'
+      AND pa.status = 'active'
       AND (
         pa.normalized_alias = ?
         OR (pa.source = ? AND pa.source_product_id = ?)
@@ -227,6 +229,7 @@ async function loadKnownProducts(env) {
     LEFT JOIN product_aliases pa
       ON pa.product_global_id = pg.id
      AND pa.status = 'active'
+    WHERE pg.status = 'active'
   `);
   const productMap = new Map();
   for (const row of rows) {
